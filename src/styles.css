@@ -1,0 +1,512 @@
+@import "tailwindcss";
+
+:root,
+html[data-theme="dark"] {
+  --k-bg: #09090b;
+  --k-bg-elevated: #101012;
+  --k-surface: #161618;
+  --k-surface-2: #1c1c1f;
+  --k-fg: #f2f2f4;
+  --k-muted: #9b9ba3;
+  --k-subtle: #6e6e76;
+  --k-border: #26262b;
+  --k-border-strong: #34343b;
+  --k-accent: #7aa2ff;
+  --k-accent-fg: #0a0a0b;
+  --k-up: #3dcf8e;
+  --k-down: #ef6e6e;
+  --k-warn: #c4b08a;
+  --k-chart: #7aa2ff;
+  --k-chart-bench: #9a9aa4;
+  --k-ring: #c8ccd4;
+  --k-shadow-border: 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --k-shadow-border-hover: 0 0 0 1px rgba(255, 255, 255, 0.12);
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  --k-bg: #f3f1ea;
+  --k-bg-elevated: #ebe8e0;
+  --k-surface: #fffcf6;
+  --k-surface-2: #e7e3d8;
+  --k-fg: #161618;
+  --k-muted: #5a5a62;
+  --k-subtle: #7a7a82;
+  --k-border: #d4d0c6;
+  --k-border-strong: #c2bdb2;
+  --k-accent: #3d6ad6;
+  --k-accent-fg: #ffffff;
+  --k-up: #1b8f5c;
+  --k-down: #d14545;
+  --k-warn: #9a7b3e;
+  --k-chart: #3d6ad6;
+  --k-chart-bench: #6e6e76;
+  --k-ring: #3d6ad6;
+  --k-shadow-border: 0 0 0 1px rgba(20, 20, 22, 0.08);
+  --k-shadow-border-hover: 0 0 0 1px rgba(20, 20, 22, 0.16);
+  color-scheme: light;
+}
+
+@theme {
+  --color-bg: var(--k-bg);
+  --color-bg-elevated: var(--k-bg-elevated);
+  --color-surface: var(--k-surface);
+  --color-surface-2: var(--k-surface-2);
+  --color-fg: var(--k-fg);
+  --color-muted: var(--k-muted);
+  --color-subtle: var(--k-subtle);
+  --color-border: var(--k-border);
+  --color-border-strong: var(--k-border-strong);
+  --color-accent: var(--k-accent);
+  --color-accent-fg: var(--k-accent-fg);
+  --color-up: var(--k-up);
+  --color-down: var(--k-down);
+  --color-warn: var(--k-warn);
+  --color-chart: var(--k-chart);
+  --color-chart-bench: var(--k-chart-bench);
+  --color-ring: var(--k-ring);
+
+  --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+
+  --shadow-border: var(--k-shadow-border);
+  --shadow-border-hover: var(--k-shadow-border-hover);
+}
+
+@layer base {
+  html {
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    background: var(--color-bg);
+    color: var(--color-fg);
+    min-height: 100dvh;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  h1, h2, h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  * {
+    border-color: var(--color-border);
+  }
+  input, select, textarea {
+    font: inherit;
+    color: inherit;
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@keyframes koshRise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes koshDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes koshFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes koshBar {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes koshTape {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.kosh-rise {
+  opacity: 0;
+  animation: koshRise 280ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.kosh-draw {
+  stroke-dasharray: 1800;
+  stroke-dashoffset: 1800;
+  animation: koshDraw 1.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.kosh-draw-mix { animation-delay: 90ms; }
+.kosh-draw-bench { animation-delay: 220ms; }
+.kosh-fade {
+  opacity: 0;
+  animation: koshFade 700ms ease-out 480ms forwards;
+}
+@keyframes koshOverlay {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes koshDialog {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 10px)) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+@keyframes koshSheet {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.kosh-dialog {
+  animation: koshSheet 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (min-width: 640px) {
+  .kosh-dialog {
+    animation: koshDialog 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+.kosh-overlay {
+  animation: koshOverlay 180ms ease-out both;
+}
+.kosh-search-dialog {
+  animation: koshSearchIn 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes koshSearchIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.kosh-bar {
+  transform: scaleX(0);
+  transform-origin: left center;
+  animation: koshBar 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.kosh-tape-track {
+  animation: koshTape 18s linear infinite;
+  will-change: transform;
+}
+.kosh-marquee-wrap {
+  position: relative;
+  background: color-mix(in oklab, var(--k-bg-elevated) 88%, var(--k-chart) 12%);
+}
+.kosh-marquee-wrap::before,
+.kosh-marquee-wrap::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40px;
+  z-index: 1;
+  pointer-events: none;
+}
+.kosh-marquee-wrap::before {
+  left: 0;
+  background: linear-gradient(to right, var(--k-bg-elevated), transparent);
+}
+.kosh-marquee-wrap::after {
+  right: 0;
+  background: linear-gradient(to left, var(--k-bg-elevated), transparent);
+}
+@media (hover: hover) {
+  .kosh-marquee-wrap:hover .kosh-tape-track {
+    animation-play-state: paused;
+  }
+}
+
+@keyframes koshTickUp {
+  from { background: color-mix(in oklab, var(--color-up) 38%, transparent); }
+  to { background: transparent; }
+}
+@keyframes koshTickDown {
+  from { background: color-mix(in oklab, var(--color-down) 38%, transparent); }
+  to { background: transparent; }
+}
+.kosh-tick-up { animation: koshTickUp 700ms ease-out; border-radius: 4px; }
+.kosh-tick-down { animation: koshTickDown 700ms ease-out; border-radius: 4px; }
+
+.kosh-pre {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.kosh-in {
+  animation: koshRise 280ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.kosh-page {
+  animation: koshRise 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.kosh-card {
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.kosh-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-border-hover);
+}
+
+.kosh-stagger > * {
+  opacity: 0;
+  animation: koshRise 280ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.kosh-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.kosh-stagger > *:nth-child(2) { animation-delay: 50ms; }
+.kosh-stagger > *:nth-child(3) { animation-delay: 100ms; }
+.kosh-stagger > *:nth-child(4) { animation-delay: 150ms; }
+.kosh-stagger > *:nth-child(5) { animation-delay: 200ms; }
+.kosh-stagger > *:nth-child(6) { animation-delay: 250ms; }
+.kosh-stagger > *:nth-child(n+7) { animation-delay: 280ms; }
+
+a, button, [role="button"] {
+  transition-property: color, background-color, opacity, box-shadow, transform, border-color;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+.legal-prose h2 {
+  color: var(--color-fg);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.kosh-plot {
+  position: relative;
+  width: 100%;
+  height: 300px;
+  min-height: 300px;
+  max-height: 300px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--color-surface);
+}
+.kosh-plot-html {
+  position: absolute;
+  left: 6.75%;
+  right: 2%;
+  top: 16px;
+  bottom: 28px;
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.kosh-plot-html i {
+  display: block;
+  border-radius: 1px 1px 0 0;
+}
+.kosh-plot-img {
+  position: absolute;
+  inset: 0;
+  display: block !important;
+  width: 100% !important;
+  height: 300px !important;
+  min-height: 300px !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: fill;
+  opacity: 1 !important;
+  visibility: visible !important;
+  z-index: 2;
+  pointer-events: none;
+  background: transparent;
+}
+.kosh-plot-cross {
+  position: absolute;
+  top: 16px;
+  bottom: 28px;
+  width: 1px;
+  background: var(--color-border-strong);
+  z-index: 3;
+  pointer-events: none;
+  transform: translateX(-0.5px);
+}
+.kosh-plot-svg,
+.kosh-plot-canvas {
+  display: block !important;
+  width: 100% !important;
+  height: 300px !important;
+  min-height: 300px !important;
+  max-width: none !important;
+  max-height: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  background: var(--color-surface);
+}
+.kosh-plot path,
+.kosh-plot-svg path[stroke],
+.kosh-plot-img {
+  stroke-dashoffset: 0 !important;
+  animation: none !important;
+}
+
+.kosh-candle {
+  position: relative;
+  width: 100%;
+  height: 420px;
+  min-height: 420px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--color-surface);
+  contain: layout paint;
+}
+.kosh-candle-svg {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  background: var(--color-surface);
+}
+.kosh-candle-svg path[stroke] {
+  stroke-dashoffset: 0 !important;
+  animation: none !important;
+}
+.kosh-cross-v {
+  position: absolute;
+  top: 0;
+  bottom: 22px;
+  width: 1px;
+  left: -9px;
+  background: var(--color-border-strong);
+  pointer-events: none;
+  z-index: 4;
+}
+.kosh-cross-h {
+  position: absolute;
+  left: 58px;
+  right: 52px;
+  height: 1px;
+  top: -9px;
+  background: var(--color-border-strong);
+  pointer-events: none;
+  z-index: 4;
+}
+.kosh-px-tag {
+  position: absolute;
+  right: 0;
+  top: -9px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  z-index: 5;
+  background: var(--color-surface-2);
+  color: var(--color-fg);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 3px;
+}
+
+[cmdk-group-heading] {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-subtle);
+}
+[cmdk-item] {
+  border-radius: 6px;
+}
+[cmdk-item][data-selected="true"] {
+  background: var(--color-surface);
+}
+
+.kosh-chart-fs {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  border-radius: 0;
+  background: var(--color-bg);
+  padding: 12px 16px 16px;
+  overflow: hidden;
+  box-shadow: none;
+}
+.kosh-chart-fs .kosh-candle {
+  flex: 1 1 auto;
+  min-height: 0;
+  contain: none;
+}
+.kosh-chart-fs .kosh-plot,
+.kosh-chart-fs .kosh-plot-svg,
+.kosh-chart-fs .kosh-plot-canvas {
+  height: min(70dvh, 640px) !important;
+  min-height: 360px !important;
+}
+html.kosh-fs-lock {
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .kosh-tape-track {
+    animation: none;
+  }
+  .kosh-dialog {
+    animation: none;
+    transform: none;
+  }
+  @media (min-width: 640px) {
+    .kosh-dialog {
+      transform: translate(-50%, -50%);
+    }
+  }
+  .kosh-search-dialog {
+    animation: none;
+    transform: translate(-50%, 0);
+  }
+  .kosh-overlay {
+    animation: none;
+  }
+  .kosh-pre {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}

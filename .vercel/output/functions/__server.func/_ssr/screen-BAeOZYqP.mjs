@@ -1,0 +1,672 @@
+import { o as __toESM } from "../_runtime.mjs";
+import { u as require_react } from "../_libs/@floating-ui/react-dom+[...].mjs";
+import { n as require_jsx_runtime } from "../_libs/radix-ui__react-context+react.mjs";
+import { v as Link } from "../_libs/@tanstack/react-router+[...].mjs";
+import { t as useQuery } from "../_libs/tanstack__react-query.mjs";
+import { D as fmtPct, Gt as Button, O as fmtPx, on as cn, tn as useKosh, xt as fmtVol } from "./router-oJX0L9_1.mjs";
+import { d as apiScreener, u as apiScreenBuild } from "./api-Dymx0Kns.mjs";
+import { t as AppShell } from "./app-shell-DSj9C3kP.mjs";
+import { a as filterSector, i as applyScreen, p as sortRows, r as applyFilter, t as SCREEN_PRESETS } from "./screens-BehhQ_HG.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/screen-BAeOZYqP.js
+var import_react = /* @__PURE__ */ __toESM(require_react());
+var import_jsx_runtime = require_jsx_runtime();
+function ScreenPage() {
+	const q = useQuery({
+		queryKey: ["screener"],
+		queryFn: apiScreener,
+		staleTime: 6e5
+	});
+	const [id, setId] = (0, import_react.useState)("soundmb");
+	const [custom, setCustom] = (0, import_react.useState)(null);
+	const [sector, setSector] = (0, import_react.useState)("All");
+	const [sort, setSort] = (0, import_react.useState)({
+		key: "changePct",
+		dir: "desc"
+	});
+	const saved = useKosh((s) => s.customScreens);
+	const saveCustomScreen = useKosh((s) => s.saveCustomScreen);
+	const removeCustomScreen = useKosh((s) => s.removeCustomScreen);
+	const reads = useKosh((s) => s.skillReads);
+	const rows = q.data?.rows || [];
+	const sectors = (0, import_react.useMemo)(() => ["All", ...[...new Set(rows.map((r) => r.sector))].sort()], [rows]);
+	const base = filterSector(rows, sector);
+	const filtered = id === "custom" && custom ? applyFilter(base, custom) : applyScreen(base, id === "custom" ? "soundmb" : id);
+	const shown = sortRows(filtered, sort.key, sort.dir);
+	const preset = id === "custom" ? custom : SCREEN_PRESETS.find((p) => p.id === id);
+	function head(key, label) {
+		const on = sort.key === key;
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+			className: "px-3 py-2 font-medium",
+			children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+				type: "button",
+				className: cn("text-[11px] tracking-[0.06em] uppercase", on ? "text-fg" : "text-subtle"),
+				onClick: () => setSort((s) => ({
+					key,
+					dir: s.key === key && s.dir === "desc" ? "asc" : "desc"
+				})),
+				children: [label, on ? sort.dir === "desc" ? " ↓" : " ↑" : ""]
+			})
+		}, key);
+	}
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AppShell, { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+		className: "kosh-page",
+		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", {
+				className: "text-[28px] font-semibold tracking-tight",
+				children: "Screen"
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+				className: "mt-1 max-w-2xl text-sm text-muted",
+				children: "Live prices and company numbers on the Nifty 500. A blank cell is missing, not a guess. Fundamental and Qualitative live on each stock page."
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CustomBuilder, { onBuilt: (f) => {
+				setCustom(f);
+				setId("custom");
+				saveCustomScreen(f);
+			} }),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "mt-4 flex flex-wrap gap-1",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "mr-1 self-center text-[11px] tracking-[0.08em] text-subtle uppercase",
+						children: "Quality"
+					}),
+					SCREEN_PRESETS.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: () => {
+							setId(p.id);
+							if (p.id === "stake") setSort({
+								key: "fiiDelta",
+								dir: "desc"
+							});
+							else if (p.id === "vcp") setSort({
+								key: "vcpLastPct",
+								dir: "asc"
+							});
+							else if (p.id === "vcpbo") setSort({
+								key: "vcpDays",
+								dir: "asc"
+							});
+						},
+						className: cn("h-8 rounded-sm px-2.5 text-[12px] font-medium shadow-[var(--shadow-border)]", id === p.id ? "bg-surface text-fg" : "bg-bg text-muted hover:text-fg"),
+						children: p.label
+					}, p.id)),
+					saved.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: () => {
+							setCustom(s);
+							setId("custom");
+						},
+						className: cn("h-8 rounded-sm px-2.5 text-[12px] font-medium shadow-[var(--shadow-border)]", id === "custom" && custom?.name === s.name ? "bg-surface text-fg" : "bg-bg text-muted hover:text-fg"),
+						children: s.name
+					}, s.name))
+				]
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "mt-3 flex flex-wrap items-center gap-3",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+						className: "flex items-center gap-2 text-[12px] text-muted",
+						children: ["Sector", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+							className: "h-8 rounded-sm bg-bg-elevated px-2 text-[13px] text-fg shadow-[var(--shadow-border)]",
+							value: sector,
+							onChange: (e) => setSector(e.target.value),
+							children: sectors.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { children: s }, s))
+						})]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ManualStrip, { onApply: (f) => {
+						setCustom(f);
+						setId("custom");
+					} }),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+						className: "text-[12px] text-subtle",
+						children: [
+							shown.length,
+							" names · ",
+							preset?.hint
+						]
+					}),
+					id === "custom" && custom ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						className: "text-[12px] text-muted hover:text-fg",
+						onClick: () => {
+							removeCustomScreen(custom.name);
+							setId("soundmb");
+							setCustom(null);
+						},
+						children: "Remove this screen"
+					}) : null
+				]
+			}),
+			id === "soundmb" || id === "turnmb" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "mt-4 rounded-lg border-l-[4px] border-l-chart bg-surface p-4 text-[13px] leading-relaxed text-muted shadow-[var(--shadow-border)]",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "font-medium text-fg",
+						children: "On the numbers we have."
+					}),
+					" Every listed name passes the checks that are actually available. Blank fields are extra checks for you — not a pass. Open a name if you want the leftover criteria tighter.",
+					shown[0]?.unchecked?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+						" Common extras on this pass: ",
+						shown[0].unchecked.slice(0, 3).join(" · "),
+						"."
+					] }) : null
+				]
+			}) : null,
+			q.isPending && !rows.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+				className: "mt-8 text-sm text-muted",
+				children: "Loading prices and numbers for the Nifty 500… first pass takes a moment."
+			}) : q.isError ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+				className: "mt-8 text-sm text-down",
+				children: ["Could not load the screen. ", q.error.message]
+			}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "mt-4 hidden overflow-x-auto rounded-lg bg-surface shadow-[var(--shadow-border)] md:block",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+					className: "w-full min-w-[1280px] text-left text-[13px]",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+						className: "border-b border-border",
+						children: [
+							head("name", "Name"),
+							head("price", "Price"),
+							head("changePct", "Today"),
+							id === "stake" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+								head("fii", "FII"),
+								head("fiiDelta", "FII Δ"),
+								head("dii", "DII"),
+								head("diiDelta", "DII Δ"),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+									className: "px-3 py-2 text-[11px] font-medium tracking-[0.06em] text-subtle uppercase",
+									children: "Quarters"
+								}),
+								head("ret1y", "1Y")
+							] }) : id === "vcp" || id === "vcpbo" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+								head("vcpN", "Contractions"),
+								head("vcpLastPct", "Last %"),
+								head("vcpDays", "Days"),
+								head("vcpVolX", "Vol ×"),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+									className: "px-3 py-2 text-[11px] font-medium tracking-[0.06em] text-subtle uppercase",
+									children: "Pivot"
+								}),
+								head("offHigh", "vs 52w high"),
+								head("rsi", "RSI 14")
+							] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+								head("pe", "P/E"),
+								head("pb", "P/B"),
+								head("roe", "ROE"),
+								head("de", "D/E"),
+								head("promoters", "Promoters"),
+								head("mcapCr", "Mcap"),
+								head("salesYoY", "Sales 1Y"),
+								head("profitYoY", "Profit 1Y"),
+								head("divYield", "Div yield"),
+								head("ret3m", "3M"),
+								head("ret1y", "1Y"),
+								head("offHigh", "vs 52w high"),
+								head("rsi", "RSI 14"),
+								head("vol", "Vol vs 20d avg")
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+								className: "px-3 py-2 text-[11px] font-medium tracking-[0.06em] text-subtle uppercase",
+								children: "Fund · Qual"
+							})
+						]
+					}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", { children: shown.map((r) => {
+						const read = reads[r.symbol];
+						return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+							className: "border-b border-border/60 last:border-0",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+									className: "px-3 py-2",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Link, {
+										to: "/s/$symbol",
+										params: { symbol: r.symbol },
+										className: "hover:text-chart",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+											className: "font-medium",
+											children: r.name
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "text-[11px] text-subtle",
+											children: [
+												r.symbol,
+												" · ",
+												r.sector,
+												r.above200 ? " · >200" : ""
+											]
+										})]
+									})
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+									className: "px-3 py-2 font-mono tabular",
+									children: fmtPx(r.price)
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+									className: cn("px-3 py-2 font-mono tabular", r.changePct >= 0 ? "text-up" : "text-down"),
+									children: fmtPct(r.changePct)
+								}),
+								id === "stake" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Stake, {
+										n: r.fii,
+										prev: r.fiiPrev
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pp, { n: r.fiiDelta }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Stake, {
+										n: r.dii,
+										prev: r.diiPrev
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pp, { n: r.diiDelta }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+										className: "px-3 py-2 text-[12px] text-muted",
+										children: r.shLabel || "—"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Cell, { n: r.ret1y })
+								] }) : id === "vcp" || id === "vcpbo" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+										className: "px-3 py-2 font-mono tabular",
+										children: r.vcpN ?? "—"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Num, {
+										n: r.vcpLastPct,
+										d: 1,
+										suffix: "%"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+										className: "px-3 py-2 font-mono tabular",
+										children: r.vcpDays != null ? r.vcpDays : "—"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Num, {
+										n: r.vcpVolX,
+										d: 2,
+										suffix: "×"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+										className: "px-3 py-2 font-mono tabular",
+										children: r.vcpPivot != null ? fmtPx(r.vcpPivot) : "—"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Cell, { n: r.offHigh }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+										className: "px-3 py-2 font-mono tabular",
+										children: r.rsi != null ? r.rsi.toFixed(0) : "—"
+									})
+								] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Num, {
+										n: r.pe,
+										d: 1
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Num, {
+										n: r.pb,
+										d: 2
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Num, {
+										n: r.roe,
+										d: 1,
+										suffix: "%"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Num, {
+										n: r.de,
+										d: 2
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Num, {
+										n: r.promoters,
+										d: 1,
+										suffix: "%"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+										className: "px-3 py-2 font-mono tabular",
+										children: r.mcapCr != null ? r.mcapCr.toLocaleString("en-IN", { maximumFractionDigits: 0 }) : "—"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Cell, { n: r.salesYoY }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Cell, { n: r.profitYoY }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Num, {
+										n: r.divYield,
+										d: 1,
+										suffix: "%"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Cell, { n: r.ret3m }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Cell, { n: r.ret1y }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Cell, { n: r.offHigh }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+										className: "px-3 py-2 font-mono tabular",
+										children: r.rsi != null ? r.rsi.toFixed(0) : "—"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+										className: "px-3 py-2 font-mono text-muted tabular",
+										children: [fmtVol(r.vol), r.volRatio ? ` · ${r.volRatio.toFixed(1)}× 20d avg` : ""]
+									})
+								] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+									className: "px-3 py-2 text-[12px] text-muted",
+									children: read ? `${read.fundTag || "—"} · ${read.qualTag || "—"}` : "—"
+								})
+							]
+						}, r.symbol);
+					}) })]
+				})
+			}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "mt-4 grid gap-2 md:hidden",
+				children: shown.map((r) => {
+					const read = reads[r.symbol];
+					return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", {
+						className: "rounded-lg bg-surface p-3 shadow-[var(--shadow-border)]",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Link, {
+							to: "/s/$symbol",
+							params: { symbol: r.symbol },
+							className: "hover:text-chart",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "font-medium",
+								children: r.name
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "text-[11px] text-subtle",
+								children: [
+									r.symbol,
+									" · ",
+									r.sector
+								]
+							})]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "mt-2 grid grid-cols-3 gap-2 text-[12px]",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "text-[11px] text-subtle",
+									children: "Price"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "font-mono tabular",
+									children: fmtPx(r.price)
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "text-[11px] text-subtle",
+									children: "Today"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: cn("font-mono tabular", r.changePct >= 0 ? "text-up" : "text-down"),
+									children: fmtPct(r.changePct)
+								})] }),
+								id === "stake" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "text-[11px] text-subtle",
+										children: "FII Δ"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: cn("font-mono tabular", (r.fiiDelta ?? 0) >= 0 ? "text-up" : "text-down"),
+										children: r.fiiDelta == null ? "—" : `${r.fiiDelta >= 0 ? "+" : ""}${r.fiiDelta.toFixed(2)} pp`
+									})] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "text-[11px] text-subtle",
+										children: "DII Δ"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: cn("font-mono tabular", (r.diiDelta ?? 0) >= 0 ? "text-up" : "text-down"),
+										children: r.diiDelta == null ? "—" : `${r.diiDelta >= 0 ? "+" : ""}${r.diiDelta.toFixed(2)} pp`
+									})] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "text-[11px] text-subtle",
+										children: "Quarters"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "truncate text-[11px] text-muted",
+										children: r.shLabel || "—"
+									})] })
+								] }) : id === "vcp" || id === "vcpbo" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "text-[11px] text-subtle",
+										children: "Last %"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "font-mono tabular",
+										children: r.vcpLastPct != null ? `${r.vcpLastPct.toFixed(1)}%` : "—"
+									})] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "text-[11px] text-subtle",
+										children: "Days"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "font-mono tabular",
+										children: r.vcpDays ?? "—"
+									})] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "text-[11px] text-subtle",
+										children: "Pivot"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "font-mono tabular",
+										children: r.vcpPivot != null ? fmtPx(r.vcpPivot) : "—"
+									})] })
+								] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "text-[11px] text-subtle",
+										children: "1Y"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: cn("font-mono tabular", (r.ret1y ?? 0) >= 0 ? "text-up" : "text-down"),
+										children: r.ret1y != null ? fmtPct(r.ret1y) : "—"
+									})] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "text-[11px] text-subtle",
+										children: "P/E"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "font-mono tabular",
+										children: r.pe != null ? r.pe.toFixed(1) : "—"
+									})] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "text-[11px] text-subtle",
+										children: "RSI"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "font-mono tabular",
+										children: r.rsi != null ? r.rsi.toFixed(0) : "—"
+									})] })
+								] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "text-[11px] text-subtle",
+									children: "Fund · Qual"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "truncate text-[11px] text-muted",
+									children: read ? `${read.fundTag || "—"} · ${read.qualTag || "—"}` : "—"
+								})] })
+							]
+						})]
+					}, r.symbol);
+				})
+			})] })
+		]
+	}) });
+}
+function CustomBuilder({ onBuilt }) {
+	const [prompt, setPrompt] = (0, import_react.useState)("");
+	const [image, setImage] = (0, import_react.useState)("");
+	const [busy, setBusy] = (0, import_react.useState)(false);
+	const [err, setErr] = (0, import_react.useState)("");
+	async function fileToData(file) {
+		if (file.size > 9e5) throw new Error("Crop the screenshot — keep it under about 0.7 MB.");
+		return await new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(String(reader.result || ""));
+			reader.onerror = () => reject(/* @__PURE__ */ new Error("Could not read that file."));
+			reader.readAsDataURL(file);
+		});
+	}
+	async function build() {
+		setBusy(true);
+		setErr("");
+		try {
+			const r = await apiScreenBuild({
+				prompt,
+				image: image || void 0
+			});
+			if (!r.ok) setErr(r.error);
+			else onBuilt(r.filter);
+		} catch (e) {
+			setErr(e instanceof Error ? e.message : "Could not build that screen.");
+		} finally {
+			setBusy(false);
+		}
+	}
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+		className: "mt-5 rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]",
+		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+				className: "text-[12px] font-semibold tracking-[0.08em] text-muted uppercase",
+				children: "Build your own"
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+				className: "mt-1 max-w-2xl text-[13px] leading-relaxed text-muted",
+				children: "Type it in plain words — “ROE above 15, debt under 1, RSI under 40” — or attach a screenshot of the criteria. We map it to live prices and company fundamentals. A blank cell means the number is missing, not a guess."
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("textarea", {
+				className: "mt-3 min-h-20 w-full rounded-sm bg-bg-elevated px-3 py-2 text-sm shadow-[var(--shadow-border)] outline-none",
+				placeholder: "e.g. PE under 20, ROE above 15, volume at least 1.5× average",
+				value: prompt,
+				onChange: (e) => setPrompt(e.target.value)
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "mt-2 flex flex-wrap items-center gap-2",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+						className: "inline-flex h-8 cursor-pointer items-center rounded-sm bg-bg px-2.5 text-[12px] text-muted shadow-[var(--shadow-border)] hover:text-fg",
+						children: ["Attach screenshot", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+							type: "file",
+							accept: "image/*",
+							className: "hidden",
+							onChange: (e) => {
+								const f = e.target.files?.[0];
+								if (!f) return;
+								fileToData(f).then(setImage).catch((err) => setErr(err instanceof Error ? err.message : "Could not read image"));
+							}
+						})]
+					}),
+					image ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+						className: "text-[12px] text-muted",
+						children: ["Screenshot attached", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							className: "ml-2 hover:text-fg",
+							onClick: () => setImage(""),
+							children: "Remove"
+						})]
+					}) : null,
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
+						size: "sm",
+						disabled: busy || !prompt.trim() && !image,
+						onClick: () => void build(),
+						children: busy ? "Building…" : "Build screen"
+					})
+				]
+			}),
+			err ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+				className: "mt-2 text-[13px] text-down",
+				children: err
+			}) : null
+		]
+	});
+}
+function Pp({ n }) {
+	if (n == null) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+		className: "px-3 py-2 font-mono text-subtle tabular",
+		children: "—"
+	});
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+		className: cn("px-3 py-2 font-mono tabular", n >= 0 ? "text-up" : "text-down"),
+		children: [
+			n >= 0 ? "+" : "",
+			n.toFixed(2),
+			" pp"
+		]
+	});
+}
+function Stake({ n, prev }) {
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+		className: "px-3 py-2 font-mono tabular",
+		children: [n == null ? "—" : `${n.toFixed(1)}%`, prev != null ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			className: "text-[11px] text-subtle",
+			children: [
+				"was ",
+				prev.toFixed(1),
+				"%"
+			]
+		}) : null]
+	});
+}
+function Cell({ n }) {
+	if (n == null) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+		className: "px-3 py-2 font-mono text-subtle tabular",
+		children: "—"
+	});
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+		className: cn("px-3 py-2 font-mono tabular", n >= 0 ? "text-up" : "text-down"),
+		children: fmtPct(n)
+	});
+}
+function Num({ n, d = 1, suffix = "" }) {
+	if (n == null) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+		className: "px-3 py-2 font-mono text-subtle tabular",
+		children: "—"
+	});
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+		className: "px-3 py-2 font-mono tabular",
+		children: [n.toFixed(d), suffix]
+	});
+}
+function Field({ label, value, onChange }) {
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+		className: "flex items-center gap-1 text-[11px] text-muted",
+		children: [label, /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+			className: "h-7 w-16 rounded-sm bg-bg-elevated px-1.5 font-mono text-[12px] text-fg shadow-[var(--shadow-border)] outline-none",
+			inputMode: "decimal",
+			value,
+			onChange: (e) => onChange(e.target.value)
+		})]
+	});
+}
+function ManualStrip({ onApply }) {
+	const [peMax, setPeMax] = (0, import_react.useState)("");
+	const [roeMin, setRoeMin] = (0, import_react.useState)("");
+	const [deMax, setDeMax] = (0, import_react.useState)("");
+	const [rsiMax, setRsiMax] = (0, import_react.useState)("");
+	const [mcapMin, setMcapMin] = (0, import_react.useState)("");
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+		className: "flex flex-wrap items-center gap-2",
+		onSubmit: (e) => {
+			e.preventDefault();
+			const num = (s) => {
+				const v = Number(s);
+				return s.trim() && Number.isFinite(v) ? v : null;
+			};
+			onApply({
+				name: "Manual",
+				hint: "Typed min / max on PE, ROE, debt, RSI, market cap",
+				peMax: num(peMax),
+				roeMin: num(roeMin),
+				deMax: num(deMax),
+				rsiMax: num(rsiMax),
+				mcapMin: num(mcapMin),
+				sort: "changePct",
+				sortDir: "desc"
+			});
+		},
+		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, {
+				label: "PE ≤",
+				value: peMax,
+				onChange: setPeMax
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, {
+				label: "ROE ≥",
+				value: roeMin,
+				onChange: setRoeMin
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, {
+				label: "D/E ≤",
+				value: deMax,
+				onChange: setDeMax
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, {
+				label: "RSI ≤",
+				value: rsiMax,
+				onChange: setRsiMax
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, {
+				label: "Mcap ≥",
+				value: mcapMin,
+				onChange: setMcapMin
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
+				type: "submit",
+				size: "sm",
+				variant: "secondary",
+				children: "Apply"
+			})
+		]
+	});
+}
+//#endregion
+export { ScreenPage as component };

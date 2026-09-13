@@ -1,0 +1,1 @@
+import{i as e,t}from"./react-SIfiwpqq.js";import{t as n}from"./jsx-runtime-0vZSBttN.js";var r=e(t(),1),i=n(),a=(0,r.createContext)(null);function o({portfolio:e,query:t,children:n}){return(0,i.jsx)(a.Provider,{value:{portfolio:e,query:t},children:n})}function s(){let e=(0,r.useContext)(a);if(!e)throw Error(`BookProvider missing`);return e}export{s as n,o as t};
