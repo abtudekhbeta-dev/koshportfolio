@@ -1,10 +1,10 @@
 import { sectorOf } from "./sectors.ts";
-import { fetchOhlc, fetchQuotes } from "./yahoo.server.ts";
+import { fetchOhlc, fetchQuotes, fetchQuoteSnaps } from "./yahoo.server.ts";
 import { lastBbPos, lastMacdHist, lastRsi, retFrom, sma, volAvg, ema, isNr7, detectRetest } from "./ohlc.ts";
-import { SCREEN_UNIVERSE, universeName } from "./universe.ts";
+import { DEEP_UNIVERSE, SCREEN_UNIVERSE, universeName } from "./universe.ts";
 import { TICKER_NAMES } from "./names.ts";
 import { fetchFundamentals } from "./fundamentals.server.ts";
-import { newsAboutCompany } from "./news.ts";
+import { newsAboutCompany, newsMaterial } from "./news.ts";
 import { stakeDelta } from "./shareholding.ts";
 import { detectVcp } from "./vcp.ts";
 import type { Fundamentals, NewsItem, OhlcPack, ScreenRow, WikiCard } from "./types";
@@ -42,6 +42,8 @@ function tag(block: string, name: string) {
 const newsCache = new Map<string, { at: number; data: NewsItem[] }>();
 const wikiCache = new Map<string, { at: number; data: WikiCard | null }>();
 const screenCache = new Map<string, { at: number; data: ScreenRow[] }>();
+let uniInflight: Promise<ScreenRow[]> | null = null;
+let deepInflight: Promise<ScreenRow[]> | null = null;
 
 export async function fetchNews(symbol: string, name?: string): Promise<NewsItem[]> {
   const q = (name || universeName(symbol) || symbol).replace(/\.(NS|BO)$/i, "");
@@ -73,7 +75,7 @@ export async function fetchNews(symbol: string, name?: string): Promise<NewsItem
           const link = tag(block, "link");
           const date = tag(block, "pubDate");
           const ts = date ? Date.parse(date) / 1000 : 0;
-          items.push({ title, publisher, link, ts: Number.isFinite(ts) ? ts : 0 });
+          items.push({ title, publisher, link, ts: Number.isFinite(ts) ? ts : 0, material: newsMaterial(title) });
           if (items.length >= 8) break;
         }
         return items;
@@ -201,6 +203,8 @@ function toRow(pack: OhlcPack, input: string, fund?: Fundamentals | null): Scree
   const bare = input.replace(/\.(NS|BO)$/i, "").toUpperCase();
   const retest = detectRetest(bars);
   const vcp = detectVcp(bars);
+  const retBars = bars.map((b) => ({ ...b, c: b.adj && b.adj > 0 ? b.adj : b.c }));
+  const thin = (pack.mcapCr != null && pack.mcapCr < 500) || (avg > 0 && avg < 50_000);
   return {
     symbol: bare,
     name: pack.name || TICKER_NAMES[bare] || universeName(bare),
@@ -210,9 +214,9 @@ function toRow(pack: OhlcPack, input: string, fund?: Fundamentals | null): Scree
     high52: pack.high52,
     low52: pack.low52,
     offHigh: off,
-    ret1m: retFrom(bars, 31),
-    ret3m: retFrom(bars, 93),
-    ret1y: retFrom(bars, 365),
+    ret1m: retFrom(retBars, 31),
+    ret3m: retFrom(retBars, 93),
+    ret1y: retFrom(retBars, 365),
     vol,
     volAvg: avg,
     volRatio: avg > 0 ? vol / avg : null,
@@ -240,6 +244,8 @@ function toRow(pack: OhlcPack, input: string, fund?: Fundamentals | null): Scree
     vcpDays: vcp?.days ?? null,
     vcpVolX: vcp?.volX ?? null,
     vcpPivot: vcp?.pivot ?? null,
+    depth: "full",
+    thin,
   };
 }
 
@@ -291,27 +297,84 @@ function emptyRow(u: { symbol: string; name: string }): ScreenRow {
     vcpDays: null,
     vcpVolX: null,
     vcpPivot: null,
+    depth: "name" as const,
+    thin: null,
   };
 }
 
 export async function fetchScreener(): Promise<ScreenRow[]> {
-  const hit = screenCache.get("v7");
+  const hit = screenCache.get("deep-v9");
   if (hit && Date.now() - hit.at < 15 * 60 * 1000) return hit.data;
-  const rows = await pool(SCREEN_UNIVERSE, 14, async (u) => {
-    try {
-      const [pack, fund] = await Promise.all([
-        fetchOhlc(u.symbol, "2y", "1d"),
-        fetchFundamentals(u.symbol).catch(() => null),
-      ]);
-      if (pack.missing || pack.price <= 0) return emptyRow(u);
-      return toRow(pack, u.symbol, fund);
-    } catch {
-      return emptyRow(u);
-    }
+  if (deepInflight) return deepInflight;
+  deepInflight = (async () => {
+    const rows = await pool(DEEP_UNIVERSE, 14, async (u) => {
+      try {
+        const [pack, fund] = await Promise.all([
+          fetchOhlc(u.symbol, "2y", "1d"),
+          fetchFundamentals(u.symbol).catch(() => null),
+        ]);
+        if (pack.missing || pack.price <= 0) return emptyRow(u);
+        return toRow(pack, u.symbol, fund);
+      } catch {
+        return emptyRow(u);
+      }
+    });
+    const ok = rows.filter((r) => r.price > 0);
+    if (ok.length) screenCache.set("deep-v9", { at: Date.now(), data: ok });
+    return ok;
+  })().finally(() => {
+    deepInflight = null;
   });
-  const ok = rows.filter((r) => r.price > 0);
-  screenCache.set("v7", { at: Date.now(), data: ok });
-  return ok;
+  return deepInflight;
+}
+
+export async function fetchScreenerUniverse(): Promise<ScreenRow[]> {
+  const hit = screenCache.get("uni-v9");
+  if (hit && Date.now() - hit.at < 15 * 60 * 1000) return hit.data;
+  if (uniInflight) return uniInflight;
+  uniInflight = (async () => {
+    const snaps = await fetchQuoteSnaps(SCREEN_UNIVERSE.map((u) => u.symbol));
+    const bySnap = new Map(snaps.map((s) => [s.symbol, s]));
+    const deep = screenCache.get("deep-v9")?.data || screenCache.get("deep-v8")?.data || [];
+    const byDeep = new Map(deep.map((r) => [r.symbol, r]));
+    const rows: ScreenRow[] = SCREEN_UNIVERSE.map((u) => {
+      const full = byDeep.get(u.symbol);
+      if (full && full.price > 0) return full;
+      const s = bySnap.get(u.symbol);
+      if (!s) return { ...emptyRow(u), name: u.name };
+      const px = s.price;
+      const volRatio = s.volAvg > 0 ? s.vol / s.volAvg : null;
+      const thin = (s.mcapCr != null && s.mcapCr < 500) || (s.volAvg > 0 && s.volAvg < 50_000);
+      return {
+        ...emptyRow(u),
+        name: s.name || u.name,
+        price: px,
+        changePct: s.changePct,
+        high52: s.high52,
+        low52: s.low52,
+        offHigh: s.high52 && px ? ((px / s.high52 - 1) * 100) : null,
+        vol: s.vol,
+        volAvg: s.volAvg,
+        volRatio,
+        pe: s.pe,
+        pb: s.pb,
+        eps: s.eps,
+        book: s.book,
+        divYield: s.divYield,
+        mcapCr: s.mcapCr,
+        above50: s.ma50 != null && px > 0 ? px >= s.ma50 : null,
+        above200: s.ma200 != null && px > 0 ? px >= s.ma200 : null,
+        depth: "quote",
+        thin,
+      };
+    });
+    const nPriced = rows.filter((r) => r.price > 0).length;
+    if (nPriced > 0) screenCache.set("uni-v9", { at: Date.now(), data: rows });
+    return rows;
+  })().finally(() => {
+    uniInflight = null;
+  });
+  return uniInflight;
 }
 
 export async function fetchScreenerOne(symbol: string): Promise<ScreenRow | null> {
@@ -336,6 +399,7 @@ export async function fetchScreenerOne(symbol: string): Promise<ScreenRow | null
       ...fundFields(fund),
       name: q.name || universeName(bare),
       sector: sectorOf(bare, fund?.industry),
+      depth: "quote",
     };
   } catch {
     return null;

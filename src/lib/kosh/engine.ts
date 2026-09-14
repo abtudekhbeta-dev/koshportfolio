@@ -85,6 +85,7 @@ export function buildMixPath(
   holdings: Holding[],
   histories: Record<string, Bar[]>,
   benchBars: Bar[],
+  fixedWeights?: Record<string, number>,
 ): MixPath {
   const withHx = holdings.filter((h) => (histories[h.symbol] || []).length >= 5);
   const missing = holdings
@@ -103,7 +104,22 @@ export function buildMixPath(
   }
 
   const maps = withHx.map((h) => ({ h, m: toDayMap(histories[h.symbol]) }));
-  const weights = currentWeights(withHx, maps);
+  let weights = currentWeights(withHx, maps);
+  if (fixedWeights && Object.keys(fixedWeights).length) {
+    const w: Record<string, number> = {};
+    let sum = 0;
+    for (const h of withHx) {
+      const v = fixedWeights[h.symbol] ?? 0;
+      if (v > 0) {
+        w[h.symbol] = v;
+        sum += v;
+      }
+    }
+    if (sum > 0) {
+      for (const k of Object.keys(w)) w[k] = w[k] / sum;
+      weights = w;
+    }
+  }
   const benchMap = toDayMap(benchBars || []);
   const days = new Set<string>();
   for (const { m } of maps) for (const d of m.keys()) days.add(d);
@@ -792,6 +808,7 @@ export function assembleBook(args: {
       niftyBars,
       sectorBars,
       totalUnreal,
+      lots: r.lots,
     });
     r.daysHeld = hr.daysHeld;
     r.xirr = hr.xirr;

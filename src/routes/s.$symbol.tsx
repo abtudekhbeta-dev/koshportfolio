@@ -7,6 +7,7 @@ import { AskAi } from "@/components/ask-ai";
 import { CandleChart, fetchSpec } from "@/components/charts/candle-chart";
 import { NavChart } from "@/components/charts/nav-chart";
 import { FinancialSnapshot, OwnershipBlock } from "@/components/analysis-view";
+import { SnapshotCard, ValuationCard } from "@/components/kosh-snapshot";
 import { AddToPortfolio } from "@/components/add-to-portfolio";
 import { AttentionStrip } from "@/components/attention-strip";
 import { LivePrice } from "@/components/live-price";
@@ -25,6 +26,9 @@ import { fmtVol, retFrom, volAvg } from "@/lib/kosh/ohlc";
 import { capFromMcap, sectorOf } from "@/lib/kosh/sectors";
 import { pickPeers } from "@/lib/kosh/peers";
 import { universeName } from "@/lib/kosh/universe";
+import { skillOf, pickScreenRow } from "@/lib/kosh/screens";
+import { buildSnapshot } from "@/lib/kosh/snapshot";
+import { buildValuation, earningsQualityRead } from "@/lib/kosh/valuation";
 import { bareSymbol, isWatched, useKosh, type AlertKind } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import type { ChartRange, DealEvent, OhlcPack } from "@/lib/kosh/types";
@@ -131,10 +135,25 @@ function StockBody({
     placeholderData: keepPreviousData,
   });
 
+  const reads = useKosh((s) => s.skillReads);
   const listed = pack.firstTrade ? new Date(pack.firstTrade * 1000).toISOString().slice(0, 4) : "—";
   const bare = symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
   const sector = sectorOf(symbol);
-  const mineRow = (screen.data?.rows || []).find((r) => r.symbol === bare);
+  const mineRow = pickScreenRow(screen.data?.rows, bare) || (screen.data?.rows || []).find((r) => r.symbol === bare);
+  const snap = useMemo(
+    () =>
+      buildSnapshot({
+        symbol: bare,
+        name,
+        price: px,
+        fund: fund.data,
+        row: mineRow,
+        skill: skillOf(reads, bare),
+      }),
+    [bare, name, px, fund.data, mineRow, reads],
+  );
+  const val = useMemo(() => buildValuation({ price: px, fund: fund.data }), [px, fund.data]);
+  const eq = useMemo(() => earningsQualityRead(fund.data), [fund.data]);
   const peerPick = pickPeers(bare, screen.data?.rows || [], {
     mcapCr: fund.data?.mcapCr ?? mineRow?.mcapCr,
     pe: fund.data?.pe ?? mineRow?.pe,
@@ -219,6 +238,8 @@ function StockBody({
 
       <AttentionStrip symbols={[{ symbol: bare, name }]} title="Next 7 days" />
 
+      <SnapshotCard snap={snap} />
+
       <nav className="flex flex-wrap gap-1" role="tablist" aria-label="Stock sections">
         {(
           [
@@ -291,6 +312,13 @@ function StockBody({
 
       <section id="snapshot" className={cn("grid gap-4", tab !== "financials" && "hidden")}>
         <OwnershipBlock fund={fund.data} />
+        <ValuationCard val={val} />
+        <div className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
+          <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Earnings quality</h2>
+          <p className="mt-1 text-[12px] text-subtle">Operating cash versus reported profit. Missing cash flow stays blank.</p>
+          <div className="mt-2 text-[15px] font-semibold">{eq.tag}</div>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted">{eq.body}</p>
+        </div>
         <div className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
           <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Financials</h2>
           <p className="mt-1 text-[12px] text-subtle">Company numbers we have. Blank means missing, not a guess.</p>

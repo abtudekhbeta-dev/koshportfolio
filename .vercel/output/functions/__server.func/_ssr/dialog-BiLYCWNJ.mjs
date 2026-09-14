@@ -1,7 +1,7 @@
 import { n as require_jsx_runtime } from "../_libs/radix-ui__react-context+react.mjs";
 import { a as DialogPortal, i as DialogOverlay, n as DialogClose, o as DialogTitle, r as DialogContent$1, s as DialogTrigger$1, t as Dialog$1 } from "../_libs/@radix-ui/react-dialog+[...].mjs";
 import { t as X } from "../_libs/lucide-react.mjs";
-import { on as cn } from "./router-oJX0L9_1.mjs";
+import { Cn as cn } from "./router-B_ZlT9BI.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/dialog-BiLYCWNJ.js
 var import_jsx_runtime = require_jsx_runtime();
 var Dialog = Dialog$1;

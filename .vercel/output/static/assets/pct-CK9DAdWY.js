@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-0vZSBttN.js";import{d as t}from"./sectors-CB17whw0.js";import{a as n}from"./engine-AwT_H-7U.js";var r=e();function i({n:e,digits:i=2,className:a}){return(0,r.jsx)(`span`,{className:t(`tabular font-mono`,e==null||!Number.isFinite(e)?``:e>0?`text-up`:e<0?`text-down`:`text-muted`,a),children:n(e,i)})}export{i as t};

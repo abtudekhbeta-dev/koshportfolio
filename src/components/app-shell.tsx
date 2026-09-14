@@ -18,12 +18,11 @@ import type { ReactNode } from "react";
 
 const MAIN = [
   { to: "/markets" as const, label: "Markets" },
-  { to: "/screen" as const, label: "Screen" },
+  { to: "/screen" as const, label: "Screener" },
   { to: "/app" as const, label: "Portfolios" },
 ];
 
 const SIDE = [
-  { to: "/trade" as const, label: "Trade" },
   { to: "/watch" as const, label: "Watch" },
 ];
 
@@ -178,7 +177,7 @@ function FirstStrip() {
     <div className="border-t border-border bg-surface">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-3 py-3 sm:px-4">
         <p className="min-w-0 flex-1 text-[14px] leading-snug text-fg">
-          Search a stock → Screen numbers → Add holdings.
+          Search a stock → Screener numbers → Add holdings.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Link
@@ -191,7 +190,7 @@ function FirstStrip() {
             to="/screen"
             className="inline-flex h-10 items-center rounded-sm bg-bg-elevated px-3.5 text-[13px] font-medium shadow-[var(--shadow-border)]"
           >
-            Screen
+            Screener
           </Link>
           <AddHoldings trigger={<Button size="default">Add holdings</Button>} />
           <button

@@ -32,6 +32,7 @@ export type SortKey =
   | "vcpVolX";
 
 export type ScreenId =
+  | "all"
   | "nifty"
   | "up"
   | "down"
@@ -101,8 +102,9 @@ export type ScreenFilter = {
 };
 
 export const SCREEN_PRESETS: { id: ScreenId; label: string; hint: string }[] = [
-  { id: "soundmb", label: "Sound multibagger", hint: "3Y/5Y growth, promoter >50%, DE ≤0.5, ROCE ≥20%, OPM ≥12%, PEG ≤2" },
-  { id: "turnmb", label: "Turnaround multibagger", hint: "Profit turn, 1Y profit ≥100%, sales ≥15%, DE ≤1, ROCE ≥12%, promoter ≥40%" },
+  { id: "all", label: "All listed", hint: "Every NSE equity. A blank cell is missing, not a pass." },
+  { id: "soundmb", label: "Sound multibagger", hint: "All checks present and pass: 3Y/5Y growth, promoter >50%, DE ≤0.5, ROCE ≥20%, OPM ≥12%, PEG ≤2" },
+  { id: "turnmb", label: "Turnaround multibagger", hint: "All checks present and pass: profit turn, 1Y profit ≥100%, sales ≥15%, DE ≤1, ROCE ≥12%, promoter ≥40%" },
   { id: "qgrowth", label: "Quality growth", hint: "ROE ≥15%, sales 1Y ≥12%, profit growth available, debt/equity ≤1" },
   { id: "retest", label: "Breakout retest", hint: "Broke a major high, came back to the level, and still holds" },
   { id: "athretest", label: "ATH retest", hint: "All-time high broken, then retested" },
@@ -198,7 +200,8 @@ export function applyFilter(rows: ScreenRow[], f: ScreenFilter) {
 }
 
 export function applyScreen(rows: ScreenRow[], id: ScreenId) {
-  const src = rows.filter((r) => r.price > 0);
+  const src = id === "all" ? rows : rows.filter((r) => r.price > 0);
+  if (id === "all") return sortRows(src, "mcapCr", "desc");
   if (id === "nifty") return src.filter((r) => NIFTY.has(r.symbol.toUpperCase()));
   if (id === "up") return sortRows(src, "changePct", "desc");
   if (id === "down") return sortRows(src, "changePct", "asc");
@@ -209,7 +212,7 @@ export function applyScreen(rows: ScreenRow[], id: ScreenId) {
   if (id === "overbought") return sortRows(src.filter((r) => r.rsi != null && r.rsi > 70), "rsi", "desc");
   if (id === "above200") return src.filter((r) => r.above200 === true);
   if (id === "cheap") return sortRows(src.filter((r) => r.pe != null && r.pe > 0 && r.pe < 20), "pe", "asc");
-  if (id === "quality") return sortRows(src.filter((r) => r.roe != null && r.roe >= 15 && (r.de == null || r.de < 1)), "roe", "desc");
+  if (id === "quality") return sortRows(src.filter((r) => r.roe != null && r.roe >= 15 && r.de != null && r.de < 1), "roe", "desc");
   if (id === "growers") return sortRows(src.filter((r) => r.salesYoY != null && r.salesYoY >= 15), "salesYoY", "desc");
   if (id === "value")
     return sortRows(src.filter((r) => r.pe != null && r.pe > 0 && r.pe < 18 && r.pb != null && r.pb > 0 && r.pb < 3), "pe", "asc");
@@ -233,7 +236,8 @@ export function applyScreen(rows: ScreenRow[], id: ScreenId) {
           r.roe >= 15 &&
           r.salesYoY != null &&
           r.salesYoY >= 12 &&
-          (r.de == null || r.de <= 1) &&
+          r.de != null &&
+          r.de <= 1 &&
           ((r.profitYoY != null && r.profitYoY >= 12) || (r.profitCagr3 != null && r.profitCagr3 >= 12)),
       ),
       "roe",
@@ -279,7 +283,7 @@ export const TURN_RULES: MbRule[] = [
   { id: "prom", label: "Promoter ≥ 40%", has: (r) => r.promoters != null, ok: (r) => (r.promoters ?? 0) >= 40 },
 ];
 
-/** Rank on the numbers we have. Missing fields are extra checks, not a fail. */
+/** Rank only names where every check can be scored. Missing data is not a pass. */
 export function rankMultibagger(rows: ScreenRow[], rules: MbRule[], sortKey: SortKey) {
   const scored = rows
     .map((r) => {
@@ -292,10 +296,11 @@ export function rankMultibagger(rows: ScreenRow[], rules: MbRule[], sortKey: Sor
         r: { ...r, passCount: pass.length, missed, unchecked },
         nHave: have.length,
         nPass: pass.length,
+        nNeed: rules.length,
         ratio: have.length ? pass.length / have.length : 0,
       };
     })
-    .filter((x) => x.nHave >= 3 && x.ratio === 1);
+    .filter((x) => x.nHave === x.nNeed && x.nPass === x.nNeed);
   scored.sort((a, b) => {
     if (b.ratio !== a.ratio) return b.ratio - a.ratio;
     if (b.nPass !== a.nPass) return b.nPass - a.nPass;
@@ -504,6 +509,8 @@ export function blankScreenRow(symbol: string, name?: string): ScreenRow {
     vcpDays: null,
     vcpVolX: null,
     vcpPivot: null,
+    depth: "name",
+    thin: null,
   };
 }
 
@@ -530,14 +537,12 @@ export function screenRowFromQuote(q: {
 }
 
 export function mergeScreenRows(base: ScreenRow[], extra: ScreenRow[]) {
+  const rank = (r: ScreenRow) => (r.depth === "full" ? 3 : r.depth === "quote" && r.price > 0 ? 2 : r.price > 0 ? 1 : 0);
   const map = new Map<string, ScreenRow>();
-  for (const r of base) {
-    if (r.price > 0) map.set(screenKey(r.symbol), r);
-  }
-  for (const r of extra) {
+  for (const r of [...base, ...extra]) {
     const k = screenKey(r.symbol);
     const have = map.get(k);
-    if (!have || have.price <= 0) map.set(k, r);
+    if (!have || rank(r) >= rank(have)) map.set(k, r);
   }
   return [...map.values()];
 }

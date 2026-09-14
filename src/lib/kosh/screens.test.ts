@@ -83,7 +83,7 @@ describe("skillPass", () => {
 });
 
 describe("rankMultibagger", () => {
-  it("keeps names that pass most numbers we have even if PEG is blank", () => {
+  it("drops names when a required field is blank — missing is not a pass", () => {
     const row = {
       ...blankScreenRow("X"),
       name: "X",
@@ -126,8 +126,28 @@ describe("rankMultibagger", () => {
       profitCagr5: 18,
     };
     const out = rankMultibagger([row], SOUND_RULES, "roe");
+    assert.equal(out.length, 0);
+  });
+
+  it("keeps a name only when every check is present and passes", () => {
+    const row = {
+      ...blankScreenRow("Z"),
+      price: 100,
+      pe: 18,
+      promoters: 55,
+      de: 0.2,
+      roce: 24,
+      peg: 1.1,
+      opm: 18,
+      salesCagr3: 20,
+      profitCagr3: 40,
+      profitCagr5: 18,
+      salesYoY: 12,
+      roe: 22,
+    };
+    const out = rankMultibagger([row], SOUND_RULES, "roe");
     assert.equal(out.length, 1);
-    assert.ok((out[0].unchecked || []).some((x) => /PEG/i.test(x)));
+    assert.equal(out[0].unchecked?.length, 0);
   });
 
   it("drops names that fail the numbers we have", () => {
@@ -243,6 +263,26 @@ describe("skillReadMerge", () => {
     });
     assert.ok(skillOf({ INFY: both }, "INFY"));
     assert.equal(skillOf({ INFY: both }, "INFY")?.qualTag, "Quiet compounder");
+  });
+});
+
+describe("universe and missing-data screens", () => {
+  it("All listed keeps unpriced names; other screens drop them", () => {
+    const priced = { ...blankScreenRow("TCS"), price: 4000, mcapCr: 100000 };
+    const unpriced = { ...blankScreenRow("ILLIQUID"), price: 0, depth: "name" as const };
+    const all = applyScreen([priced, unpriced], "all");
+    assert.equal(all.length, 2);
+    assert.ok(all.some((r) => r.symbol === "ILLIQUID"));
+    assert.equal(applyScreen([priced, unpriced], "up").length, 1);
+  });
+
+  it("merge prefers a full-history row over a quote-only print", () => {
+    const quote = { ...blankScreenRow("TCS"), price: 10, depth: "quote" as const, pe: 20 };
+    const full = { ...blankScreenRow("TCS"), price: 11, depth: "full" as const, pe: 18, rsi: 55 };
+    const merged = mergeScreenRows([quote], [full]);
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0].depth, "full");
+    assert.equal(merged[0].rsi, 55);
   });
 });
 

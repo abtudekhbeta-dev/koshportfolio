@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  applyHoldingPatch,
   extractHoldings,
   fillHoldings,
   guessTicker,
@@ -248,6 +249,25 @@ describe("trade book netting", () => {
     assert.equal(h[0].qty, 10);
     assert.equal(h[0].avg, 200);
     assert.equal(h[0].date, "2023-01-01");
+    assert.ok(h[0].lots && h[0].lots.length === 1);
+    assert.equal(h[0].lots![0].avg, 200);
+    assert.equal(h[0].lots![0].qty, 10);
+  });
+
+  it("drops remaining lots when the line is edited by hand", () => {
+    const h = {
+      symbol: "TCS",
+      name: "TCS",
+      qty: 10,
+      avg: 200,
+      date: "2023-01-01",
+      lots: [{ qty: 10, avg: 200, date: "2023-01-01" }],
+    };
+    const edited = applyHoldingPatch(h, { qty: 12 });
+    assert.equal(edited.qty, 12);
+    assert.equal(edited.lots, undefined);
+    const keep = applyHoldingPatch(h, { name: "Tata Consultancy" });
+    assert.equal(keep.lots?.length, 1);
   });
 
   it("does not treat a holdings snapshot with Security Type = EQUITY as a trade book", () => {

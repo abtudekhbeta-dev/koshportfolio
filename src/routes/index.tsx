@@ -203,7 +203,7 @@ function Morning() {
             </Link>
           </Button>
           <Button asChild variant="ghost">
-            <Link to="/screen">Screen</Link>
+            <Link to="/screen">Screener</Link>
           </Button>
         </div>
       </div>

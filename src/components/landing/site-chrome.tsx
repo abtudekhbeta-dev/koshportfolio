@@ -33,7 +33,7 @@ export function LandingHeader() {
               to="/screen"
               className="grid h-11 place-items-center rounded-sm bg-surface px-4 text-[15px] font-semibold text-muted shadow-[var(--shadow-border)] hover:text-fg"
             >
-              Screen
+              Screener
             </Link>
             <Link
               to="/app"
@@ -50,12 +50,6 @@ export function LandingHeader() {
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
           <nav className="hidden items-center gap-1 md:flex">
-            <Link
-              to="/trade"
-              className="grid h-11 place-items-center rounded-sm bg-surface px-3.5 text-[15px] font-semibold text-muted shadow-[var(--shadow-border)] hover:text-fg"
-            >
-              Trade
-            </Link>
             <Link
               to="/watch"
               className="grid h-11 place-items-center rounded-sm bg-surface px-3.5 text-[15px] font-semibold text-muted shadow-[var(--shadow-border)] hover:text-fg"
@@ -91,10 +85,7 @@ export function SiteFooter() {
               Markets
             </Link>
             <Link to="/screen" className="hover:text-fg">
-              Screen
-            </Link>
-            <Link to="/trade" className="hover:text-fg">
-              Trade
+              Screener
             </Link>
             <Link to="/watch" className="hover:text-fg">
               Watch

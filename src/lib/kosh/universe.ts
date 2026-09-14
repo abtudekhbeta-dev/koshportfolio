@@ -1,4 +1,4 @@
-/** Nifty 50 + liquid NSE names for Markets, Screen and Trade. */
+/** NSE names: Nifty 50 for tape, Nifty 500 for full history, all EQ for the screener. */
 
 export const NIFTY50: { symbol: string; name: string }[] = [
   { symbol: "ADANIENT", name: "Adani Enterprises" },
@@ -177,7 +177,8 @@ export const NIFTY_LIQUID: { symbol: string; name: string }[] = [
 import { NIFTY500 } from "./nifty500.ts";
 import { NSE_EQ } from "./nse-eq.ts";
 
-export const SCREEN_UNIVERSE = NIFTY500;
+export const DEEP_UNIVERSE = NIFTY500;
+export const SCREEN_UNIVERSE = NSE_EQ;
 export { NIFTY500, NSE_EQ };
 
 const NAME_MAP = new Map<string, string>();

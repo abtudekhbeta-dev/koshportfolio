@@ -7,6 +7,7 @@ export type XirrLine = {
   avg: number | null;
   px: number;
   value: number;
+  lots?: { qty: number; avg: number; date: string | null; boughtAt?: string | null }[];
 };
 
 export type XirrResult = {
@@ -45,21 +46,34 @@ export function bookXirr(lines: XirrLine[], datedOnly: boolean, asOf = Date.now(
   const flows: { t: number; v: number }[] = [];
   let from: string | null = null;
   for (const l of lines) {
-    const val = l.value || l.qty * (l.px || 0);
-    const when = l.boughtAt || l.date;
-    if (when && l.avg != null && l.avg > 0 && l.qty > 0) {
-      const t = Date.parse(when);
-      if (Number.isFinite(t)) {
-        datedValue += val;
-        nDated += 1;
-        flows.push({ t, v: -(l.avg * l.qty) });
-        const day = when.slice(0, 10);
-        if (!from || day < from) from = day;
-        continue;
+    const parts =
+      l.lots && l.lots.length
+        ? l.lots.map((lot) => ({
+            date: lot.date,
+            boughtAt: lot.boughtAt || lot.date,
+            qty: lot.qty,
+            avg: lot.avg,
+            px: l.px,
+            value: lot.qty * (l.px || 0),
+          }))
+        : [l];
+    for (const p of parts) {
+      const val = p.value || p.qty * (p.px || 0);
+      const when = p.boughtAt || p.date;
+      if (when && p.avg != null && p.avg > 0 && p.qty > 0) {
+        const t = Date.parse(when);
+        if (Number.isFinite(t)) {
+          datedValue += val;
+          nDated += 1;
+          flows.push({ t, v: -(p.avg * p.qty) });
+          const day = when.slice(0, 10);
+          if (!from || day < from) from = day;
+          continue;
+        }
       }
+      missingValue += val;
+      nMissing += 1;
     }
-    missingValue += val;
-    nMissing += 1;
   }
   if (datedOnly) {
     /* exclude undated from terminal value */

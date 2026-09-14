@@ -28,7 +28,15 @@ function Overview() {
   const xirr = bookXirr(
     rows.map((r) => {
       const h = portfolio.holdings.find((x) => x.symbol === r.symbol);
-      return { date: h?.date || null, boughtAt: h?.boughtAt, qty: r.qty, avg: r.avg, px: r.px, value: r.value };
+      return {
+        date: h?.date || null,
+        boughtAt: h?.boughtAt,
+        qty: r.qty,
+        avg: r.avg,
+        px: r.px,
+        value: r.value,
+        lots: h?.lots || r.lots,
+      };
     }),
     true,
   );
@@ -51,13 +59,15 @@ function Overview() {
       </section>
       {xirr.xirr != null ? (
         <p className="text-[13px] text-muted">
-          Dated XIRR <span className={cn("font-mono tabular", xirr.xirr >= 0 ? "text-up" : "text-down")}>{xirr.xirr.toFixed(1)}%</span>
+          Your XIRR{" "}
+          <span className={cn("font-mono tabular", xirr.xirr >= 0 ? "text-up" : "text-down")}>{xirr.xirr.toFixed(1)}%</span>
           {xirr.from ? ` from ${xirr.from}` : ""}
-          {xirr.nMissing ? ` · ${fmtInr(xirr.missingValue)} has no date` : ""}.
+          {xirr.nMissing ? ` · ${fmtInr(xirr.missingValue)} has no date` : ""}. This is your money-weighted return from
+          dated buys. The chart below is not that figure.
         </p>
       ) : (
         <p className="text-[13px] text-muted">
-          Add buy dates for XIRR.{" "}
+          Add buy dates for your XIRR.{" "}
           <Link to="/p/$id/holdings" params={{ id: portfolio.id }} className="text-chart hover:underline">
             Holdings
           </Link>
@@ -88,10 +98,11 @@ function Overview() {
 
       <section>
         <h2 className="mb-1 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">
-          Portfolio vs {book.benchName}
+          Current holdings historical performance vs {book.benchName}
         </h2>
         <p className="mb-3 text-[12px] text-muted">
-          Today’s weights × each name’s full daily history. A late listing joins when it appears — it does not wipe earlier years.
+          Today’s weights × each name’s full daily history (adjusted close). This is not your XIRR and not a reconstruction
+          of what you held in 2018. A late listing joins when it appears — it does not wipe earlier years.
           {hasMetals && !metalsOn ? " Gold and silver sit on Holdings but are out of this line and the totals." : ""}{" "}
           <Link to="/compare" className="text-chart hover:underline">
             Compare this portfolio
@@ -99,7 +110,7 @@ function Overview() {
         </p>
         <NavChart
           nav={book.mix.nav}
-          portLabel="Portfolio"
+          portLabel="Current mix"
           benchLabel={book.benchName}
           coverage={`${book.coverage}${book.mix.missing.length ? " · skipped " + book.mix.missing.join(", ") : ""}`}
           nowValue={book.value}

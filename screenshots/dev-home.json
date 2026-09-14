@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Kosh · Indian markets and portfolios",
+      "hasCanvas": false,
+      "bodyTextLen": 4514,
+      "bodyTextHash": "85f7d5374e7b47668f07b11e4625708d20e0da2e7c449d5768487aecb2984b3a",
+      "bodyTextPrefix": "Skip to content Kosh Markets Screener Portfolios Search any NSE ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/dev-home.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Kosh · Indian markets and portfolios",
+      "hasCanvas": false,
+      "bodyTextLen": 4478,
+      "bodyTextHash": "2e69f3a0498de5c610461f2c66dc2debe3a047631c9f4f135e7676205a044d1f",
+      "bodyTextPrefix": "Skip to content Kosh Search any NSE or BSE name… INDIAN STOCKS ·",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/dev-home-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/dev-home.json"
+}

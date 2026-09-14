@@ -93,6 +93,11 @@ export async function apiScreener() {
   return d;
 }
 
+export async function apiScreenerDeep() {
+  const d = await json<{ rows: ScreenRow[]; asOf: string }>("/api/screener?depth=full");
+  return d;
+}
+
 export async function apiScreenerAdd(add: string[]) {
   const qs = add.length ? "?add=" + encodeURIComponent(add.join(",")) : "";
   const d = await json<{ rows: ScreenRow[]; asOf: string }>("/api/screener" + qs);

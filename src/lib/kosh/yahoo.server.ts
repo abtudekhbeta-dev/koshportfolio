@@ -701,12 +701,12 @@ function parseOhlc(data: unknown, input: string): OhlcPack | null {
     const vol = q.volume?.[i];
     const a = adj[i];
     if (close == null || !(close > 0)) continue;
-    const f = a != null && a > 0 ? Number(a) / Number(close) : 1;
-    const c = Number(close) * f;
-    const o = open != null && open > 0 ? Number(open) * f : c;
-    const h = high != null && high > 0 ? Number(high) * f : Math.max(o, c);
-    const l = low != null && low > 0 ? Number(low) * f : Math.min(o, c);
-    bars.push({ t: ts[i], o, h, l, c, v: vol != null && vol > 0 ? Number(vol) : 0 });
+    const raw = Number(close);
+    const adjC = a != null && a > 0 ? Number(a) : raw;
+    const o = open != null && open > 0 ? Number(open) : raw;
+    const h = high != null && high > 0 ? Number(high) : Math.max(o, raw);
+    const l = low != null && low > 0 ? Number(low) : Math.min(o, raw);
+    bars.push({ t: ts[i], o, h, l, c: raw, v: vol != null && vol > 0 ? Number(vol) : 0, adj: adjC });
   }
   const price = Number(m.regularMarketPrice || 0) || bars.at(-1)?.c || 0;
   const prev = Number(m.chartPreviousClose || m.previousClose || 0);
@@ -733,3 +733,201 @@ function parseOhlc(data: unknown, input: string): OhlcPack | null {
     mcapCr: Number(m.marketCap || 0) > 0 && String(m.currency || "INR") === "INR" ? Number(m.marketCap) / 1e7 : null,
   };
 }
+
+export type QuoteSnap = {
+  symbol: string;
+  name: string;
+  price: number;
+  changePct: number;
+  high52: number;
+  low52: number;
+  mcapCr: number | null;
+  pe: number | null;
+  pb: number | null;
+  eps: number | null;
+  book: number | null;
+  divYield: number | null;
+  vol: number;
+  volAvg: number;
+  ma50: number | null;
+  ma200: number | null;
+};
+
+const snapCache = new Map<string, { at: number; data: QuoteSnap }>();
+const SNAP_TTL = 15 * 60 * 1000;
+
+function nPos(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function snapFromQuote(q: Record<string, unknown>, bare: string): QuoteSnap | null {
+  const price = Number(q.regularMarketPrice || q.postMarketPrice || 0);
+  if (!(price > 0)) return null;
+  const prev = Number(q.regularMarketPreviousClose || 0);
+  let changePct = Number(q.regularMarketChangePercent || 0);
+  if (!Number.isFinite(changePct) && prev > 0) changePct = (price / prev - 1) * 100;
+  if (!Number.isFinite(changePct)) changePct = 0;
+  const mcap = Number(q.marketCap || 0);
+  const vol = Number(q.regularMarketVolume || 0);
+  const volAvg = Number(q.averageDailyVolume3Month || q.averageDailyVolume10Day || 0);
+  const pe = nPos(q.trailingPE);
+  const pb = nPos(q.priceToBook);
+  const eps = Number.isFinite(Number(q.epsTrailingTwelveMonths)) ? Number(q.epsTrailingTwelveMonths) : null;
+  const book = nPos(q.bookValue);
+  let div = Number(q.trailingAnnualDividendYield || q.dividendYield || 0);
+  if (div > 0 && div < 1) div = div * 100;
+  if (!(div > 0) || div > 40) div = 0;
+  return {
+    symbol: bare,
+    name: String(q.longName || q.shortName || q.displayName || bare),
+    price,
+    changePct,
+    high52: Number(q.fiftyTwoWeekHigh || 0),
+    low52: Number(q.fiftyTwoWeekLow || 0),
+    mcapCr: mcap > 0 ? mcap / 1e7 : null,
+    pe,
+    pb,
+    eps: eps != null && Number.isFinite(eps) ? eps : null,
+    book,
+    divYield: div > 0 ? div : null,
+    vol: vol > 0 ? vol : 0,
+    volAvg: volAvg > 0 ? volAvg : 0,
+    ma50: nPos(q.fiftyDayAverage),
+    ma200: nPos(q.twoHundredDayAverage),
+  };
+}
+
+async function quoteBatch(tickers: string[]): Promise<Map<string, QuoteSnap>> {
+  const out = new Map<string, QuoteSnap>();
+  if (!tickers.length) return out;
+  const url =
+    "https://query1.finance.yahoo.com/v7/finance/quote?symbols=" +
+    tickers.map((s) => encodeURIComponent(s)).join(",");
+  try {
+    const data = (await yahoo(url)) as {
+      quoteResponse?: { result?: Array<Record<string, unknown>> };
+    };
+    for (const q of data?.quoteResponse?.result || []) {
+      const raw = String(q.symbol || "");
+      const bare = raw.replace(/\.(NS|BO)$/i, "").toUpperCase();
+      if (!bare) continue;
+      const snap = snapFromQuote(q, bare);
+      if (snap) out.set(bare, snap);
+    }
+  } catch {
+    /* v7 often 401 — spark still prints */
+  }
+  return out;
+}
+
+function snapFromSpark(raw: unknown, fallbackBare: string): QuoteSnap | null {
+  const o = (raw || {}) as {
+    symbol?: string;
+    fulldayPrice?: number;
+    fulldayChangePercent?: number;
+    chartPreviousClose?: number;
+    close?: (number | null)[];
+    previousClose?: number | null;
+  };
+  const close = Array.isArray(o.close) ? o.close.filter((x): x is number => x != null && x > 0) : [];
+  const price = Number(o.fulldayPrice || close.at(-1) || 0);
+  if (!(price > 0)) return null;
+  const prev = Number(o.chartPreviousClose || o.previousClose || 0);
+  let changePct = Number(o.fulldayChangePercent || 0);
+  if (!Number.isFinite(changePct) && prev > 0) changePct = (price / prev - 1) * 100;
+  if (!Number.isFinite(changePct)) changePct = 0;
+  const bare = String(o.symbol || fallbackBare)
+    .replace(/\.(NS|BO)$/i, "")
+    .toUpperCase();
+  if (!bare) return null;
+  return {
+    symbol: bare,
+    name: tickerName(bare) || bare,
+    price,
+    changePct,
+    high52: 0,
+    low52: 0,
+    mcapCr: null,
+    pe: null,
+    pb: null,
+    eps: null,
+    book: null,
+    divYield: null,
+    vol: 0,
+    volAvg: 0,
+    ma50: null,
+    ma200: null,
+  };
+}
+
+async function sparkChunk(tickers: string[]): Promise<Map<string, QuoteSnap>> {
+  const out = new Map<string, QuoteSnap>();
+  if (!tickers.length) return out;
+  const url =
+    "https://query1.finance.yahoo.com/v8/finance/spark?symbols=" +
+    tickers.map((s) => encodeURIComponent(s)).join(",") +
+    "&range=1d&interval=1d";
+  try {
+    const data = (await yahoo(url)) as Record<string, unknown>;
+    const rows =
+      data && typeof data === "object" && data.spark && typeof data.spark === "object"
+        ? ((data.spark as { result?: unknown[] }).result || [])
+        : Object.entries(data || {}).map(([sym, row]) =>
+            row && typeof row === "object" ? { ...(row as object), symbol: (row as { symbol?: string }).symbol || sym } : null,
+          );
+    for (const row of rows) {
+      if (!row || typeof row !== "object") continue;
+      const raw = row as { symbol?: string };
+      const bare = String(raw.symbol || "")
+        .replace(/\.(NS|BO)$/i, "")
+        .toUpperCase();
+      const snap = snapFromSpark(row, bare);
+      if (snap) out.set(snap.symbol, snap);
+    }
+  } catch {
+    /* empty spark chunk */
+  }
+  return out;
+}
+
+/** Live prints for many NSE names. Quote v7 when it answers; spark otherwise. */
+export async function fetchQuoteSnaps(symbols: string[]): Promise<QuoteSnap[]> {
+  const uniq = [...new Set(symbols.map((s) => String(s || "").replace(/\.(NS|BO)$/i, "").toUpperCase()).filter(Boolean))];
+  const now = Date.now();
+  const need: string[] = [];
+  const hits: QuoteSnap[] = [];
+  for (const s of uniq) {
+    const c = snapCache.get(s);
+    if (c && now - c.at < SNAP_TTL) hits.push(c.data);
+    else need.push(s);
+  }
+  const by = new Map<string, QuoteSnap>();
+  for (const h of hits) by.set(h.symbol, h);
+
+  const v7chunks: string[][] = [];
+  for (let i = 0; i < need.length; i += 40) v7chunks.push(need.slice(i, i + 40));
+  const v7 = await poolMap(v7chunks, 3, async (chunk) => quoteBatch(chunk.map((s) => `${s}.NS`)));
+  for (const map of v7) {
+    for (const [k, v] of map) {
+      snapCache.set(k, { at: now, data: v });
+      by.set(k, v);
+    }
+  }
+
+  const missing = need.filter((s) => !by.has(s));
+  if (missing.length) {
+    const sparkChunks: string[][] = [];
+    for (let i = 0; i < missing.length; i += 18) sparkChunks.push(missing.slice(i, i + 18));
+    const sparks = await poolMap(sparkChunks, 6, async (chunk) => sparkChunk(chunk.map((s) => `${s}.NS`)));
+    for (const map of sparks) {
+      for (const [k, v] of map) {
+        snapCache.set(k, { at: now, data: v });
+        by.set(k, v);
+      }
+    }
+  }
+
+  return uniq.map((s) => by.get(s)).filter((x): x is QuoteSnap => Boolean(x));
+}
+

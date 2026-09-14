@@ -59,9 +59,10 @@ function Holdings() {
         />
       </div>
       <p className="text-[13px] text-muted">
-        Edit quantity, average cost and buy date in place. Upload a buy/sell file and use Fill dates / Fill prices so sold
-        names are not added. Returns from buy date need both a date and an average cost — otherwise the cell stays blank,
-        not zero.
+        Edit quantity, average cost and buy date in place. Upload a buy/sell file and remaining lots stay on the line (still
+        one row per name) so Your XIRR is money-weighted from those dates. Editing the line replaces those lots. Sold names
+        are not added. Returns from buy date need both a date and an average cost — otherwise the cell stays blank, not
+        zero.
       </p>
 
       <div className="hidden overflow-x-auto rounded-lg bg-surface shadow-[var(--shadow-border)] md:block">
@@ -81,7 +82,7 @@ function Holdings() {
               <th className="px-3 py-2 text-right">1Y</th>
               <HeadTip label="P&L ₹" tip="Rupees up or down versus average cost. Needs buy date and average. Use this for how much money is on the line." onClick={() => setSort("unrealPct")} />
               <HeadTip label="Simple %" tip="Same P&L as a percent of what you paid. A quick look — not annualised." onClick={() => setSort("unrealPct")} />
-              <HeadTip label="XIRR" tip="Annualised return from the buy date to today. Use this when names were bought on different dates." onClick={() => setSort("xirr")} />
+              <HeadTip label="XIRR" tip="Annualised return from dated buys to today. Remaining lots from a trade-file import are used when present. Use this when names were bought on different dates." onClick={() => setSort("xirr")} />
               <HeadTip label="Days" tip="Calendar days since the buy date. Use this to see how long the position has been on." onClick={() => setSort("daysHeld")} />
               <HeadTip label="vs Nifty" tip="Your simple % minus Nifty over the same dates. Did you beat the index since you bought?" />
               <HeadTip label="vs sector" tip="Your simple % minus the sector index over the same dates. Did you beat the industry since you bought?" />
@@ -98,6 +99,7 @@ function Holdings() {
                     <StockLink symbol={r.symbol} name={r.name} className="font-medium" />
                     <div className="text-[11px] text-subtle">
                       {r.symbol} · {r.sector}
+                      {h?.lots && h.lots.length > 1 ? ` · ${h.lots.length} lots` : ""}
                       {r.kind === "commodity" && !book.includeCommodities ? " · excluded from totals" : ""}
                     </div>
                   </td>
@@ -177,6 +179,7 @@ function Holdings() {
                   <StockLink symbol={r.symbol} name={r.name} className="font-medium" />
                   <div className="text-[11px] text-subtle">
                     {r.symbol} · {fmtInr(r.value)} · <Pct n={r.unrealPct} />
+                    {h?.lots && h.lots.length > 1 ? ` · ${h.lots.length} lots` : ""}
                   </div>
                 </div>
                 <Button size="sm" variant="ghost" onClick={() => removeHolding(portfolio.id, r.symbol)}>

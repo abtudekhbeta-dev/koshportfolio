@@ -3,13 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
-import { apiScreenBuild, apiScreener } from "@/lib/kosh/api";
+import { apiScreenBuild, apiScreener, apiScreenerDeep } from "@/lib/kosh/api";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { fmtVol } from "@/lib/kosh/ohlc";
 import {
   applyFilter,
   applyScreen,
   filterSector,
+  mergeScreenRows,
   SCREEN_PRESETS,
   sortRows,
   type ScreenFilter,
@@ -23,23 +24,34 @@ export const Route = createFileRoute("/screen")({ ssr: false, component: ScreenP
 
 function ScreenPage() {
   const q = useQuery({ queryKey: ["screener"], queryFn: apiScreener, staleTime: 10 * 60 * 1000 });
-  const [id, setId] = useState<ScreenId | "custom">("soundmb");
+  const deep = useQuery({ queryKey: ["screener-deep"], queryFn: apiScreenerDeep, staleTime: 10 * 60 * 1000 });
+  const [id, setId] = useState<ScreenId | "custom">("all");
   const [custom, setCustom] = useState<ScreenFilter | null>(null);
   const [sector, setSector] = useState("All");
-  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "changePct", dir: "desc" });
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "mcapCr", dir: "desc" });
+  const [qtext, setQtext] = useState("");
+  const [limit, setLimit] = useState(150);
   const saved = useKosh((s) => s.customScreens);
   const saveCustomScreen = useKosh((s) => s.saveCustomScreen);
   const removeCustomScreen = useKosh((s) => s.removeCustomScreen);
   const reads = useKosh((s) => s.skillReads);
-  const rows = q.data?.rows || [];
+  const rows = useMemo(() => mergeScreenRows(q.data?.rows || [], deep.data?.rows || []), [q.data, deep.data]);
   const sectors = useMemo(() => ["All", ...[...new Set(rows.map((r) => r.sector))].sort()], [rows]);
-  const base = filterSector(rows, sector);
+  const needle = qtext.trim().toUpperCase();
+  const searched = useMemo(() => {
+    const base = filterSector(rows, sector);
+    if (!needle) return base;
+    return base.filter((r) => r.symbol.includes(needle) || r.name.toUpperCase().includes(needle));
+  }, [rows, sector, needle]);
   const filtered =
     id === "custom" && custom
-      ? applyFilter(base, custom)
-      : applyScreen(base, id === "custom" ? "soundmb" : id);
-  const shown = sortRows(filtered, sort.key, sort.dir);
+      ? applyFilter(searched, custom)
+      : applyScreen(searched, id === "custom" ? "soundmb" : id);
+  const shownAll = sortRows(filtered, sort.key, sort.dir);
+  const shown = shownAll.slice(0, limit);
   const preset = id === "custom" ? custom : SCREEN_PRESETS.find((p) => p.id === id);
+  const nFull = rows.filter((r) => r.depth === "full").length;
+  const nPriced = rows.filter((r) => r.price > 0).length;
 
   function head(key: SortKey, label: string) {
     const on = sort.key === key;
@@ -60,10 +72,10 @@ function ScreenPage() {
   return (
     <AppShell>
       <div className="kosh-page">
-        <h1 className="text-[28px] font-semibold tracking-tight">Screen</h1>
+        <h1 className="text-[28px] font-semibold tracking-tight">Screener</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Live prices and company numbers on the Nifty 500. A blank cell is missing, not a guess. Fundamental and
-          Qualitative live on each stock page.
+          Every NSE equity we can list. Company numbers and chart patterns fill in when the daily history is in. A blank
+          cell is missing, not a pass — and never a guess.
         </p>
 
         <CustomBuilder
@@ -85,6 +97,8 @@ function ScreenPage() {
                 if (p.id === "stake") setSort({ key: "fiiDelta", dir: "desc" });
                 else if (p.id === "vcp") setSort({ key: "vcpLastPct", dir: "asc" });
                 else if (p.id === "vcpbo") setSort({ key: "vcpDays", dir: "asc" });
+                else if (p.id === "all") setSort({ key: "mcapCr", dir: "desc" });
+                setLimit(150);
               }}
               className={cn(
                 "h-8 rounded-sm px-2.5 text-[12px] font-medium shadow-[var(--shadow-border)]",
@@ -113,6 +127,18 @@ function ScreenPage() {
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-[12px] text-muted">
+            Find
+            <input
+              className="h-8 w-40 rounded-sm bg-bg-elevated px-2 text-[13px] text-fg shadow-[var(--shadow-border)] outline-none"
+              placeholder="Name or ticker"
+              value={qtext}
+              onChange={(e) => {
+                setQtext(e.target.value);
+                setLimit(150);
+              }}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-[12px] text-muted">
             Sector
             <select
               className="h-8 rounded-sm bg-bg-elevated px-2 text-[13px] text-fg shadow-[var(--shadow-border)]"
@@ -131,7 +157,8 @@ function ScreenPage() {
             }}
           />
           <span className="text-[12px] text-subtle">
-            {shown.length} names · {preset?.hint}
+            {shownAll.length} match · {nPriced} priced · {nFull} with full history of {rows.length} listed
+            {preset?.hint ? ` · ${preset.hint}` : ""}
           </span>
           {id === "custom" && custom ? (
             <button
@@ -150,19 +177,15 @@ function ScreenPage() {
 
         {id === "soundmb" || id === "turnmb" ? (
           <div className="mt-4 rounded-lg border-l-[4px] border-l-chart bg-surface p-4 text-[13px] leading-relaxed text-muted shadow-[var(--shadow-border)]">
-            <span className="font-medium text-fg">On the numbers we have.</span> Every listed name passes the checks
-            that are actually available. Blank fields are extra checks for you — not a pass. Open a name if you want the
-            leftover criteria tighter.
-            {shown[0]?.unchecked?.length ? (
-              <span> Common extras on this pass: {shown[0].unchecked.slice(0, 3).join(" · ")}.</span>
-            ) : null}
+            <span className="font-medium text-fg">Every check must be present and pass.</span> A blank field drops the
+            name — it is not treated as a pass. Open a stock if you want to see which numbers are still missing.
           </div>
         ) : null}
 
         {q.isPending && !rows.length ? (
-          <p className="mt-8 text-sm text-muted">Loading prices and numbers for the Nifty 500… first pass takes a moment.</p>
+          <p className="mt-8 text-sm text-muted">Loading listed names… first pass takes a moment.</p>
         ) : q.isError ? (
-          <p className="mt-8 text-sm text-down">Could not load the screen. {q.error.message}</p>
+          <p className="mt-8 text-sm text-down">Could not load the screener. {q.error.message}</p>
         ) : (
           <>
           <div className="mt-4 hidden overflow-x-auto rounded-lg bg-surface shadow-[var(--shadow-border)] md:block">
@@ -223,6 +246,8 @@ function ScreenPage() {
                           <div className="text-[11px] text-subtle">
                             {r.symbol} · {r.sector}
                             {r.above200 ? " · >200" : ""}
+                            {r.thin ? " · thin print" : ""}
+                            {r.depth === "quote" ? " · price only" : r.depth === "name" ? " · no print yet" : ""}
                           </div>
                         </Link>
                       </td>
@@ -290,6 +315,8 @@ function ScreenPage() {
                     <div className="font-medium">{r.name}</div>
                     <div className="text-[11px] text-subtle">
                       {r.symbol} · {r.sector}
+                      {r.thin ? " · thin print" : ""}
+                      {r.depth === "quote" ? " · price only" : r.depth === "name" ? " · no print yet" : ""}
                     </div>
                   </Link>
                   <div className="mt-2 grid grid-cols-3 gap-2 text-[12px]">
@@ -362,6 +389,15 @@ function ScreenPage() {
               );
             })}
           </div>
+          {shownAll.length > shown.length ? (
+            <button
+              type="button"
+              className="mt-4 h-10 w-full rounded-sm bg-surface text-[13px] font-medium shadow-[var(--shadow-border)] hover:text-fg"
+              onClick={() => setLimit((n) => n + 150)}
+            >
+              Show more · {shown.length} of {shownAll.length}
+            </button>
+          ) : null}
           </>
         )}
       </div>

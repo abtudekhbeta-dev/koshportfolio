@@ -41,22 +41,37 @@ export function holdingReturn(input: {
   sectorBars?: Bar[];
   totalUnreal?: number;
   asOf?: number;
+  lots?: { qty: number; avg: number; date: string | null; boughtAt?: string | null }[];
 }): HoldingReturn {
   const empty: HoldingReturn = { daysHeld: null, xirr: null, vsNifty: null, vsSector: null, contrib: null };
-  const day = String(input.date || input.boughtAt || "").slice(0, 10);
-  if (!day || !input.avg || !(input.avg > 0) || !(input.qty > 0)) return empty;
-  const t = Date.parse(day + (day.length === 10 ? "T00:00:00.000Z" : ""));
+  const earliest =
+    (input.lots || [])
+      .map((l) => String(l.date || l.boughtAt || "").slice(0, 10))
+      .filter(Boolean)
+      .sort()[0] || String(input.date || input.boughtAt || "").slice(0, 10);
+  if (!earliest || !input.avg || !(input.avg > 0) || !(input.qty > 0)) return empty;
+  const t = Date.parse(earliest + (earliest.length === 10 ? "T00:00:00.000Z" : ""));
   if (!Number.isFinite(t)) return empty;
   const asOf = input.asOf || Date.now();
   const daysHeld = Math.max(0, Math.round((asOf - t) / 86400000));
   const x = bookXirr(
-    [{ date: day, boughtAt: input.boughtAt || day, qty: input.qty, avg: input.avg, px: input.px, value: input.value }],
+    [
+      {
+        date: earliest,
+        boughtAt: input.boughtAt || earliest,
+        qty: input.qty,
+        avg: input.avg,
+        px: input.px,
+        value: input.value,
+        lots: input.lots,
+      },
+    ],
     true,
     asOf,
   );
   const mine = input.unrealPct;
-  const nifty = retFromDay(input.niftyBars, day);
-  const sector = retFromDay(input.sectorBars, day);
+  const nifty = retFromDay(input.niftyBars, earliest);
+  const sector = retFromDay(input.sectorBars, earliest);
   const total = input.totalUnreal;
   return {
     daysHeld,

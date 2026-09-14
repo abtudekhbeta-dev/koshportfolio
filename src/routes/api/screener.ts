@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { fetchScreener, fetchScreenerOne } from "@/lib/kosh/live.server";
+import { fetchScreener, fetchScreenerOne, fetchScreenerUniverse } from "@/lib/kosh/live.server";
+import { mergeScreenRows } from "@/lib/kosh/screens";
 
 async function hydrate(symbols: string[]) {
   const out: Awaited<ReturnType<typeof fetchScreenerOne>>[] = [];
@@ -21,7 +22,9 @@ export const Route = createFileRoute("/api/screener")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const add = new URL(request.url).searchParams.get("add") || "";
+        const url = new URL(request.url);
+        const add = url.searchParams.get("add") || "";
+        const depth = url.searchParams.get("depth") || "";
         const extras = [
           ...new Set(
             add
@@ -30,12 +33,13 @@ export const Route = createFileRoute("/api/screener")({
               .filter(Boolean),
           ),
         ].slice(0, 80);
-        const rows = await fetchScreener();
-        if (!extras.length) return Response.json({ rows, asOf: new Date().toISOString() });
-        const have = new Set(rows.filter((r) => r.price > 0).map((r) => r.symbol.toUpperCase()));
+        const rows = depth === "full" ? await fetchScreener() : await fetchScreenerUniverse();
+        const merged = depth === "full" ? rows : mergeScreenRows(rows, []);
+        if (!extras.length) return Response.json({ rows: merged, asOf: new Date().toISOString() });
+        const have = new Set(merged.filter((r) => r.price > 0).map((r) => r.symbol.toUpperCase()));
         const need = extras.filter((s) => !have.has(s));
         const more = need.length ? await hydrate(need) : [];
-        return Response.json({ rows: [...rows, ...more], asOf: new Date().toISOString() });
+        return Response.json({ rows: [...merged, ...more], asOf: new Date().toISOString() });
       },
     },
   },

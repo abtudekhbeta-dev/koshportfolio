@@ -102,7 +102,25 @@ export function newsTone(title: string): "up" | "down" | "neutral" {
 }
 
 export function newsToneLabel(tone: "up" | "down" | "neutral") {
-  if (tone === "up") return "Bullish";
-  if (tone === "down") return "Bearish";
-  return "Neutral";
+  if (tone === "up") return "Positive wording";
+  if (tone === "down") return "Negative wording";
+  return "Plain";
+}
+
+/** How much this headline could move a decision. Not a price call. */
+export function newsMaterial(title: string): "high" | "medium" | "low" {
+  const t = title.toLowerCase();
+  if (
+    /\b(q[1-4]\b|fy2[0-9]|earnings|results|guidance|profit warning|sebi|raid|probe|fraud|pledge|default|open offer|acquisition|merger|insolvency|ban|penalty|downgrade|upgrade)\b/.test(
+      t,
+    )
+  )
+    return "high";
+  if (
+    /\b(order win|capex|stake|buyback|block deal|insider|capacity|plant|expansion|mou|contract|dividend|bonus|split)\b/.test(
+      t,
+    )
+  )
+    return "medium";
+  return "low";
 }

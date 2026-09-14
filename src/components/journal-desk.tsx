@@ -15,8 +15,8 @@ export function JournalDesk({ symbol, price = 0 }: { symbol?: string; price?: nu
 
   return (
     <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
-      <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Journal</h2>
-      <p className="mt-1 text-[13px] text-muted">Your notes on this browser. Not a trade log sent anywhere.</p>
+      <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Notes</h2>
+      <p className="mt-1 text-[13px] text-muted">Your thesis on this name, in this browser. Not sent anywhere.</p>
       <form
         className="mt-3 grid gap-2 sm:grid-cols-[140px_1fr_auto]"
         onSubmit={(e) => {

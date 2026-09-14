@@ -222,8 +222,10 @@ export async function fetchFundamentals(symbol: string): Promise<Fundamentals | 
     const list = g.fundamentals || [];
     const cons = g.financialStatementV2?.CONSOLIDATED || [];
     const rev = cons.find((x) => /revenue/i.test(x.title || ""));
-    const profit = cons.find((x) => /profit/i.test(x.title || ""));
+    const profit = cons.find((x) => /profit/i.test(x.title || "") && !/operating|ebit/i.test(x.title || ""));
     const worth = cons.find((x) => /net worth/i.test(x.title || "")) || (g.financialStatement || []).find((x: { title?: string }) => /net worth/i.test(x.title || ""));
+    const ebitdaLine = cons.find((x) => /ebitda/i.test(x.title || "") && !/margin/i.test(x.title || ""));
+    const cfoLine = cons.find((x) => /cash from operat|operating cash|cash flow from operat|\bcfo\b/i.test(x.title || ""));
     const shKeys = Object.keys(g.shareHoldingPattern || {});
     const shareholding = sortShareholding(
       shKeys.map((period) => {
@@ -276,7 +278,14 @@ export async function fetchFundamentals(symbol: string): Promise<Fundamentals | 
       website: cleanUrl(g.details?.websiteUrl || g.details?.website || g.details?.companyWebsite),
       interestCover: pick(list, "Interest Coverage", "Interest Coverage Ratio", "Interest Cover") ?? interestCoverFrom(cons),
       pegVia: null,
+      ebitda: points(ebitdaLine?.yearly),
+      cfo: points(cfoLine?.yearly),
+      qCfo: points(cfoLine?.quarterly),
+      cfoPat: null,
     };
+    const lastCfo = out.cfo.at(-1)?.value;
+    const lastPat = out.profits.at(-1)?.value;
+    out.cfoPat = lastCfo != null && lastPat != null && lastPat !== 0 && Number.isFinite(lastCfo / lastPat) ? lastCfo / lastPat : null;
     const picked = pickPeg(out.peg, out.pe, out.profitCagr5, out.profitCagr3);
     out.peg = picked?.peg ?? null;
     out.pegVia = picked?.via ?? null;
@@ -327,6 +336,8 @@ export function fundLines(f: Fundamentals | null) {
     n(f.salesCagr3, "Sales3") && `Sales CAGR 3Y: ${f.salesCagr3?.toFixed(1)}%`,
     n(f.profitCagr3, "Pat3") && `Profit CAGR 3Y: ${f.profitCagr3?.toFixed(1)}%`,
     n(f.profitCagr5, "Pat5") && `Profit CAGR 5Y: ${f.profitCagr5?.toFixed(1)}%`,
+    f.cfoPat != null ? `CFO / profit: ${f.cfoPat.toFixed(2)}×` : null,
+    f.cfo.length ? `Cash from operations (yearly, ₹ Cr): ${f.cfo.slice(-4).map((p) => `${p.period} ${p.value}`).join("; ")}` : null,
     f.promoters != null ? `Promoters: ${f.promoters.toFixed(1)}%` : null,
     f.fii != null ? `FII: ${f.fii.toFixed(1)}%` : null,
     f.dii != null ? `DII: ${f.dii.toFixed(1)}%` : null,

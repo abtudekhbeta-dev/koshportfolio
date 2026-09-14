@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { NewsItem } from "@/lib/kosh/types";
-import { NEWS_BUCKETS, filterNews, newsTone, newsToneLabel, type NewsBucket } from "@/lib/kosh/news";
+import { NEWS_BUCKETS, filterNews, newsTone, newsToneLabel, newsMaterial, type NewsBucket } from "@/lib/kosh/news";
 import { NewsAlertSetup, NewsShare } from "@/components/news-share";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +33,9 @@ export function NewsBoard({
   return (
     <div>
       <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">{title || "News"}</h2>
+      <p className="mt-1 text-[12px] text-subtle">
+        Wording on the headline is not a conclusion. Material marks results, regulation, deals — not a price call.
+      </p>
       <div className="mt-3 flex flex-wrap gap-1">
         {NEWS_BUCKETS.map((b) => (
           <button
@@ -56,6 +59,7 @@ export function NewsBoard({
           <ul className="mt-3 grid gap-2.5">
             {shown.slice(0, 10).map((n) => {
               const tone = newsTone(n.title);
+              const mat = n.material || newsMaterial(n.title);
               return (
               <li key={n.link + n.title}>
                 <a href={n.link} target="_blank" rel="noreferrer" className="block text-[13px] leading-snug hover:text-chart">
@@ -72,6 +76,13 @@ export function NewsBoard({
                   >
                     {newsToneLabel(tone)}
                   </span>
+                  {mat === "high" ? (
+                    <span className="rounded-sm bg-warn/15 px-1.5 py-0.5 font-medium text-warn">Material</span>
+                  ) : mat === "medium" ? (
+                    <span className="rounded-sm bg-surface-2 px-1.5 py-0.5">Worth a look</span>
+                  ) : (
+                    <span className="rounded-sm bg-surface-2 px-1.5 py-0.5">Background</span>
+                  )}
                   {n.publisher}
                   {n.ts ? ` · ${new Date(n.ts * 1000).toISOString().slice(0, 10)}` : ""}
                 </div>

@@ -18,7 +18,7 @@ export type ScanName = {
 
 export type Bar = { t: number; c: number };
 
-export type OhlcBar = { t: number; o: number; h: number; l: number; c: number; v: number };
+export type OhlcBar = { t: number; o: number; h: number; l: number; c: number; v: number; adj?: number };
 
 export type Quote = {
   input: string;
@@ -72,6 +72,14 @@ export type OhlcPack = {
 
 export type TapeRow = { id: string; symbol: string; label: string; price: number; changePct: number; unit?: string };
 
+/** One buy that still sits in a holding. Kept when a trade file is imported. */
+export type Lot = {
+  qty: number;
+  avg: number;
+  date: string | null;
+  boughtAt?: string | null;
+};
+
 export type Holding = {
   symbol: string;
   name: string;
@@ -83,6 +91,7 @@ export type Holding = {
   sector?: string;
   kind?: "equity" | "commodity";
   unit?: string;
+  lots?: Lot[];
 };
 
 export type Portfolio = {
@@ -295,6 +304,10 @@ export type Fundamentals = {
   website: string | null;
   interestCover: number | null;
   pegVia?: string | null;
+  ebitda: FinPoint[];
+  cfo: FinPoint[];
+  qCfo: FinPoint[];
+  cfoPat: number | null;
 };
 
 export type ScreenRow = {
@@ -354,13 +367,22 @@ export type ScreenRow = {
   vcpDays: number | null;
   vcpVolX: number | null;
   vcpPivot: number | null;
+  /** full = daily history + company card; quote = live print only; name = listed, no print yet */
+  depth?: "full" | "quote" | "name";
+  thin?: boolean | null;
   /** Set on ranked multibagger screens */
   passCount?: number;
   missed?: string[];
   unchecked?: string[];
 };
 
-export type NewsItem = { title: string; publisher: string; link: string; ts: number };
+export type NewsItem = {
+  title: string;
+  publisher: string;
+  link: string;
+  ts: number;
+  material?: "high" | "medium" | "low";
+};
 export type WikiCard = { title: string; extract: string; url: string };
 
 export type JournalEntry = {

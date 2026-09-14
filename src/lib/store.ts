@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Holding, Portfolio, JournalEntry } from "@/lib/kosh/types";
-import { fillHoldings, mergeHoldings, sanitizeHoldings, upsertHoldings, type FillOpts } from "@/lib/kosh/parse";
+import { applyHoldingPatch, fillHoldings, mergeHoldings, sanitizeHoldings, upsertHoldings, type FillOpts } from "@/lib/kosh/parse";
 import { samplePortfolio } from "@/lib/kosh/sample";
 import type { ScreenFilter, SkillRead } from "@/lib/kosh/screens";
 
@@ -286,7 +286,7 @@ export const useKosh = create<KoshState>()(
         set({
           portfolios: get().portfolios.map((p) =>
             p.id === id
-              ? { ...p, holdings: p.holdings.map((h) => (h.symbol === symbol ? { ...h, ...patch } : h)) }
+              ? { ...p, holdings: p.holdings.map((h) => (h.symbol === symbol ? applyHoldingPatch(h, patch) : h)) }
               : p,
           ),
         }),

@@ -1,8 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { useBookCtx } from "@/components/book-context";
 import { MetricCard } from "@/components/metric";
 import { StockLink } from "@/components/stock-link";
 import { dash, fmtPct } from "@/lib/kosh/engine";
+import { sameBusinessPiles } from "@/lib/kosh/peers";
 import { cn } from "@/lib/utils";
 import type { CorrPack } from "@/lib/kosh/types";
 
@@ -11,7 +13,12 @@ export const Route = createFileRoute("/p/$id/risk")({ component: Risk });
 function Risk() {
   const { query, portfolio } = useBookCtx();
   const book = query.data!;
-  const { risk, cagr, corr } = book;
+  const { risk, cagr, corr, rows, value } = book;
+  const piles = useMemo(
+    () => sameBusinessPiles(rows.filter((r) => r.kind !== "commodity"), corr),
+    [rows, corr],
+  );
+  const hiddenW = piles.reduce((s, p) => s + p.names.reduce((a, n) => a + n.weight, 0), 0);
   const items = [
     { id: "cagr", v: dash(cagr, (x) => fmtPct(x)) },
     { id: "sharpe", v: dash(risk.sharpe) },
@@ -38,6 +45,42 @@ function Risk() {
           <MetricCard key={it.id} id={it.id} value={it.v} />
         ))}
       </div>
+
+      {piles.length ? (
+        <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
+          <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Hidden concentration</h2>
+          <p className="mt-1 max-w-2xl text-[13px] text-muted">
+            Names that look different on a holdings list but sit in the same business and have moved together (correlation
+            ≥ 50% over the last overlapping year). Combined weight of these piles: {(hiddenW * 100).toFixed(0)}% of
+            {value ? " this portfolio" : ""}. Sector labels can hide this.
+          </p>
+          <ul className="mt-3 grid gap-3">
+            {piles.map((p) => {
+              const w = p.names.reduce((s, n) => s + n.weight, 0);
+              return (
+                <li key={p.line} className="rounded-sm bg-bg px-3 py-3 shadow-[var(--shadow-border)]">
+                  <div className="text-[12px] font-semibold tracking-[0.06em] text-subtle uppercase">
+                    {p.line} · {(w * 100).toFixed(0)}% · min corr {(p.minCorr * 100).toFixed(0)}%
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[13px]">
+                    {p.names.map((n) => (
+                      <StockLink key={n.symbol} symbol={n.symbol} name={`${n.name} (${(n.weight * 100).toFixed(0)}%)`} className="font-medium" />
+                    ))}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : (
+        <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
+          <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Hidden concentration</h2>
+          <p className="mt-1 max-w-2xl text-[13px] text-muted">
+            No same-business pile with correlation ≥ 50% on the last year of overlapping prints. That is not a promise
+            they will stay uncorrelated.
+          </p>
+        </section>
+      )}
 
       {corr?.clusters?.length ? (
         <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">

@@ -111,7 +111,7 @@ export function EventCalendar({ compact, symbols }: { compact?: boolean; symbols
         <p className="mt-3 text-sm text-muted">Loading the calendar…</p>
       ) : shown.length ? (
         <ul className="mt-3 grid gap-1.5">
-          {shown.map((r) => {
+          {shown.map((r, i) => {
             const kind = r.kind || "stock";
             const label = (
               <>
@@ -123,7 +123,7 @@ export function EventCalendar({ compact, symbols }: { compact?: boolean; symbols
               </>
             );
             return (
-            <li key={r.symbol + r.date + r.purpose} className="flex items-baseline justify-between gap-3 text-[13px]">
+            <li key={r.symbol + r.date + r.purpose + String(i)} className="flex items-baseline justify-between gap-3 text-[13px]">
               {canOpenStock(r.symbol) ? (
                 <Link to="/s/$symbol" params={{ symbol: r.symbol }} className="min-w-0 truncate hover:text-chart">
                   {label}

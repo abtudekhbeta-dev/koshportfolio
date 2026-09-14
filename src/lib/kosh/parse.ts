@@ -698,6 +698,14 @@ function netTrades(trades: Trade[]): Holding[] {
       boughtAt: firstAt,
       isin: list.find((t) => t.isin)?.isin,
       sector: list.find((t) => t.sector)?.sector,
+      lots: lots
+        .filter((l) => l.qty > 1e-8)
+        .map((l) => ({
+          qty: l.qty,
+          avg: l.px > 0 ? l.px : avg || 0,
+          date: l.date,
+          boughtAt: l.boughtAt,
+        })),
     });
   }
   return out;
@@ -1011,6 +1019,7 @@ export function mergeHoldings(existing: Holding[], incoming: Holding[]): Holding
         sector: h.sector || cur.sector,
         kind: h.kind || cur.kind,
         unit: h.unit || cur.unit,
+        lots: [...(cur.lots || []), ...(h.lots || [])],
       });
     }
   }
@@ -1113,4 +1122,12 @@ export function sanitizeHoldings(rows: Holding[]): Holding[] {
     return { ...h, symbol };
   });
   return mergeHoldings([], cleaned);
+}
+
+/** In-place edit of the one line. Drops remaining lots so Your XIRR follows the edited qty/date, not the old FIFO lots. */
+export function applyHoldingPatch(h: Holding, patch: Partial<Holding>): Holding {
+  const next: Holding = { ...h, ...patch };
+  const touchesSize = "qty" in patch || "avg" in patch || "date" in patch || "boughtAt" in patch;
+  if (touchesSize && !("lots" in patch) && next.lots?.length) next.lots = undefined;
+  return next;
 }

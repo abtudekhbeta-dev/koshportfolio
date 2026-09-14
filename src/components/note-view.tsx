@@ -120,7 +120,7 @@ export function QualityView({ block, bare }: { block: QualityBlock; bare?: boole
 }
 
 export function SparkView({ block, bare }: { block: SparkBlock; bare?: boolean }) {
-  if (!block.headline && !block.today && !block.headlines.length && !block.catalysts.length && !block.noise) return null;
+  if (!block.headline && !block.today && !block.headlines.length && !block.catalysts.length && !block.noise && !block.pricedIn) return null;
   return (
     <Frame tone="warn" bare={bare} kicker="Spark">
       {block.headline ? (
@@ -134,6 +134,21 @@ export function SparkView({ block, bare }: { block: SparkBlock; bare?: boolean }
       {block.catalysts.length ? (
         <Block label="Catalysts">
           <Bullets items={block.catalysts} tone="warn" />
+        </Block>
+      ) : null}
+      {block.pricedIn ? (
+        <Block label="Already in the price" tone="muted">
+          <P>{block.pricedIn}</P>
+        </Block>
+      ) : null}
+      {block.headlines.length ? (
+        <Block label="Headlines versus the move">
+          <Bullets items={block.headlines} />
+        </Block>
+      ) : null}
+      {block.noise ? (
+        <Block label="Noise" tone="muted">
+          <P>{block.noise}</P>
         </Block>
       ) : null}
     </Frame>

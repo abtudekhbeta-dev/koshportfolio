@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { newsAboutCompany } from "./news.ts";
+import { newsAboutCompany, newsMaterial, newsToneLabel } from "./news.ts";
 
 describe("newsAboutCompany", () => {
   it("drops market wraps and stocks-to-watch lists", () => {
@@ -26,5 +26,20 @@ describe("newsAboutCompany", () => {
 
   it("does not credit Tata Steel news to TCS via the word Tata", () => {
     assert.equal(newsAboutCompany("Tata Steel Europe EBITDA slides", "TCS", "Tata Consultancy Services"), false);
+  });
+});
+
+describe("news material and wording", () => {
+  it("marks results and regulation as material, not a price call", () => {
+    assert.equal(newsMaterial("Reliance Q1 earnings beat estimates"), "high");
+    assert.equal(newsMaterial("SEBI opens probe into ABC Ltd"), "high");
+    assert.equal(newsMaterial("TCS order win of $2 bn"), "medium");
+    assert.equal(newsMaterial("Broker reiterates hold on Infosys"), "low");
+  });
+
+  it("labels tone as wording, not a conclusion", () => {
+    assert.equal(newsToneLabel("up"), "Positive wording");
+    assert.equal(newsToneLabel("down"), "Negative wording");
+    assert.equal(newsToneLabel("neutral"), "Plain");
   });
 });

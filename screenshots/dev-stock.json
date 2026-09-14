@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/s/RELIANCE",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Kosh · Indian markets and portfolios",
+      "hasCanvas": false,
+      "bodyTextLen": 174,
+      "bodyTextHash": "b86029473ed42bc601459659baa0628bbd8a53ca143bf4618708c9090227005e",
+      "bodyTextPrefix": "Kosh Markets Screener Portfolios Search any NSE or BSE name… / W",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/dev-stock.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Kosh · Indian markets and portfolios",
+      "hasCanvas": false,
+      "bodyTextLen": 2878,
+      "bodyTextHash": "195f43946d1e69bffbb9956a4fff3089cc1eee53e1e08d8d04eb2047d10af851",
+      "bodyTextPrefix": "NIFTY 50 23,398 -0.34% SENSEX 74,782 -0.16% BANK NIFTY 56,607 +0",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/dev-stock-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/dev-stock.json"
+}
