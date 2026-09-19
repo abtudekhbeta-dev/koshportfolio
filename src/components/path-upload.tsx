@@ -77,7 +77,7 @@ export function PathUpload({ portfolioId }: { portfolioId: string }) {
           resolved = got.trades;
           if (got.filled.length) {
             hints.push(
-              `${got.filled.length} price${got.filled.length === 1 ? "" : "s"} taken from that day’s close. Add prices in the file if you want the exact cash you paid.`,
+              `${got.filled.length} execution price${got.filled.length === 1 ? "" : "s"} unavailable; historical closing price used. Add prices in the file if you want the exact cash you paid.`,
             );
           }
         } catch {
@@ -104,7 +104,7 @@ export function PathUpload({ portfolioId }: { portfolioId: string }) {
   function add() {
     if (!preview?.length) return;
     mergeTrades(portfolioId, preview);
-    toast.success(`Added ${preview.length} line${preview.length === 1 ? "" : "s"} to your path. Duplicates skipped. This mix is unchanged.`);
+    toast.success(`Added ${preview.length} line${preview.length === 1 ? "" : "s"} to your path. This mix is unchanged.`);
     setPreview(null);
     setMsg("Added to your path.");
   }
@@ -123,7 +123,7 @@ export function PathUpload({ portfolioId }: { portfolioId: string }) {
       <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Upload buys and sells</h2>
       <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">
         Adds to your path only. If a line has a date but no price, we fill that day’s close and tell you. Names already
-        in This mix still flow into Path. Lines already on the path are skipped.
+        in This mix still flow into Path. Add keeps every execution. Use Replace if you are loading the same file again.
       </p>
       <label
         onDragOver={(e) => e.preventDefault()}
@@ -197,7 +197,7 @@ export function PathUpload({ portfolioId }: { portfolioId: string }) {
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button className="flex-1 min-w-[9rem]" onClick={add}>
-              Add to path{existing.length ? " · skip duplicates" : ""}
+              Add to path
             </Button>
             <Button variant="secondary" className="flex-1 min-w-[9rem]" onClick={replace}>
               Replace path

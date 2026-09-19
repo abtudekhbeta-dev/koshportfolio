@@ -134,9 +134,29 @@ var Bell = createLucideIcon("bell", [["path", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var ChevronDown = createLucideIcon("chevron-down", [["path", {
+	d: "m6 9 6 6 6-6",
+	key: "qrunsl"
+}]]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var ChevronRight = createLucideIcon("chevron-right", [["path", {
 	d: "m9 18 6-6-6-6",
 	key: "mthhwq"
+}]]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var ChevronUp = createLucideIcon("chevron-up", [["path", {
+	d: "m18 15-6-6-6 6",
+	key: "153udz"
 }]]);
 /**
 * @license lucide-react v0.510.0 - ISC
@@ -278,6 +298,78 @@ var Layers = createLucideIcon("layers", [
 	["path", {
 		d: "M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17",
 		key: "kqbvx6"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var LayoutGrid = createLucideIcon("layout-grid", [
+	["rect", {
+		width: "7",
+		height: "7",
+		x: "3",
+		y: "3",
+		rx: "1",
+		key: "1g98yp"
+	}],
+	["rect", {
+		width: "7",
+		height: "7",
+		x: "14",
+		y: "3",
+		rx: "1",
+		key: "6d4xhi"
+	}],
+	["rect", {
+		width: "7",
+		height: "7",
+		x: "14",
+		y: "14",
+		rx: "1",
+		key: "nxv5o0"
+	}],
+	["rect", {
+		width: "7",
+		height: "7",
+		x: "3",
+		y: "14",
+		rx: "1",
+		key: "1bb6yr"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var List = createLucideIcon("list", [
+	["path", {
+		d: "M3 12h.01",
+		key: "nlz23k"
+	}],
+	["path", {
+		d: "M3 18h.01",
+		key: "1tta3j"
+	}],
+	["path", {
+		d: "M3 6h.01",
+		key: "1rqtza"
+	}],
+	["path", {
+		d: "M8 12h13",
+		key: "1za7za"
+	}],
+	["path", {
+		d: "M8 18h13",
+		key: "1lx6n3"
+	}],
+	["path", {
+		d: "M8 6h13",
+		key: "ik3vkj"
 	}]
 ]);
 /**
@@ -473,6 +565,19 @@ var Plus = createLucideIcon("plus", [["path", {
 }], ["path", {
 	d: "M12 5v14",
 	key: "s699le"
+}]]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var RotateCcw = createLucideIcon("rotate-ccw", [["path", {
+	d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",
+	key: "1357e3"
+}], ["path", {
+	d: "M3 3v5h5",
+	key: "1xhq8a"
 }]]);
 /**
 * @license lucide-react v0.510.0 - ISC
@@ -677,4 +782,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { Bell as A, Layers as C, Columns2 as D, Copy as E, ArrowRight as M, ArrowDownRight as N, CircleHelp as O, Magnet as S, Crosshair as T, Minus as _, Sun as a, Maximize2 as b, Spline as c, Plus as d, Play as f, Moon as g, MousePointer2 as h, Trash2 as i, ArrowUpRight as j, ChevronRight as k, Send as l, MoveRight as m, Undo2 as n, Star as o, Pause as p, TriangleAlert as r, Square as s, X as t, Search as u, Minimize2 as v, Download as w, Mail as x, MessageCircle as y };
+export { Columns2 as A, Magnet as C, Download as D, Layers as E, Bell as F, ArrowUpRight as I, ArrowRight as L, ChevronUp as M, ChevronRight as N, Crosshair as O, ChevronDown as P, ArrowDownRight as R, Mail as S, LayoutGrid as T, Moon as _, Sun as a, MessageCircle as b, Spline as c, RotateCcw as d, Plus as f, MousePointer2 as g, MoveRight as h, Trash2 as i, CircleHelp as j, Copy as k, Send as l, Pause as m, Undo2 as n, Star as o, Play as p, TriangleAlert as r, Square as s, X as t, Search as u, Minus as v, List as w, Maximize2 as x, Minimize2 as y };

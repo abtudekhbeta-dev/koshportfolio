@@ -32,6 +32,8 @@ export type Quote = {
   mcapCr?: number | null;
   preMarket?: number | null;
   error?: string;
+  /** Unix ms when this print was fetched. Missing on older cached rows. */
+  retrievedAt?: number;
 };
 
 export type HistoryPack = {
@@ -105,6 +107,10 @@ export type TradeLine = {
   side: 1 | -1;
   isin?: string;
   sector?: string;
+  /** Broker trade/execution id when the file has one. */
+  id?: string;
+  /** Original file-row order. Same-day tiebreak when there is no clock. */
+  src?: number;
   /** Set when the file had no price and we used that day’s close. */
   priceFilled?: boolean;
 };
@@ -195,6 +201,10 @@ export type ClosedTrade = {
   pnl: number;
   pnlPct: number;
   days: number;
+  /** Percent move of the stock after the sell. Null when no later print. */
+  post1m?: number | null;
+  post3m?: number | null;
+  post1y?: number | null;
 };
 
 export type PathYear = {
@@ -202,6 +212,8 @@ export type PathYear = {
   start: number;
   end: number;
   ret: number | null;
+  /** Index TWR that same year, same method. */
+  bench?: number | null;
   buys: number;
   sells: number;
   buyIn: number;
@@ -228,6 +240,7 @@ export type PathEvent = {
   qty: number;
   price: number;
   amount: number;
+  priceFilled?: boolean;
 };
 
 export type PathHeld = {
@@ -254,6 +267,8 @@ export type PathPack = {
   xirr: number | null;
   twr: number | null;
   twrCagr: number | null;
+  /** Index price return over the same first→last path days. */
+  benchTwr: number | null;
   sameCashLast: number | null;
   sameCashXirr: number | null;
   wealthNow: number;

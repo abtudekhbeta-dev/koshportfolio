@@ -111,6 +111,11 @@ html[data-theme="light"] {
   }
 }
 
+[data-markets-desk] [data-group] {
+  min-height: 0;
+  height: 100%;
+}
+
 @layer utilities {
   .tabular {
     font-variant-numeric: tabular-nums;

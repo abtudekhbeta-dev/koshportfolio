@@ -1,6 +1,7 @@
 /** Your path: point-in-time holdings from the trade file, marked to market each session.
  * Mix is today's remaining names replayed. This is what you actually held. */
 import { istDay, monthBuckets, riskMetrics, windowReturn, ytdReturn } from "./engine.ts";
+import { sortTrades, tradeHasClock, tradeMs } from "./parse.ts";
 import { baseSym } from "./sectors.ts";
 import type {
   Bar,
@@ -22,6 +23,8 @@ import type {
 } from "./types.ts";
 import { xirrFromFlows } from "./xirr.ts";
 
+export { sortTrades } from "./parse.ts";
+
 type Lot = { qty: number; px: number; date: string; name: string; symbol: string };
 
 function pxOf(b: Bar, raw: boolean) {
@@ -39,22 +42,6 @@ function toDayMap(bars: Bar[] | undefined, raw: boolean) {
   return m;
 }
 
-function tradeMs(t: TradeLine) {
-  const s = t.boughtAt || t.date;
-  const n = s ? Date.parse(s) : NaN;
-  return Number.isFinite(n) ? n : 0;
-}
-
-export function sortTrades(trades: TradeLine[]): TradeLine[] {
-  return [...(trades || [])].sort((a, b) => {
-    const da = a.date || "";
-    const db = b.date || "";
-    if (da !== db) return da.localeCompare(db);
-    if (a.side !== b.side) return b.side - a.side;
-    return tradeMs(a) - tradeMs(b);
-  });
-}
-
 function yearFrac(from: string, to: string) {
   const a = Date.parse(from + "T00:00:00Z");
   const b = Date.parse(to + "T00:00:00Z");
@@ -68,6 +55,7 @@ function emptyPath(partial: Partial<PathPack> = {}): PathPack {
     xirr: null,
     twr: null,
     twrCagr: null,
+    benchTwr: null,
     sameCashLast: null,
     sameCashXirr: null,
     wealthNow: 0,
@@ -113,13 +101,6 @@ function markLots(
   return { wealth, names };
 }
 
-function tradeHasClock(t: TradeLine) {
-  const s = t.boughtAt || "";
-  if (!/T\d{2}:\d{2}/.test(s)) return false;
-  return !/T00:00:00/.test(s);
-}
-
-/** Close on that session, or the next session if the date is a weekend/holiday. */
 export function pxOnOrNear(map: Map<string, { t: number; c: number }>, day: string): { px: number; sessionDay: string } | null {
   const hit = map.get(day);
   if (hit && hit.c > 0) return { px: hit.c, sessionDay: day };
@@ -136,6 +117,28 @@ export function pxOnOrNear(map: Map<string, { t: number; c: number }>, day: stri
     }
   }
   return null;
+}
+
+function addCalendarDays(day: string, n: number): string {
+  const [y, m, d] = (day || "").split("-").map(Number);
+  if (!y || !m || !d) return day;
+  const dt = new Date(Date.UTC(y, m - 1, d + n));
+  return dt.toISOString().slice(0, 10);
+}
+
+function postSaleMove(
+  map: Map<string, { t: number; c: number }> | undefined,
+  sellDay: string,
+  sellPx: number,
+  days: number,
+): number | null {
+  if (!map || !(sellPx > 0) || !sellDay) return null;
+  const target = addCalendarDays(sellDay, days);
+  const hit = pxOnOrNear(map, target);
+  if (!hit || !(hit.px > 0) || hit.sessionDay <= sellDay) return null;
+  const drift = Math.abs(Date.parse(hit.sessionDay + "T00:00:00Z") - Date.parse(target + "T00:00:00Z"));
+  if (drift > 12 * 86400000) return null;
+  return (hit.px / sellPx - 1) * 100;
 }
 
 /**
@@ -355,19 +358,10 @@ export function buildPath(
       const ms = tradeMs(tr) || (t ? t * 1000 : Date.parse(day + "T00:00:00Z"));
       if (tr.side > 0) {
         dayBuy += amount;
-        if (amount > 0) {
-          flows.push({ t: ms, v: -amount });
-          sameFlows.push({ t: ms, v: -amount });
-        }
-        if (bHit && bHit.c > 0 && amount > 0) niftyUnits += amount / bHit.c;
+        if (amount > 0) flows.push({ t: ms, v: -amount });
       } else {
         daySell += amount;
-        if (amount > 0) {
-          flows.push({ t: ms, v: amount });
-          sameFlows.push({ t: ms, v: amount });
-        }
-        if (bHit && bHit.c > 0 && amount > 0) niftyUnits -= amount / bHit.c;
-        if (niftyUnits < 0) niftyUnits = 0;
+        if (amount > 0) flows.push({ t: ms, v: amount });
       }
       events.push({
         date: day,
@@ -377,9 +371,17 @@ export function buildPath(
         qty: tr.qty,
         price: tr.price,
         amount,
+        priceFilled: tr.priceFilled || undefined,
       });
       applySide(lots, tr, true);
       if (tr.side > 0) applySide(neverLots, tr, false);
+    }
+    const net = dayBuy - daySell;
+    if (bHit && bHit.c > 0 && Math.abs(net) > 1e-6) {
+      niftyUnits += net / bHit.c;
+      if (niftyUnits < 0) niftyUnits = 0;
+      const msNet = t ? t * 1000 : Date.parse(day + "T00:00:00Z");
+      sameFlows.push({ t: msNet, v: -net });
     }
 
     const marked = markLots(lots, lastPx);
@@ -468,6 +470,23 @@ export function buildPath(
   const yf = from && to ? yearFrac(from, to) : 0;
   const twrCagr = twrPct != null && yf > 0.15 && twr > 0 ? (Math.pow(twr, 1 / yf) - 1) * 100 : twrPct;
 
+  let benchTwr: number | null = null;
+  if (from && to) {
+    const bDays = [...benchMap.keys()].filter((d) => d >= from && d <= to).sort();
+    if (bDays.length >= 2) {
+      const a = benchMap.get(bDays[0])!.c;
+      const b = benchMap.get(bDays[bDays.length - 1])!.c;
+      if (a > 0 && b > 0) benchTwr = (b / a - 1) * 100;
+    }
+  }
+
+  for (const c of closed) {
+    const m = maps[c.symbol];
+    c.post1m = postSaleMove(m, c.sellDate, c.sellPx, 30);
+    c.post3m = postSaleMove(m, c.sellDate, c.sellPx, 90);
+    c.post1y = postSaleMove(m, c.sellDate, c.sellPx, 365);
+  }
+
   const stillHeld: PathHeld[] = [];
   for (const [sym, list] of lots) {
     const qty = list.reduce((s, l) => s + l.qty, 0);
@@ -512,11 +531,26 @@ export function buildPath(
     .sort()
     .map((year) => {
       const y = yearAcc[year];
-      const net = y.buyIn - y.sellOut;
-      const mkt = y.end - y.start - net;
-      const denom = y.start > 1e-6 ? y.start + net / 2 : y.buyIn > 1e-6 ? y.buyIn : 0;
-      const ret = denom > 1e-6 ? (mkt / denom) * 100 : null;
-      return { year, start: y.start, end: y.end, ret, buys: y.buys, sells: y.sells, buyIn: y.buyIn, sellOut: y.sellOut };
+      const idx = nav.findIndex((p) => p.day.slice(0, 4) === year);
+      const last = idx >= 0 ? [...nav].filter((p) => p.day.slice(0, 4) === year).at(-1) : undefined;
+      const startPt = idx > 0 ? nav[idx - 1] : nav[idx];
+      const ret =
+        startPt && last && startPt.unit > 1e-8 ? (last.unit / startPt.unit - 1) * 100 : null;
+      const bench =
+        startPt && last && startPt.sameUnit != null && last.sameUnit != null && startPt.sameUnit > 1e-8
+          ? (last.sameUnit / startPt.sameUnit - 1) * 100
+          : null;
+      return {
+        year,
+        start: y.start,
+        end: y.end,
+        ret,
+        bench,
+        buys: y.buys,
+        sells: y.sells,
+        buyIn: y.buyIn,
+        sellOut: y.sellOut,
+      };
     });
 
   const byName = summariseNames(events, closed, stillHeld);
@@ -539,6 +573,7 @@ export function buildPath(
     xirr: xirrFromFlows(flows),
     twr: twrPct,
     twrCagr: twrCagr != null && Number.isFinite(twrCagr) ? twrCagr : null,
+    benchTwr,
     sameCashLast,
     sameCashXirr: xirrFromFlows(sameFlows),
     wealthNow,

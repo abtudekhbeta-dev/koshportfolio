@@ -14,7 +14,6 @@ import { AttentionStrip } from "@/components/attention-strip";
 import { LivePrice } from "@/components/live-price";
 import { NewsBoard } from "@/components/news-board";
 import { NoteDesk } from "@/components/note-desk";
-import { JournalDesk } from "@/components/journal-desk";
 import { StructureDesk } from "@/components/structure-desk";
 import { Button } from "@/components/ui/button";
 import { BenchPicker } from "@/components/bench-picker";
@@ -640,9 +639,8 @@ function StockBody({
         ) : null}
       </section>
 
-      <div className={cn("grid gap-4 lg:grid-cols-2", tab !== "chart" && "hidden")}>
+      <div className={cn(tab !== "chart" && "hidden")}>
         <StructureDesk symbol={symbol} />
-        <JournalDesk symbol={bare} price={px} />
       </div>
 
       <div className={cn(tab !== "chart" && "hidden")}>

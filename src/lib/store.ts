@@ -4,6 +4,7 @@ import type { Holding, Portfolio, JournalEntry, TradeLine, Fundamentals } from "
 import { applyHoldingPatch, fillHoldings, mergeHoldings, mergeTradeLines, sanitizeHoldings, sanitizeTrades, upsertHoldings, type FillOpts } from "@/lib/kosh/parse";
 import { samplePortfolio, SAMPLE_TRADES } from "@/lib/kosh/sample";
 import type { ScreenFilter, SkillRead } from "@/lib/kosh/screens";
+import { moveWatchSymbols, TERM_INTERVALS } from "@/lib/kosh/market-data";
 
 export type IconId = "k-path" | "bowl" | "twin" | "ledger" | "coin" | "fold";
 export const ICON_IDS: IconId[] = ["k-path", "bowl", "twin", "ledger", "coin", "fold"];
@@ -129,6 +130,64 @@ function migrateDrawings(raw: Record<string, DrawShape[]> | undefined): Record<s
 
 export type WatchList = { id: string; name: string; symbols: string[] };
 
+export type DeskLayout = 1 | 2 | 4;
+export type DeskPane = { symbol: string; name: string; interval: string };
+export type DeskState = {
+  layout: DeskLayout;
+  panes: [DeskPane, DeskPane, DeskPane, DeskPane];
+  syncTf: boolean;
+  intelTab: string;
+  activePane: 0 | 1 | 2 | 3;
+  style: "candle" | "line";
+};
+
+export const DEFAULT_PANES: [DeskPane, DeskPane, DeskPane, DeskPane] = [
+  { symbol: "RELIANCE", name: "Reliance Industries", interval: "D" },
+  { symbol: "^NSEI", name: "Nifty 50", interval: "D" },
+  { symbol: "TCS", name: "Tata Consultancy", interval: "D" },
+  { symbol: "HDFCBANK", name: "HDFC Bank", interval: "D" },
+];
+
+export const DEFAULT_DESK: DeskState = {
+  layout: 1,
+  panes: DEFAULT_PANES,
+  syncTf: false,
+  intelTab: "overview",
+  activePane: 0,
+  style: "candle",
+};
+
+const TERM_IDS = new Set(TERM_INTERVALS.map((x) => x.id));
+
+function clampPaneIndex(n: number): 0 | 1 | 2 | 3 {
+  if (n === 1 || n === 2 || n === 3) return n;
+  return 0;
+}
+
+function sanitizePane(raw: Partial<DeskPane> | undefined, fallback: DeskPane): DeskPane {
+  const symbol = bareSymbol(raw?.symbol || "") || fallback.symbol;
+  const interval = raw?.interval && TERM_IDS.has(raw.interval) ? raw.interval : fallback.interval;
+  return { symbol, name: String(raw?.name || fallback.name).slice(0, 80), interval };
+}
+
+export function sanitizeDesk(raw?: Partial<DeskState> | null): DeskState {
+  const panes: [DeskPane, DeskPane, DeskPane, DeskPane] = [
+    sanitizePane(raw?.panes?.[0], DEFAULT_PANES[0]),
+    sanitizePane(raw?.panes?.[1], DEFAULT_PANES[1]),
+    sanitizePane(raw?.panes?.[2], DEFAULT_PANES[2]),
+    sanitizePane(raw?.panes?.[3], DEFAULT_PANES[3]),
+  ];
+  const layout: DeskLayout = raw?.layout === 2 || raw?.layout === 4 ? raw.layout : 1;
+  return {
+    layout,
+    panes,
+    syncTf: Boolean(raw?.syncTf),
+    intelTab: String(raw?.intelTab || "overview").slice(0, 24),
+    activePane: clampPaneIndex(Number(raw?.activePane) || 0),
+    style: raw?.style === "line" ? "line" : "candle",
+  };
+}
+
 export function isWatched(symbol: string, list: string[]) {
   const n = bareSymbol(symbol);
   return list.some((x) => bareSymbol(x) === n);
@@ -163,6 +222,7 @@ type KoshState = {
   watch: string[];
   watchlists: WatchList[];
   activeWatchId: string;
+  desk: DeskState;
   recents: Recent[];
   alerts: AlertRule[];
   journal: JournalEntry[];
@@ -200,6 +260,11 @@ type KoshState = {
   renameWatchList: (id: string, name: string) => void;
   deleteWatchList: (id: string) => void;
   setActiveWatchId: (id: string) => void;
+  moveWatch: (fromIdx: number, toIdx: number) => void;
+  setDesk: (d: DeskState) => void;
+  patchDesk: (p: Partial<DeskState>) => void;
+  setDeskSymbol: (symbol: string, name?: string) => void;
+  setDeskPane: (index: number, patch: Partial<DeskPane>) => void;
   pushRecent: (r: Recent) => void;
   addAlert: (a: Omit<AlertRule, "id">) => void;
   removeAlert: (id: string) => void;
@@ -227,6 +292,7 @@ export const useKosh = create<KoshState>()(
       watch: [],
       watchlists: defaultWatchlists(),
       activeWatchId: "main",
+      desk: DEFAULT_DESK,
       recents: [],
       alerts: [],
       journal: [],
@@ -370,6 +436,39 @@ export const useKosh = create<KoshState>()(
         if (!active) return;
         set({ activeWatchId: id, watch: active.symbols });
       },
+      moveWatch: (fromIdx, toIdx) => {
+        const id = get().activeWatchId;
+        const next = get().watchlists.map((l) =>
+          l.id === id ? { ...l, symbols: moveWatchSymbols(l.symbols, fromIdx, toIdx) } : l,
+        );
+        const active = next.find((l) => l.id === id);
+        set({ watchlists: next, watch: active?.symbols || [] });
+      },
+      setDesk: (d) => set({ desk: sanitizeDesk(d) }),
+      patchDesk: (p) => set({ desk: sanitizeDesk({ ...get().desk, ...p, panes: p.panes || get().desk.panes }) }),
+      setDeskSymbol: (symbol, name) => {
+        const n = bareSymbol(symbol);
+        if (!n) return;
+        const desk = get().desk;
+        const i = desk.activePane;
+        const panes = desk.panes.map((pane, idx) =>
+          idx === i ? { ...pane, symbol: n, name: name || pane.name } : pane,
+        ) as DeskState["panes"];
+        set({ desk: { ...desk, panes } });
+      },
+      setDeskPane: (index, patch) => {
+        const desk = get().desk;
+        const i = clampPaneIndex(index);
+        const panes = desk.panes.map((pane, idx) => (idx === i ? sanitizePane({ ...pane, ...patch }, pane) : pane)) as DeskState["panes"];
+        let next = { ...desk, panes, activePane: i };
+        if (desk.syncTf && patch.interval) {
+          next = {
+            ...next,
+            panes: panes.map((pane) => ({ ...pane, interval: patch.interval as string })) as DeskState["panes"],
+          };
+        }
+        set({ desk: sanitizeDesk(next) });
+      },
       pushRecent: (r) => {
         const n = bareSymbol(r.symbol);
         const rest = get().recents.filter((x) => bareSymbol(x.symbol) !== n);
@@ -448,6 +547,7 @@ export const useKosh = create<KoshState>()(
           watch,
           watchlists,
           activeWatchId,
+          desk: sanitizeDesk(p.desk),
           recents: p.recents || [],
           alerts: p.alerts || [],
           journal: p.journal || [],

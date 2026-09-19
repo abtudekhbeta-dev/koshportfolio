@@ -393,6 +393,7 @@ async function resolveQuote(raw: string): Promise<Quote> {
         high52: d.high52,
         low52: d.low52,
         mcapCr: null,
+        retrievedAt: Date.now(),
       };
       qCache.set(ck, { at: Date.now(), data: out });
       return out;
@@ -416,6 +417,7 @@ async function resolveQuote(raw: string): Promise<Quote> {
           high52: d.high52,
           low52: d.low52,
           mcapCr: d.marketCap && d.marketCap > 0 ? d.marketCap / 1e7 : null,
+          retrievedAt: Date.now(),
         };
         qCache.set(ck, { at: Date.now(), data: out });
         return out;
@@ -451,6 +453,7 @@ async function resolveQuote(raw: string): Promise<Quote> {
     high52: 0,
     low52: 0,
     error: "unresolved",
+    retrievedAt: Date.now(),
   };
   qCache.set(ck, { at: Date.now(), data: out });
   return out;

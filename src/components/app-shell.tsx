@@ -40,17 +40,19 @@ function fmtTape(n: number) {
   return n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
 }
 
-export function AppShell({ children, wide }: { children: ReactNode; wide?: boolean }) {
+export function AppShell({ children, wide, full }: { children: ReactNode; wide?: boolean; full?: boolean }) {
   const tape = useQuery({
     queryKey: ["tape"],
     queryFn: apiTape,
     refetchInterval: isIstSession() ? 5_000 : 60_000,
     staleTime: isIstSession() ? 2_500 : 30_000,
+    enabled: !full,
   });
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
-    <div className="min-h-dvh">
+    <div className={cn(full ? "flex h-dvh min-h-0 flex-col overflow-hidden" : "min-h-dvh")}>
+      {!full ? (
       <div className="border-b border-border bg-bg-elevated">
         <div className="kosh-marquee-wrap overflow-hidden px-3 py-2 sm:px-4">
           <div className="kosh-tape-track flex w-max items-center">
@@ -87,8 +89,9 @@ export function AppShell({ children, wide }: { children: ReactNode; wide?: boole
           </div>
         </div>
       </div>
-      <header className="sticky top-0 z-30 border-b border-border bg-bg/85 backdrop-blur-md">
-        <div className={cn("mx-auto grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 sm:grid-cols-[1fr_minmax(0,36rem)_1fr] sm:gap-3 sm:px-4", wide ? "max-w-[1400px]" : "max-w-6xl")}>
+      ) : null}
+      <header className={cn("z-30 border-b border-border bg-bg/85 backdrop-blur-md", full ? "shrink-0" : "sticky top-0")}>
+        <div className={cn("mx-auto grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 sm:grid-cols-[1fr_minmax(0,36rem)_1fr] sm:gap-3 sm:px-4", full ? "max-w-none" : wide ? "max-w-[1400px]" : "max-w-6xl")}>
           <div className="flex items-center gap-2">
             <BrandLink to="/" />
             <nav className="hidden items-center gap-1 md:flex">
@@ -144,10 +147,18 @@ export function AppShell({ children, wide }: { children: ReactNode; wide?: boole
             <AuthSlot />
           </div>
         </div>
-        <FirstStrip />
+        {full ? null : <FirstStrip />}
         <AlertBanner />
       </header>
-      <main className={cn("mx-auto px-3 pb-24 pt-5 sm:px-4 sm:pb-20 sm:pt-6", wide ? "max-w-[1400px]" : "max-w-6xl")}>{children}</main>
+      <main
+        className={cn(
+          full
+            ? "flex min-h-0 flex-1 flex-col overflow-hidden px-0 pb-14 pt-0 md:pb-0"
+            : cn("mx-auto px-3 pb-24 pt-5 sm:px-4 sm:pb-20 sm:pt-6", wide ? "max-w-[1400px]" : "max-w-6xl"),
+        )}
+      >
+        {children}
+      </main>
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
         <div className="flex items-stretch">
           {PRIMARY.map((n) => (

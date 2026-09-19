@@ -1,0 +1,2258 @@
+# KOSH — MASTER PRODUCT IMPLEMENTATION PASS
+# PATH + PORTFOLIO INTELLIGENCE + MARKETS TERMINAL
+
+You are working on the latest version of the Kosh application.
+
+This is a SINGLE comprehensive implementation pass.
+
+The objective is to improve Kosh in two major areas:
+
+1. Correct and improve the existing Portfolio Path / historical portfolio reconstruction experience.
+2. Build the new Markets / Terminal experience with a professional TradingView-style workflow, while making it distinctly Kosh through fundamentals, valuation, portfolio context and investor intelligence.
+
+IMPORTANT:
+
+Do NOT treat this as an opportunity to rebuild Kosh from scratch.
+
+Do NOT rewrite working systems unnecessarily.
+
+Do NOT create duplicate data pipelines.
+
+Do NOT add features merely because they sound impressive.
+
+Do NOT introduce unnecessary complexity.
+
+The guiding philosophy for this implementation is:
+
+DATA → CALCULATION → RELATIONSHIP → INSIGHT → DECISION
+
+Every change should improve one of those layers.
+
+The product should provide practical information to investors rather than simply displaying more financial metrics.
+
+------------------------------------------------------------
+0. FIRST STEP — INSPECT BEFORE MODIFYING
+------------------------------------------------------------
+
+Before changing anything, inspect the current codebase comprehensively.
+
+You must first understand:
+
+- existing routes
+- existing components
+- current portfolio architecture
+- Path implementation
+- trade-book upload/parser
+- trade normalization
+- portfolio reconstruction
+- XIRR
+- TWR
+- benchmark calculations
+- historical price calculations
+- stock grouping
+- valuation engine
+- fundamentals pipeline
+- current market-data pipeline
+- current chart implementation
+- watchlist functionality
+- stock search
+- universe/security master
+- news
+- Snapshot
+- Fundamental
+- Qualitative
+- Next 7 Days
+- Spark
+- Screener
+- Hidden Concentration
+- Portfolio dashboard
+
+Before modifying an area, determine whether the functionality already exists.
+
+Internally classify each item as:
+
+- Already correct
+- Partially correct
+- Incorrect
+- Missing
+- Redundant
+- Not required
+
+Then implement only the necessary changes.
+
+Do NOT rebuild an already-correct feature.
+
+Do NOT replace an existing data source without first understanding why it exists.
+
+------------------------------------------------------------
+1. PRODUCT STRUCTURE
+------------------------------------------------------------
+
+Kosh should increasingly have these distinct workflows:
+
+MARKETS
+→ monitor markets, watchlists and charts
+
+STOCK ANALYSIS
+→ deeply understand a company
+
+SCREEN
+→ discover/filter companies
+
+PORTFOLIO
+→ understand current portfolio
+
+PATH
+→ understand actual historical investing journey
+
+These are complementary.
+
+Do not merge them into one giant dashboard.
+
+The new Markets experience must not replace the existing Stock Analysis experience.
+
+The existing Stock Analysis page should continue to retain:
+
+- Snapshot
+- Fundamental
+- Qualitative
+- Next 7 Days
+- Spark
+- Valuation
+- News
+- other existing useful sections
+
+Do not remove these simply because Markets introduces some overlapping information.
+
+------------------------------------------------------------
+2. PATH — CORE DEFINITION
+------------------------------------------------------------
+
+Kosh has two separate historical portfolio concepts.
+
+A. CURRENT MIX / HISTORICAL SIMULATION
+
+Question:
+
+"How would the portfolio I hold today have performed historically?"
+
+This uses the current portfolio composition and applies it to historical data.
+
+KEEP THIS.
+
+B. PATH
+
+Question:
+
+"What did I actually own over time, based on my real trades, and how did that portfolio perform?"
+
+Path reconstructs the investor's historical equity holdings based on the broker trade book.
+
+KEEP THIS.
+
+These must remain clearly separated in both implementation and UI.
+
+Do not make the user think Current Mix and Path answer the same question.
+
+------------------------------------------------------------
+3. PATH — TRADE RECONSTRUCTION
+------------------------------------------------------------
+
+Path should reconstruct holdings chronologically from the broker trade book.
+
+For each trade, preserve as much original information as available:
+
+- symbol
+- ISIN
+- exchange
+- date
+- execution timestamp
+- buy/sell
+- quantity
+- execution price
+- broker trade ID
+- broker order ID
+- original source row
+
+Do not unnecessarily normalize away useful broker information.
+
+------------------------------------------------------------
+4. DUPLICATE TRADE HANDLING — IMPORTANT
+------------------------------------------------------------
+
+Legitimate broker executions must never disappear because they happen to have the same:
+
+- symbol
+- date
+- side
+- quantity
+- price
+
+Example:
+
+10:01
+BUY
+10 shares
+₹100
+
+10:02
+BUY
+10 shares
+₹100
+
+These are two legitimate trades and must remain two trades.
+
+Preferred identity hierarchy:
+
+1. Broker trade/execution ID
+2. Broker order/execution identifier
+3. Timestamp + symbol + side + quantity + price
+4. Original source-row identifier as fallback
+
+Do not perform aggressive deduplication.
+
+Add regression tests.
+
+------------------------------------------------------------
+5. SAME-DAY TRADE ORDERING — IMPORTANT
+------------------------------------------------------------
+
+Do NOT force buys before sells.
+
+If timestamps exist, process trades chronologically.
+
+Example:
+
+10:00 — SELL 100
+14:00 — BUY 100
+
+must be:
+
+SELL → BUY
+
+not:
+
+BUY → SELL
+
+Preferred order:
+
+1. trade date
+2. execution timestamp
+3. broker/source row order if timestamp is unavailable
+
+If timestamps are unavailable, preserve original broker row ordering where possible.
+
+Add tests for:
+
+- Buy → Sell same day
+- Sell → Buy same day
+- Buy → Sell → Buy same day
+- multiple same-day trades
+
+------------------------------------------------------------
+6. MISSING TRADE PRICE — SIMPLE FALLBACK
+------------------------------------------------------------
+
+Sometimes the broker trade book does not contain an execution price.
+
+In that case, Kosh may use:
+
+THE SECURITY'S CLOSING PRICE ON THE TRADE DATE
+
+as a reconstruction fallback.
+
+This is acceptable and should remain.
+
+Do NOT build a complicated confidence framework.
+
+Internally distinguish:
+
+ACTUAL EXECUTION PRICE
+
+from:
+
+ESTIMATED EXECUTION PRICE
+
+When actual execution price is unavailable, mark the trade as estimated.
+
+Use wording such as:
+
+"Execution price unavailable; historical closing price used."
+
+Do not imply that Kosh knows the exact execution price.
+
+The fallback is acceptable for reconstructing the historical portfolio.
+
+Do not unnecessarily prevent Path from working just because one trade lacks execution price.
+
+------------------------------------------------------------
+7. PATH — TWR
+------------------------------------------------------------
+
+The current TWR architecture is conceptually correct.
+
+Preserve it unless a specific implementation bug is found.
+
+TWR should answer:
+
+"How well did my investment decisions perform, independent of how much money I added or removed?"
+
+Verify that:
+
+- additional capital does not artificially increase performance
+- withdrawals do not artificially decrease performance
+- internal buys/sells do not distort TWR
+- daily returns are calculated correctly
+- returns are properly chained
+- monthly returns can be derived from the daily series
+- yearly returns can be derived from the daily/monthly series
+
+Do not replace a correct TWR implementation unnecessarily.
+
+------------------------------------------------------------
+8. PATH — XIRR
+------------------------------------------------------------
+
+This is a critical correction.
+
+Do NOT automatically treat every:
+
+BUY = negative cash flow
+SELL = positive cash flow
+
+and then label the result:
+
+"Portfolio XIRR"
+
+That is misleading because buys and sells are generally internal portfolio transactions.
+
+For the current Path implementation:
+
+IF ONLY THE BROKER TRADE BOOK IS AVAILABLE:
+
+Use TWR as the primary portfolio performance metric.
+
+Do not display a misleading "true XIRR".
+
+If Kosh does not have reliable external portfolio cash-flow information:
+
+- hide XIRR, OR
+- clearly indicate that true XIRR cannot be calculated from the available information.
+
+If actual external deposits/withdrawals are already available elsewhere in Kosh and can be reliably used, then calculate XIRR from those actual portfolio-level cash flows.
+
+The key rule:
+
+NEVER PRESENT A NUMBER AS TRUE XIRR IF THE UNDERLYING CASH FLOWS DO NOT SUPPORT THAT INTERPRETATION.
+
+Do not build a complicated cash-accounting system just for this.
+
+------------------------------------------------------------
+9. PATH — CASH ACCOUNTING
+------------------------------------------------------------
+
+Do NOT turn Kosh into a complete institutional broker accounting platform.
+
+Do NOT build a full:
+
+- settlement engine
+- taxation engine
+- brokerage engine
+- STT engine
+- cash ledger
+- funding engine
+
+for this implementation.
+
+Path's core purpose remains:
+
+historical equity holdings + performance reconstruction.
+
+However, internal stock buys and sells must not be incorrectly treated as external portfolio deposits/withdrawals when calculating TWR.
+
+------------------------------------------------------------
+10. PATH — YEARLY PERFORMANCE
+------------------------------------------------------------
+
+The existing yearly performance calculation uses a rough cash-flow timing assumption.
+
+Replace this where appropriate.
+
+Path already has a daily historical performance series.
+
+Therefore:
+
+MONTHLY RETURNS
+and
+YEARLY RETURNS
+
+should preferably be derived from the daily TWR series.
+
+Do not use arbitrary assumptions such as all flows occurring halfway through the period when actual daily portfolio data exists.
+
+The methodology should be mathematically consistent.
+
+------------------------------------------------------------
+11. PATH — MONTHLY PERFORMANCE
+------------------------------------------------------------
+
+Add/retain a clear monthly performance view.
+
+Example:
+
+Month | Kosh Portfolio | Nifty | Difference
+
+Jan 2025 | +4.2% | +2.8% | +1.4%
+Feb 2025 | -1.3% | -2.1% | +0.8%
+
+This should answer:
+
+"How did my portfolio perform each month compared with the market?"
+
+Also retain yearly performance.
+
+Do not create a giant separate dashboard for this.
+
+A clean table + useful chart is enough.
+
+------------------------------------------------------------
+12. PATH — BENCHMARK
+------------------------------------------------------------
+
+Benchmark comparison must be conceptually correct.
+
+Internal portfolio transactions such as:
+
+SELL STOCK A
+BUY STOCK B
+
+are investment decisions.
+
+They are NOT external deposits or withdrawals.
+
+Do not construct benchmark cash flows by treating every stock sale as investor withdrawal.
+
+Where external portfolio cash-flow information exists, benchmark should reflect those external flows.
+
+Otherwise, use a consistent TWR comparison.
+
+Primary presentation:
+
+PORTFOLIO TWR
+vs
+NIFTY TWR
+
+and:
+
+DIFFERENCE
+
+Use a consistent return methodology.
+
+If the portfolio uses price return, compare with a comparable benchmark.
+
+If the portfolio is total-return adjusted and Nifty TRI is reliably available, use the corresponding total-return benchmark.
+
+Do not mix price-return portfolio data with total-return benchmark data without explicitly explaining the difference.
+
+Do not introduce unnecessary new data dependencies solely for benchmark complexity.
+
+------------------------------------------------------------
+13. PATH — CORPORATE ACTIONS
+------------------------------------------------------------
+
+Do NOT build a complete institutional corporate-action engine in this pass.
+
+Do NOT attempt to comprehensively handle:
+
+- mergers
+- demergers
+- rights
+- tender offers
+- complex restructurings
+- tax implications
+
+For straightforward corporate actions:
+
+If reliable data already exists and automatic handling is easy, support it.
+
+Otherwise:
+
+retain the existing detection/warning behavior.
+
+Example:
+
+"A corporate action may affect historical share quantities. Verify broker history if the reconstructed holding looks incorrect."
+
+Do not silently present obviously incorrect share quantities.
+
+Do not spend excessive development effort here.
+
+------------------------------------------------------------
+14. PATH — DIVIDENDS / TOTAL RETURN
+------------------------------------------------------------
+
+Do not turn Path into an institutional total-return accounting system.
+
+The important requirement is CONSISTENCY.
+
+If Path portfolio return is price return:
+
+benchmark should be comparable price return.
+
+If Path eventually supports dividend-adjusted total return:
+
+benchmark should also use total return.
+
+Do not compare unlike methodologies without clearly labeling them.
+
+Use reliable existing data where available.
+
+Do not invent dividend information.
+
+------------------------------------------------------------
+15. PATH — STOCK GROUPING
+------------------------------------------------------------
+
+Add a clear:
+
+GROUP BY STOCK
+
+view.
+
+This is important.
+
+Currently multiple trades can result in repeated entries for the same stock.
+
+The default investor-friendly view should allow consolidation by stock.
+
+Example:
+
+TECHNO ELECTRIC
+
+Total bought: ₹2.40L
+Total sold: ₹1.70L
+Realized P&L: ₹42K
+Current value: ₹1.10L
+Unrealized P&L: ₹18K
+Total P&L: ₹60K
+
+Only display metrics that can be calculated reliably.
+
+Do NOT double-count realized and unrealized P&L.
+
+Default:
+
+GROUPED BY STOCK
+
+User can expand:
+
+INDIVIDUAL TRADES
+
+This allows users to understand their full history in a stock without seeing repeated stock names everywhere.
+
+------------------------------------------------------------
+16. PATH — STOCK CONTRIBUTION
+------------------------------------------------------------
+
+Build practical stock-level investor attribution.
+
+Where data supports it, show:
+
+- total capital deployed
+- total amount sold
+- realized P&L
+- current value
+- unrealized P&L
+- total P&L
+- holding duration
+- contribution to portfolio return
+
+The purpose is:
+
+"Which stocks actually created or destroyed value for me?"
+
+Do not create another score.
+
+Do not create a "best investor" type ranking.
+
+Use actual calculated values.
+
+------------------------------------------------------------
+17. PATH — POST-SALE ANALYSIS
+------------------------------------------------------------
+
+For sold stocks, optionally show:
+
+WHAT HAPPENED AFTER SELLING?
+
+For example:
+
+"After the final recorded sale, the stock moved +18% over the next 6 months."
+
+Only show this when sufficient historical price data exists.
+
+Use neutral wording.
+
+Do NOT call it:
+
+"Your mistake"
+
+"Bad sell"
+
+"Wrong decision"
+
+Use:
+
+"Post-sale movement"
+
+or:
+
+"What happened after selling"
+
+This is intended as investor learning, not a recommendation.
+
+------------------------------------------------------------
+18. PATH — NEVER-SOLD HYPOTHETICAL
+------------------------------------------------------------
+
+KEEP the existing concept:
+
+"What if I had held?"
+
+This is useful.
+
+Compare:
+
+ACTUAL PATH
+
+vs
+
+HYPOTHETICAL NEVER-SOLD PATH
+
+Clearly label the second as hypothetical.
+
+Explanation:
+
+"This hypothetical keeps purchased shares invested after the recorded sale. It is intended to help evaluate the effect of sell decisions."
+
+Do not represent it as a forecast.
+
+Do not add unnecessary tax/dividend assumptions.
+
+------------------------------------------------------------
+19. PATH — TOP-LEVEL METRIC HIERARCHY
+------------------------------------------------------------
+
+Path contains many useful metrics.
+
+Do not delete useful calculations.
+
+Instead organize them around investor questions.
+
+SECTION 1 — PERFORMANCE
+
+Primary:
+
+- TWR total return
+- TWR CAGR where meaningful
+- Portfolio vs Nifty
+
+SECTION 2 — JOURNEY
+
+- Maximum drawdown
+- Volatility
+- Sharpe where sufficiently supported
+
+SECTION 3 — DECISIONS
+
+- Realized P&L
+- Unrealized P&L
+- Stock contribution
+- Post-sale movement
+- What if I had held?
+
+SECTION 4 — HISTORY
+
+- Monthly performance
+- Yearly performance
+- Portfolio composition over time
+
+Do not put every metric into the hero section.
+
+------------------------------------------------------------
+20. PATH — CHARTS
+------------------------------------------------------------
+
+Prioritize:
+
+1. Portfolio value over time
+2. Portfolio vs Nifty
+3. Drawdown
+4. Monthly returns
+5. Portfolio composition over time
+6. Stock contribution
+
+Avoid:
+
+- decorative gauges
+- redundant charts
+- charts with no clear investor question
+- excessive pies
+- meaningless scores
+
+------------------------------------------------------------
+21. DATA QUALITY / PROVENANCE
+------------------------------------------------------------
+
+The data architecture has improved.
+
+Refine it rather than adding unnecessary sources.
+
+For important financial values, prefer:
+
+1. Exchange/company filing-derived data
+2. Reliable structured secondary data
+3. Market-data provider
+
+Internally preserve:
+
+value
+period
+source
+retrievedAt
+
+If sources materially disagree:
+
+prefer the more authoritative source where appropriate.
+
+Retain discrepancy information internally.
+
+Do not create a complicated source-confidence score.
+
+------------------------------------------------------------
+22. DATA FRESHNESS
+------------------------------------------------------------
+
+Important metrics should expose their relevant period/timestamp.
+
+Examples:
+
+Price:
+19 Sep 2026, 3:30 PM
+
+Financials:
+FY2026
+
+Shareholding:
+Jun 2026
+
+Valuation:
+based on latest available earnings period
+
+Do not make stale financial data look like live data.
+
+Keep this subtle in the UI.
+
+------------------------------------------------------------
+23. SECURITY MASTER
+------------------------------------------------------------
+
+Improve security identity where practical.
+
+Preferred canonical identity:
+
+ISIN
+
+Maintain:
+
+ISIN
+Company name
+NSE symbol
+BSE code
+Exchange
+Series
+Status
+
+This is especially important for:
+
+- Path trade imports
+- dual-listed companies
+- stock search
+- watchlists
+- avoiding duplicate securities
+
+Do not build a huge security-master product.
+
+Make the underlying identity reliable.
+
+------------------------------------------------------------
+24. VALUATION
+------------------------------------------------------------
+
+Keep the improved valuation architecture.
+
+Useful components include:
+
+- current P/E
+- industry P/E
+- historical P/E
+- historical P/E percentile/range where reliable
+- PEG where meaningful
+- reverse valuation / growth implied by current price
+- P/B vs ROE where appropriate
+- scenario valuation
+
+REMOVE the old concept:
+
+P/E ÷ 1.5 = implied growth
+
+A fixed PEG assumption is not true market-implied growth.
+
+Use the more defensible reverse valuation model.
+
+Keep assumptions visible.
+
+Do not create false precision.
+
+Graham Number can remain as a secondary traditional reference.
+
+Do not allow it to dominate the valuation conclusion.
+
+------------------------------------------------------------
+25. SCREENER
+------------------------------------------------------------
+
+Preserve the current missing-data logic.
+
+States:
+
+STRICT MATCH
+All required data available and all criteria pass.
+
+CANDIDATE / NEEDS VERIFICATION
+No known failure, but some data unavailable.
+
+FAIL
+Known criterion failure.
+
+UNKNOWN / INSUFFICIENT DATA
+Not enough information for a meaningful determination.
+
+Missing data must NEVER count as a pass.
+
+Do not weaken screening criteria merely to produce more stocks.
+
+------------------------------------------------------------
+26. HIDDEN CONCENTRATION
+------------------------------------------------------------
+
+Keep Hidden Concentration.
+
+Explain simply:
+
+"Stocks whose historical returns tend to move together, meaning the portfolio may be less diversified than the number of holdings suggests."
+
+Do not create another complicated score.
+
+------------------------------------------------------------
+27. STOCK SNAPSHOT
+------------------------------------------------------------
+
+Keep:
+
+Snapshot
+Fundamental
+Qualitative
+Next 7 Days
+Spark
+
+Do not replace these.
+
+Snapshot should remain concise and decision-oriented.
+
+Potential areas:
+
+Quality
+Growth
+Valuation
+Balance sheet
+Cash flow
+Catalyst
+Risk
+
+Only show data-backed conclusions.
+
+------------------------------------------------------------
+28. NEWS
+------------------------------------------------------------
+
+Keep the existing news buckets and materiality logic.
+
+Do not rebuild the news engine.
+
+Only improve genuine accuracy/context issues.
+
+Do not create unsupported AI interpretations.
+
+------------------------------------------------------------
+29. JOURNAL
+------------------------------------------------------------
+
+Remove the visible Journal section from the Stock Analysis page as previously discussed.
+
+Do not delete useful internal utilities if they are still required elsewhere.
+
+------------------------------------------------------------
+30. MARKETS — NEW TERMINAL EXPERIENCE
+------------------------------------------------------------
+
+Now implement the new Kosh Markets experience.
+
+This is NOT a replacement for the Stock Analysis page.
+
+Create a dedicated route such as:
+
+/markets
+
+or:
+
+/terminal
+
+Use whichever fits the existing architecture best.
+
+The product concept:
+
+TRADINGVIEW-STYLE MARKET WORKFLOW
++
+KOSH FUNDAMENTAL / VALUATION / PORTFOLIO INTELLIGENCE
+
+The goal:
+
+"Watch the market → inspect chart → switch stock → immediately understand the stock."
+
+------------------------------------------------------------
+31. MARKETS — VISUAL REFERENCE
+------------------------------------------------------------
+
+A visual HTML mockup has been created for this feature.
+
+Use it as a layout/reference for the intended experience.
+
+The mockup demonstrates:
+
+- Kosh top navigation
+- search
+- market status
+- left chart toolbar
+- main chart
+- right watchlist
+- bottom Kosh intelligence panel
+- valuation
+- Kosh View
+- quick actions
+
+DO NOT copy it pixel-for-pixel.
+
+Use it as a structural reference.
+
+Preserve Kosh's own visual language.
+
+------------------------------------------------------------
+32. MARKETS — DESKTOP LAYOUT
+------------------------------------------------------------
+
+Desktop structure:
+
+TOP:
+Kosh navigation
+Search
+Market status
+
+LEFT:
+Compact chart/drawing toolbar
+
+CENTER:
+Main chart
+
+RIGHT:
+Persistent watchlist
+
+BOTTOM:
+Kosh intelligence/data panel
+
+Conceptually:
+
+--------------------------------------------------
+| KOSH | Search | Dashboard | MARKETS | Portfolio |
+--------------------------------------------------
+| tools |                  | WATCHLIST             |
+|       |                  |                       |
+|       |      CHART       | TECHNOE               |
+|       |                  | RELIANCE              |
+|       |                  | TCS                   |
+|       |                  | ...                   |
+--------------------------------------------------
+| Overview | Fundamentals | Valuation | News        |
+--------------------------------------------------
+| Kosh data / intelligence / quick actions          |
+--------------------------------------------------
+
+The chart should be the primary workspace.
+
+------------------------------------------------------------
+33. WATCHLIST
+------------------------------------------------------------
+
+Build/reuse a proper watchlist system.
+
+Users should be able to:
+
+- create watchlist
+- rename
+- delete
+- add stocks
+- remove stocks
+- reorder
+- switch between watchlists
+
+If Kosh already has watchlist functionality:
+
+EXTEND IT.
+
+Do not create a duplicate watchlist architecture.
+
+Persist using the existing Kosh persistence approach.
+
+------------------------------------------------------------
+34. WATCHLIST — DEFAULT DISPLAY
+------------------------------------------------------------
+
+Keep it compact.
+
+Default columns:
+
+Symbol
+Last Price
+Change %
+
+Optional:
+
+Volume
+
+Do not display 15 columns.
+
+Example:
+
+TECHNOE
+₹1,030.50
++4.65%
+
+Selected stock should be visually highlighted.
+
+------------------------------------------------------------
+35. WATCHLIST — KOSH ADVANTAGE
+------------------------------------------------------------
+
+If the stock is held in the user's Kosh portfolio, show a subtle:
+
+OWNED
+
+or:
+
+PORTFOLIO WEIGHT
+
+indicator.
+
+Example:
+
+TECHNOE
+₹1,030.50
++4.65%
+Owned · 7.2%
+
+Do not clutter the watchlist.
+
+This is an important Kosh-specific advantage.
+
+------------------------------------------------------------
+36. WATCHLIST GROUPS
+------------------------------------------------------------
+
+If easy to implement cleanly, support optional watchlist groups/sections.
+
+Example:
+
+CORE
+Power
+Ideas
+
+But keep a simple flat watchlist as the default.
+
+Do not make grouping mandatory.
+
+------------------------------------------------------------
+37. MARKETS — SEARCH
+------------------------------------------------------------
+
+Create fast symbol search.
+
+Search by:
+
+- company name
+- NSE symbol
+- BSE code where supported
+- ISIN where supported
+
+Search results:
+
+Company
+Exchange
+Symbol
+
+Avoid duplicate NSE/BSE results where the same company can be identified using ISIN.
+
+Reuse the existing Kosh security/universe infrastructure.
+
+------------------------------------------------------------
+38. MARKETS — CHART
+------------------------------------------------------------
+
+First inspect the current Kosh chart implementation.
+
+If it is already suitable for a professional financial terminal:
+
+REUSE IT.
+
+If it is insufficient, use a suitable financial charting library such as TradingView Lightweight Charts if compatible with the project.
+
+Do not replace working chart infrastructure unnecessarily.
+
+The primary chart type:
+
+CANDLESTICK
+
+Secondary:
+
+LINE
+
+Do not add excessive chart types in this phase.
+
+------------------------------------------------------------
+39. CHART TIMEFRAMES
+------------------------------------------------------------
+
+Provide:
+
+1m
+3m
+5m
+15m
+30m
+1H
+4H
+D
+W
+M
+
+Only enable timeframes for which Kosh has reliable underlying data.
+
+Do not fabricate intraday candles.
+
+Preserve selected timeframe where practical.
+
+------------------------------------------------------------
+40. CHART DATA — RAW OHLC
+------------------------------------------------------------
+
+This is critical.
+
+Technical chart candles must use:
+
+RAW OPEN
+RAW HIGH
+RAW LOW
+RAW CLOSE
+
+Do not accidentally use adjusted close for technical candles.
+
+Adjusted data may continue to be used for appropriate return/total-return calculations.
+
+Verify the existing Kosh historical-data pipeline carefully because parts of the existing architecture may use adjusted close.
+
+Technical chart = actual market OHLC.
+
+------------------------------------------------------------
+41. CHART HEADER
+------------------------------------------------------------
+
+Show:
+
+Company name
+Symbol
+Exchange
+Price
+Change
+Change %
+
+Example:
+
+TECHNO ELECTRIC & ENGINEERING
+NSE: TECHNOE
+
+₹1,030.50
++4.65%
+
+Also show:
+
+DATA STATUS
+
+------------------------------------------------------------
+42. MARKET DATA — EXISTING KOSH LIVE SOURCE
+------------------------------------------------------------
+
+IMPORTANT.
+
+Kosh already has a market-data pipeline that currently captures real-time market updates during live market hours.
+
+Do NOT replace this with Yahoo or another delayed provider.
+
+Before implementing Markets:
+
+TRACE THE EXISTING KOSH MARKET-DATA PIPELINE.
+
+Identify:
+
+- actual provider
+- quote endpoint/feed
+- update mechanism
+- refresh interval
+- WebSocket if any
+- how current UI receives updates
+- whether prices are genuinely updating during market hours
+
+If the existing source is genuinely live:
+
+MAKE IT THE PRIMARY SOURCE FOR MARKETS.
+
+Do not downgrade it to delayed data.
+
+------------------------------------------------------------
+43. LIVE / DELAYED STATUS
+------------------------------------------------------------
+
+Never hard-code:
+
+"15m delayed"
+
+for Kosh if the existing Kosh source is live.
+
+Instead determine status from actual provider behavior/metadata.
+
+Possible states:
+
+LIVE
+DELAYED
+LAST AVAILABLE
+UNAVAILABLE
+
+If the existing Kosh source is live:
+
+show:
+
+● LIVE
+
+and latest update timestamp.
+
+If it becomes unavailable:
+
+show:
+
+LAST UPDATED xx:xx
+
+or:
+
+DATA UNAVAILABLE
+
+Never claim LIVE if the underlying data isn't live.
+
+------------------------------------------------------------
+44. MARKET DATA PROVIDER ABSTRACTION
+------------------------------------------------------------
+
+Even though the existing Kosh source should remain primary, create/use a clean abstraction.
+
+Conceptually:
+
+MarketDataProvider
+
+getQuote(symbol)
+
+getHistoricalBars(symbol, timeframe, range)
+
+subscribeQuote(symbol)
+
+unsubscribeQuote(symbol)
+
+subscribeBars(symbol, timeframe)
+
+unsubscribeBars(symbol, timeframe)
+
+The Terminal UI should not directly depend on provider-specific APIs.
+
+This allows future legitimate broker/market-data integrations without rebuilding the UI.
+
+------------------------------------------------------------
+45. REAL-TIME CHART UPDATES
+------------------------------------------------------------
+
+Do not repeatedly download the entire historical dataset.
+
+Correct architecture:
+
+1. Load historical candles once.
+2. Subscribe to Kosh's existing live source where supported.
+3. Receive live updates.
+4. Update the current candle incrementally.
+5. Create a new candle when timeframe rolls over.
+6. Update volume where available.
+7. Maintain connection/reconnection state.
+8. Do not reload the entire chart on every tick.
+
+If Lightweight Charts is used, use incremental series updates rather than repeatedly replacing the full dataset.
+
+------------------------------------------------------------
+46. DATA FALLBACK
+------------------------------------------------------------
+
+Use secondary providers only where the primary Kosh source cannot provide the requested data.
+
+Example:
+
+Primary:
+existing Kosh live market source
+
+Secondary:
+existing historical provider
+
+Do not silently replace a live price with a delayed price.
+
+If a fallback is used, the UI/data layer must know that the data is fallback/delayed.
+
+------------------------------------------------------------
+47. VOLUME
+------------------------------------------------------------
+
+Show volume below the price chart where available.
+
+Use actual volume.
+
+Do not fabricate volume.
+
+If unavailable:
+
+"Volume unavailable"
+
+------------------------------------------------------------
+48. OHLC / CROSSHAIR
+------------------------------------------------------------
+
+When hovering over a candle, show:
+
+Date/time
+Open
+High
+Low
+Close
+Volume
+
+Example:
+
+19 Sep 2026
+O 990.30
+H 1,039.00
+L 989.60
+C 1,030.50
+Vol 2.4M
+
+Again:
+
+RAW OHLC
+
+not adjusted OHLC.
+
+------------------------------------------------------------
+49. CHART INTERACTIONS
+------------------------------------------------------------
+
+Support:
+
+- zoom
+- pan
+- crosshair
+- fit chart
+- reset
+- go to latest
+- fullscreen
+- timeframe switch
+
+When switching stocks:
+
+retain selected timeframe.
+
+Do not unnecessarily reset chart state.
+
+------------------------------------------------------------
+50. MULTI-CHART MODE
+------------------------------------------------------------
+
+This is an important feature.
+
+Support:
+
+1 chart
+2 charts
+4 charts
+
+Example:
+
+2-chart:
+
+TECHNOE | NIFTY
+
+4-chart:
+
+TECHNOE | NIFTY
+JNKINDIA | BANKNIFTY
+
+Each pane should have:
+
+- symbol
+- timeframe
+- chart state
+
+Allow changing the symbol in each pane.
+
+Clearly indicate the active pane.
+
+Optional:
+
+SYNC TIMEFRAME
+
+If implemented, keep it simple.
+
+Do not build complicated synchronized drawing/indicator systems in this phase.
+
+------------------------------------------------------------
+51. CHART INDICATORS
+------------------------------------------------------------
+
+Do NOT attempt to reproduce every TradingView indicator.
+
+Initial useful set:
+
+- Volume
+- SMA
+- EMA
+- VWAP where intraday data supports it
+- RSI
+- MACD
+- Bollinger Bands
+
+No giant indicator library.
+
+The purpose is a useful market terminal, not an indicator marketplace.
+
+------------------------------------------------------------
+52. DRAWING TOOLS
+------------------------------------------------------------
+
+Do not build a complete TradingView drawing engine in this pass.
+
+If current charting library supports basic drawing:
+
+Support:
+
+- horizontal line
+- trendline
+- price marker
+
+Advanced drawing tools can come later.
+
+Do not allow drawing tools to delay the core Terminal implementation.
+
+------------------------------------------------------------
+53. KOSH DATA BELOW CHART
+------------------------------------------------------------
+
+This is the key differentiator.
+
+Below the chart, provide Kosh's intelligence.
+
+Tabs:
+
+OVERVIEW
+FUNDAMENTALS
+VALUATION
+GROWTH
+OWNERSHIP
+NEWS
+KOSH VIEW
+
+Do NOT duplicate the entire Stock Analysis page.
+
+The terminal should show a concise version.
+
+Provide:
+
+"Open Full Analysis →"
+
+for deeper research.
+
+------------------------------------------------------------
+54. OVERVIEW DATA
+------------------------------------------------------------
+
+Where available:
+
+Market Cap
+P/E
+Industry P/E
+P/B
+ROCE
+ROE
+Debt/Equity
+Dividend Yield
+EPS
+Revenue Growth
+Profit Growth
+
+Only show available data.
+
+Never guess.
+
+------------------------------------------------------------
+55. FUNDAMENTALS
+------------------------------------------------------------
+
+Show the most useful fundamentals.
+
+Potentially:
+
+Revenue
+Profit
+EPS
+Margins
+ROCE
+ROE
+CFO
+CFO/PAT
+Debt
+Interest Coverage
+
+Where historical data exists, prefer trends over isolated numbers.
+
+Do not show every available metric.
+
+------------------------------------------------------------
+56. VALUATION
+------------------------------------------------------------
+
+Show:
+
+Current P/E
+Industry P/E
+Historical P/E
+Historical median/percentile where reliable
+P/B where meaningful
+PEG where meaningful
+Reverse valuation
+
+Example:
+
+P/E
+10.2x
+
+Industry
+29.8x
+
+5Y Median
+17.4x
+
+Then a Kosh observation only if supported:
+
+"Current P/E is below historical and industry valuation while earnings remain supported."
+
+Do not manufacture conclusions.
+
+Do not use:
+
+P/E ÷ 1.5
+
+as market-implied growth.
+
+------------------------------------------------------------
+57. GROWTH
+------------------------------------------------------------
+
+Show:
+
+Revenue growth
+Profit growth
+EPS growth
+Margin trend
+ROCE trend
+
+Where enough historical data exists, show a compact trend chart.
+
+The goal:
+
+"Is the business improving?"
+
+not:
+
+"How many ratios can we display?"
+
+------------------------------------------------------------
+58. OWNERSHIP
+------------------------------------------------------------
+
+Show where available:
+
+Promoter holding
+Promoter change
+FII
+DII
+Pledge
+
+Use relevant reporting periods.
+
+Do not present stale ownership information as current.
+
+------------------------------------------------------------
+59. NEWS
+------------------------------------------------------------
+
+Reuse the existing Kosh news system.
+
+Do not build another news engine.
+
+Show recent relevant:
+
+Results
+Deals
+Policy
+Business
+Market
+
+where available.
+
+------------------------------------------------------------
+60. KOSH VIEW
+------------------------------------------------------------
+
+Do not generate a generic AI paragraph.
+
+Use structured, data-backed observations from existing Kosh calculations.
+
+Potential sections:
+
+QUALITY
+GROWTH
+VALUATION
+BALANCE SHEET
+CASH FLOW
+CATALYST
+RISK
+
+Example:
+
+QUALITY
+ROCE remains strong relative to available historical data.
+
+VALUATION
+Current P/E is below the available historical median.
+
+GROWTH
+Profit growth has remained positive.
+
+RISK
+Debt increased during the latest reported period.
+
+Only show a statement when the underlying data supports it.
+
+Otherwise:
+
+"Insufficient data"
+
+------------------------------------------------------------
+61. PORTFOLIO INTEGRATION
+------------------------------------------------------------
+
+If user owns the selected stock:
+
+Show:
+
+Owned
+Portfolio weight
+
+Example:
+
+"You own this stock · 7.2% portfolio weight."
+
+This should also appear subtly in the watchlist.
+
+Do not make portfolio ownership visually dominant.
+
+------------------------------------------------------------
+62. FULL ANALYSIS LINK
+------------------------------------------------------------
+
+Provide:
+
+OPEN FULL ANALYSIS →
+
+This should navigate to the existing Stock Analysis page.
+
+The user should be able to move:
+
+MARKETS
+→ quick understanding
+
+FULL ANALYSIS
+→ deep research
+
+Do not duplicate the complete stock page inside Markets.
+
+------------------------------------------------------------
+63. MARKETS — DESIGN
+------------------------------------------------------------
+
+Use Kosh's existing visual identity.
+
+Do NOT clone TradingView pixel-for-pixel.
+
+Do NOT use TradingView branding.
+
+Do NOT copy proprietary TradingView assets.
+
+The intended interaction model is TradingView-inspired:
+
+- persistent watchlist
+- professional chart
+- timeframe selector
+- crosshair
+- multi-chart
+- quick switching
+
+But the visual language must remain Kosh.
+
+Target:
+
+premium
+clean
+technical
+dark
+restrained
+professional
+information-dense
+
+without clutter.
+
+------------------------------------------------------------
+64. MARKETS — RESPONSIVE
+------------------------------------------------------------
+
+Desktop is the primary experience.
+
+Desktop:
+
+Chart + Watchlist + Kosh data underneath.
+
+Tablet:
+
+Chart
+Watchlist collapsible
+Kosh data underneath
+
+Mobile:
+
+Search
+Chart
+Watchlist
+Kosh data tabs
+
+Do not try to squeeze four charts onto mobile.
+
+------------------------------------------------------------
+65. PERFORMANCE
+------------------------------------------------------------
+
+The Markets page must feel fast.
+
+Use:
+
+- cached historical data
+- cached quotes
+- incremental live updates
+- lazy loading of fundamentals
+- lazy loading of news
+- shared data between charts
+- memoization where appropriate
+
+Do not refetch the same stock data unnecessarily.
+
+For multi-chart mode, share cached market data where possible.
+
+------------------------------------------------------------
+66. ALERTS
+------------------------------------------------------------
+
+Do not build a full alert engine in this implementation.
+
+If existing alert infrastructure exists and basic price alerts are easy to expose:
+
+Price above
+Price below
+
+Otherwise leave advanced alerts for later.
+
+------------------------------------------------------------
+67. NO FEATURE BLOAT
+------------------------------------------------------------
+
+Do NOT add:
+
+- trading signals
+- AI trading predictions
+- buy/sell recommendations
+- social feed
+- copy trading
+- excessive indicators
+- excessive technical scores
+- full options terminal
+- futures terminal
+- broker order execution
+- complex alert system
+- investor personality scoring
+- generic portfolio score
+- excessive dashboards
+- decorative gauges
+
+The goal is:
+
+MARKET MONITORING + INVESTMENT INTELLIGENCE
+
+not a complete brokerage platform.
+
+------------------------------------------------------------
+68. PORTFOLIO SIMULATOR
+------------------------------------------------------------
+
+Do NOT make Portfolio Simulator part of this implementation's critical path.
+
+It remains a useful future feature.
+
+If an existing implementation is already close and can be completed safely, it may be handled later.
+
+Do not allow it to delay:
+
+Path correctness
+or
+Markets Terminal
+
+------------------------------------------------------------
+69. DATA FRESHNESS
+------------------------------------------------------------
+
+For important data, retain:
+
+value
+period
+source
+retrievedAt
+
+Examples:
+
+Price:
+Live — 3:18 PM
+
+Financials:
+FY2026
+
+Shareholding:
+Jun 2026
+
+Valuation:
+based on latest available earnings
+
+The user should not have to wonder what period a number represents.
+
+------------------------------------------------------------
+70. BEGINNER-FRIENDLY EXPLANATIONS
+------------------------------------------------------------
+
+Keep explanations concise.
+
+Examples:
+
+TWR:
+"Measures portfolio performance without being distorted by when money was added or removed."
+
+Maximum Drawdown:
+"Largest fall from a previous portfolio peak."
+
+Sharpe:
+"Return earned relative to the volatility taken."
+
+ROCE:
+"Measures how efficiently the business generates operating returns from invested capital."
+
+Do not turn Kosh into a textbook.
+
+------------------------------------------------------------
+71. TESTING — PATH
+------------------------------------------------------------
+
+Add/verify tests for:
+
+1. duplicate identical executions preserved
+2. same-day timestamps respected
+3. Buy → Sell
+4. Sell → Buy
+5. Buy → Sell → Buy
+6. partial sells
+7. multiple buys
+8. missing execution price fallback
+9. estimated price flag
+10. TWR with additional capital
+11. TWR with withdrawals
+12. TWR with internal stock rotations
+13. monthly returns
+14. yearly returns
+15. benchmark comparison
+16. drawdown
+17. grouped stock calculations
+18. realized/unrealized P&L separation
+19. post-sale movement
+20. never-sold hypothetical
+21. XIRR unavailable when unsupported
+22. XIRR correct when true external cash flows exist
+
+Tests should verify known mathematical outcomes, not simply that functions return values.
+
+------------------------------------------------------------
+72. TESTING — MARKETS
+------------------------------------------------------------
+
+Test:
+
+1. watchlist create
+2. watchlist rename
+3. watchlist delete
+4. add stock
+5. remove stock
+6. reorder
+7. persistence
+8. stock search
+9. selecting stock changes chart
+10. historical candles
+11. timeframe switching
+12. live quote update
+13. latest candle update
+14. volume update
+15. live/delayed status
+16. unavailable data
+17. invalid symbol
+18. multi-chart assignment
+19. RAW OHLC integrity
+20. portfolio ownership integration
+
+If streaming exists:
+
+21. reconnect after disconnect
+22. no duplicate subscriptions
+23. unsubscribe when pane changes stock
+24. no memory leak from repeated symbol switching
+
+------------------------------------------------------------
+73. TESTING — EXISTING KOSH
+------------------------------------------------------------
+
+Verify that implementation does not break:
+
+- Stock Analysis
+- Snapshot
+- Fundamental
+- Qualitative
+- Next 7 Days
+- Spark
+- Valuation
+- News
+- Screener
+- Hidden Concentration
+- Portfolio
+- Path
+- stock search
+- existing data enrichment
+- import functionality
+
+------------------------------------------------------------
+74. BUILD / TYPECHECK
+------------------------------------------------------------
+
+After implementation:
+
+1. install dependencies if required
+2. run complete tests
+3. run Path tests
+4. run Markets tests
+5. run TypeScript/typecheck
+6. run production build
+7. fix implementation-caused failures
+8. inspect important screens manually
+9. inspect dark mode
+10. inspect light mode
+11. inspect responsive behavior
+12. inspect empty states
+13. inspect missing data
+14. inspect live-data status
+15. inspect malformed broker imports
+
+Do not declare completion simply because the UI renders.
+
+------------------------------------------------------------
+75. PERFORMANCE / CODE QUALITY
+------------------------------------------------------------
+
+Avoid:
+
+- duplicate API calls
+- duplicate calculations
+- unnecessary state
+- unnecessary rerenders
+- repeated historical downloads
+- duplicate market-data providers
+- duplicate fundamental engines
+
+Reuse existing Kosh infrastructure.
+
+Markets and Path should consume the same underlying canonical data where appropriate.
+
+------------------------------------------------------------
+76. FINAL PRODUCT STRUCTURE
+------------------------------------------------------------
+
+After implementation, the product should feel like:
+
+KOSH
+
+MARKETS
+→ Watchlist
+→ Live market monitoring
+→ Professional chart
+→ Multi-chart
+→ Kosh intelligence underneath
+
+STOCK ANALYSIS
+→ Deep fundamental research
+→ Valuation
+→ Qualitative analysis
+→ News
+→ Snapshot
+→ Next 7 Days
+→ Spark
+
+SCREEN
+→ Discovery
+→ Strict matches
+→ Candidates
+→ Verification
+
+PORTFOLIO
+→ Current holdings
+→ Performance
+→ Risk
+→ Allocation
+
+PATH
+→ Actual historical holdings
+→ TWR
+→ Monthly/yearly performance
+→ Benchmark
+→ Stock-level attribution
+→ Post-sale movement
+→ What-if-held analysis
+
+------------------------------------------------------------
+77. MOST IMPORTANT PRODUCT PRINCIPLE
+------------------------------------------------------------
+
+Do not optimize for number of features.
+
+Optimize for:
+
+CORRECT DATA
+↓
+CORRECT CALCULATION
+↓
+USEFUL RELATIONSHIP
+↓
+UNDERSTANDABLE INSIGHT
+↓
+INVESTOR DECISION
+
+Every feature should answer a practical question.
+
+Examples:
+
+Markets:
+"What is happening right now?"
+
+Stock:
+"Is this company worth researching further?"
+
+Valuation:
+"How expensive/cheap is it relative to its own history and peers?"
+
+Screen:
+"Which companies meet my criteria?"
+
+Portfolio:
+"What do I own and how is it behaving?"
+
+Path:
+"How did I actually perform as an investor?"
+
+Stock attribution:
+"Which decisions created or destroyed value?"
+
+Do not add information simply because it is available.
+
+------------------------------------------------------------
+78. FINAL SELF-AUDIT
+------------------------------------------------------------
+
+Before declaring completion, verify:
+
+PATH:
+
+- historical holdings reconstructed correctly
+- duplicate trades preserved
+- same-day trades ordered correctly
+- missing prices handled with closing-price fallback
+- estimated execution prices clearly distinguished
+- TWR correct
+- XIRR not misleading
+- monthly returns correct
+- yearly returns correct
+- benchmark methodology consistent
+- stock grouping correct
+- realized/unrealized P&L not double-counted
+- post-sale analysis neutral
+- never-sold analysis clearly hypothetical
+
+MARKETS:
+
+- existing Kosh live source identified and reused
+- live data remains live if provider is live
+- no unnecessary downgrade to delayed Yahoo data
+- data status is accurate
+- historical candles load efficiently
+- latest candle updates incrementally
+- RAW OHLC used for technical chart
+- volume correct
+- watchlists work
+- stock search works
+- 1/2/4 chart modes work
+- timeframe switching works
+- Kosh data appears below chart
+- portfolio ownership appears where appropriate
+- full analysis link works
+
+DATA:
+
+- source recorded
+- period recorded
+- retrieval time recorded
+- no fabricated metrics
+- no false precision
+- no stale data presented as current
+
+PRODUCT:
+
+- existing good features preserved
+- no duplicate engines
+- no unnecessary dashboards
+- no feature bloat
+- no generic AI conclusions
+- no unsupported investment recommendations
+
+------------------------------------------------------------
+79. FINAL IMPLEMENTATION PHILOSOPHY
+------------------------------------------------------------
+
+This is NOT a request to make Kosh "look like TradingView."
+
+It is a request to create:
+
+A PROFESSIONAL MARKET WORKSPACE INSIDE KOSH.
+
+TradingView-style:
+
+CHART
++
+WATCHLIST
++
+MULTI-CHART
++
+TIMEFRAMES
++
+TECHNICAL TOOLS
+
+combined with Kosh:
+
+FUNDAMENTALS
++
+VALUATION
++
+QUALITY
++
+GROWTH
++
+OWNERSHIP
++
+NEWS
++
+PORTFOLIO CONTEXT
++
+INVESTOR INTELLIGENCE
+
+The final experience should allow a user to:
+
+1. Open Kosh.
+2. Go to Markets.
+3. See their watchlist.
+4. Select TECHNOE.
+5. Immediately see its live market price when the existing Kosh feed is live.
+6. View a professional chart.
+7. Change 1m / 3m / 5m / 15m / 1H / D etc.
+8. Open 2 or 4 charts.
+9. Compare stocks/indexes.
+10. See Kosh's key fundamentals below the chart.
+11. See valuation context.
+12. See portfolio ownership.
+13. See relevant news.
+14. Open Full Analysis when deeper research is required.
+
+At the same time, Path should allow the investor to go in the opposite direction:
+
+"Forget what the stock is doing today.
+Show me what happened to MY investment over the years."
+
+That combination is the core product opportunity.
+
+The implementation must remain practical, accurate, fast and uncluttered.
+
+Do not make changes simply because they are technically possible.
+
+Make changes because they materially improve the investor's experience or the correctness of the information.

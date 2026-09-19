@@ -59,12 +59,11 @@ function fwdValue(eps: number, growthPct: number, exitPe: number, years: number,
 }
 
 /**
- * Illustration only: P/E divided by 1.5. Not the market's implied growth.
+ * Removed from the product. A fixed PEG of 1.5 is not market-implied growth.
+ * Reverse valuation (reverseImpliedCagr) is the supported method.
  */
-export function impliedGrowthFromPe(pe: number | null | undefined): number | null {
-  const p = num(pe);
-  if (p == null || !(p > 0) || p > 400) return null;
-  return p / 1.5;
+export function impliedGrowthFromPe(_pe: number | null | undefined): number | null {
+  return null;
 }
 
 /** What 5-year EPS CAGR would justify today's price at a stated exit multiple, discounted at 12%. */
@@ -139,7 +138,7 @@ export function buildValuation(input: {
   const grahamGap = graham != null && price != null && graham > 0 ? (price / graham - 1) * 100 : null;
   const peg = num(f?.peg) ?? pegRatio(pe, f?.profitCagr5) ?? pegRatio(pe, f?.profitCagr3);
   const pegVia = f?.pegVia || (pegRatio(pe, f?.profitCagr5) != null ? "5Y profit growth" : pegRatio(pe, f?.profitCagr3) != null ? "3Y profit growth" : null);
-  const impliedGrowth = impliedGrowthFromPe(pe);
+  const impliedGrowth = null;
   const reverse = buildReverse(price, eps, industryPe);
 
   const missing: string[] = [];

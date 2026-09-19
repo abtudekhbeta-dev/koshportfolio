@@ -1,9 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useBookCtx } from "@/components/book-context";
 import { NavChart } from "@/components/charts/nav-chart";
-import { PathStack } from "@/components/charts/path-stack";
-import { MonthHeatmap } from "@/components/charts/heatmap";
-import { WindowsGrid } from "@/components/windows-grid";
 import { PathDesk } from "@/components/path-desk";
 import { PathUpload } from "@/components/path-upload";
 import { pathToChartNav } from "@/lib/kosh/path";
@@ -29,10 +26,9 @@ function PathPage() {
       <section>
         <h2 className="mb-1 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Your path</h2>
         <p className="mb-3 max-w-2xl text-[13px] leading-relaxed text-muted">
-          The rupees you actually held after each buy and sell, marked at that day’s price. Growth is how those names
-          did — extra money you added later is taken out. Same money in {book.benchName} puts those same rupees into
-          the index on the same days. This mix is leftover names today; if the file is complete, today’s path and
-          today’s mix are the same rupees.{" "}
+          What you actually owned after each buy and sell, marked at that day’s price. Growth is how those names did —
+          extra money you added later is taken out. {book.benchName} is the same stretch, same method. This mix is
+          leftover names today; if the file is complete, today’s path and today’s mix are the same rupees.{" "}
           <Link to="/p/$id" params={{ id: portfolio.id }} className="text-chart hover:underline">
             Back to Overview
           </Link>
@@ -51,15 +47,15 @@ function PathPage() {
         {filled.length ? (
           <p className="mb-3 rounded-sm bg-surface px-3 py-2 text-[13px] text-muted shadow-[var(--shadow-border)]">
             {filled.length} buy/sell price{filled.length === 1 ? "" : "s"} taken from that day’s close
-            {filled.some((f) => f.hadTime) ? " (no time-of-day print — the close was used)" : ""}. Add prices in the
-            file if you want the exact cash you paid.
+            {filled.some((f) => f.hadTime) ? " (no time-of-day print — the close was used)" : ""}. Execution price
+            unavailable; historical closing price used. Add prices in the file if you want the exact cash you paid.
           </p>
         ) : null}
         {hasPath ? (
           <NavChart
             nav={chartNav}
             portLabel="Your path"
-            benchLabel={`Same money in ${book.benchName}`}
+            benchLabel={`${book.benchName} same stretch`}
             coverage={path?.coverage}
             nowValue={pathNow}
             pathPrimary
@@ -71,29 +67,6 @@ function PathPage() {
           </div>
         )}
       </section>
-
-      {hasPath && path?.windows && Object.keys(path.windows).length ? (
-        <section>
-          <h2 className="mb-1 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Windows</h2>
-          <p className="mb-3 text-[13px] text-muted">
-            How the names you actually held did over each stretch, versus the same rupees in {book.benchName}. Extra
-            money you added later is taken out of these percentages.
-          </p>
-          <WindowsGrid windows={path.windows} portLabel="Your path" benchLabel={book.benchName} />
-        </section>
-      ) : null}
-
-      {hasPath && path?.snapshots?.length ? <PathStack slices={path.snapshots} /> : null}
-
-      {hasPath && path?.months?.length ? (
-        <section>
-          <h2 className="mb-1 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Month by month</h2>
-          <p className="mb-3 text-[13px] text-muted">
-            How the names you held that month did. Green is up. This is not this mix taken back.
-          </p>
-          <MonthHeatmap months={path.months} />
-        </section>
-      ) : null}
 
       {trades.length && path ? (
         <PathDesk
@@ -107,8 +80,9 @@ function PathPage() {
         <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
           <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">What will show here</h2>
           <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted">
-            Your XIRR, how the holdings did between cash-ins, same money in {book.benchName}, what you held in each
-            year, closed trades, and a year-by-year table — all from the buys and sells you actually did.
+            How the holdings did versus {book.benchName}, the journey (drops and mix over time), which names created or
+            destroyed value — including what the stock did after you sold — and month-by-month history. All from the
+            buys and sells you actually did.
           </p>
         </section>
       )}

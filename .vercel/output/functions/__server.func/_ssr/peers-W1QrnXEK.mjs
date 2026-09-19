@@ -1,4 +1,4 @@
-import { Vn as sectorOf } from "./router-COGOfPBd.mjs";
+import { Xn as sectorOf } from "./router-CuH7ax2z.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/peers-W1QrnXEK.js
 var LINES = [
 	{

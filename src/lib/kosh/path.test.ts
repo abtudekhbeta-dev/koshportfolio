@@ -138,11 +138,47 @@ describe("path reconstruction", () => {
     assert.equal(over[1].sameCash, 4800);
   });
 
-  it("sorts buys before sells on the same day", () => {
-    const rows = [sell("X", 1, 10, "2024-01-02"), buy("X", 1, 10, "2024-01-02")];
+  it("orders same-day trades by timestamp, sell then buy", () => {
+    const rows = [
+      { ...sell("X", 1, 10, "2024-01-02"), boughtAt: "2024-01-02T10:00:00.000Z", src: 0 },
+      { ...buy("X", 1, 10, "2024-01-02"), boughtAt: "2024-01-02T14:00:00.000Z", src: 1 },
+    ];
+    const s = sortTrades(rows);
+    assert.equal(s[0].side, -1);
+    assert.equal(s[1].side, 1);
+  });
+
+  it("orders same-day trades by timestamp, buy then sell", () => {
+    const rows = [
+      { ...buy("X", 1, 10, "2024-01-02"), boughtAt: "2024-01-02T10:00:00.000Z", src: 0 },
+      { ...sell("X", 1, 10, "2024-01-02"), boughtAt: "2024-01-02T14:00:00.000Z", src: 1 },
+    ];
     const s = sortTrades(rows);
     assert.equal(s[0].side, 1);
     assert.equal(s[1].side, -1);
+  });
+
+  it("orders buy then sell then buy on the same day by clock", () => {
+    const rows = [
+      { ...buy("X", 1, 10, "2024-01-02"), boughtAt: "2024-01-02T16:00:00.000Z", src: 2 },
+      { ...sell("X", 1, 10, "2024-01-02"), boughtAt: "2024-01-02T12:00:00.000Z", src: 1 },
+      { ...buy("X", 1, 10, "2024-01-02"), boughtAt: "2024-01-02T09:00:00.000Z", src: 0 },
+    ];
+    const s = sortTrades(rows);
+    assert.deepEqual(
+      s.map((t) => t.side),
+      [1, -1, 1],
+    );
+  });
+
+  it("without a clock uses source row order, not buy-before-sell", () => {
+    const rows = [
+      { ...sell("X", 1, 10, "2024-01-02"), src: 0 },
+      { ...buy("X", 1, 10, "2024-01-02"), src: 1 },
+    ];
+    const s = sortTrades(rows);
+    assert.equal(s[0].side, -1);
+    assert.equal(s[1].side, 1);
   });
 
   it("flags Mix vs Path qty mismatches and ignores matches", () => {
@@ -233,5 +269,142 @@ describe("path reconstruction", () => {
     assert.equal(nav[0].portUnit, p.nav[0].unit);
     assert.ok(p.snapshots.length >= 1);
     assert.ok(p.byName.find((n) => n.symbol === "X"));
+  });
+
+  it("keeps two identical executions as two trades", () => {
+    const hx = { X: bars("2024-01-02", 10, 10, 0) };
+    const p = buildPath(
+      [buy("X", 10, 10, "2024-01-02"), buy("X", 10, 10, "2024-01-02")],
+      hx,
+      hx.X,
+    );
+    assert.equal(p.nBuys, 2);
+    assert.equal(p.nTrades, 2);
+    assert.equal(p.stillHeld[0]?.qty, 20);
+  });
+
+  it("TWR is unchanged by a same-day stock rotation of equal rupees", () => {
+    const a = bars("2024-01-02", 20, 10, 0);
+    const b = bars("2024-01-02", 20, 10, 0);
+    for (let i = 8; i < b.length; i++) {
+      b[i].c = 12;
+      b[i].raw = 12;
+    }
+    const p = buildPath(
+      [buy("A", 10, 10, "2024-01-02"), sell("A", 10, 10, "2024-01-08"), buy("B", 10, 10, "2024-01-08")],
+      { A: a, B: b },
+      a,
+    );
+    assert.ok(p.twr != null);
+    assert.ok(Math.abs(p.twr! - 20) < 3, String(p.twr));
+  });
+
+  it("same-day rotation does not withdraw from the index sleeve", () => {
+    const a = bars("2024-01-02", 12, 10, 0);
+    const b = bars("2024-01-02", 12, 10, 0);
+    const nifty = bars("2024-01-02", 12, 100, 0);
+    nifty[nifty.length - 1].c = 110;
+    nifty[nifty.length - 1].raw = 110;
+    const p = buildPath(
+      [buy("A", 10, 10, "2024-01-02"), sell("A", 10, 10, "2024-01-06"), buy("B", 10, 10, "2024-01-06")],
+      { A: a, B: b },
+      nifty,
+    );
+    assert.ok(p.sameCashLast != null);
+    assert.ok(Math.abs(p.sameCashLast! - 110) < 1e-4, String(p.sameCashLast));
+  });
+
+  it("yearly return is chained unit TWR, not Dietz", () => {
+    const hx = { X: bars("2023-12-20", 400, 100, 0) };
+    for (const bar of hx.X) {
+      const day = new Date(bar.t * 1000).toISOString().slice(0, 10);
+      if (day >= "2024-12-01") {
+        bar.c = 110;
+        bar.raw = 110;
+      }
+    }
+    const p = buildPath(
+      [buy("X", 10, 100, "2023-12-20"), buy("X", 90, 100, "2024-06-03")],
+      hx,
+      hx.X,
+    );
+    const y = p.years.find((r) => r.year === "2024");
+    assert.ok(y);
+    assert.ok(y!.ret != null);
+    assert.ok(Math.abs(y!.ret! - 10) < 2.5, "TWR should be ~10%, got " + y!.ret);
+    assert.ok(Math.abs(y!.ret! - 18.18) > 3, "must not be Dietz ~18%");
+  });
+
+  it("monthly rows compare portfolio TWR to the index", () => {
+    const hx = { X: bars("2024-01-02", 70, 100, 0.002) };
+    const nifty = bars("2024-01-02", 70, 100, 0.001);
+    const p = buildPath([buy("X", 10, 100, "2024-01-02")], hx, nifty);
+    assert.ok(p.months.length >= 1);
+    assert.ok(p.months.every((m) => Number.isFinite(m.port)));
+    assert.ok(p.months.some((m) => m.bench != null));
+  });
+
+  it("index TWR over the path window is a price return, not stock-sale withdrawals", () => {
+    const hx = { X: bars("2024-01-02", 20, 100, 0) };
+    const nifty = bars("2024-01-02", 20, 100, 0);
+    nifty[nifty.length - 1].c = 120;
+    nifty[nifty.length - 1].raw = 120;
+    const p = buildPath([buy("X", 10, 100, "2024-01-02")], { X: hx.X }, nifty);
+    assert.ok(p.benchTwr != null);
+    assert.ok(Math.abs(p.benchTwr! - 20) < 1.5, String(p.benchTwr));
+  });
+
+  it("grouped name P&L is realized plus unrealized, not both counted twice", () => {
+    const hx = { TCS: bars("2024-01-02", 40, 100, 0) };
+    hx.TCS.forEach((b, i) => {
+      if (i > 20) {
+        b.c = 150;
+        b.raw = 150;
+      }
+    });
+    const p = buildPath(
+      [buy("TCS", 10, 100, "2024-01-02"), sell("TCS", 4, 150, "2024-01-25")],
+      hx,
+      hx.TCS,
+    );
+    const row = p.byName.find((n) => n.symbol === "TCS");
+    assert.ok(row);
+    assert.equal(row!.realized, 4 * 50);
+    assert.ok(Math.abs(row!.unrealized - 6 * 50) < 1e-6);
+    assert.ok(Math.abs(row!.total - (row!.realized + row!.unrealized)) < 1e-6);
+    assert.equal(p.events.filter((e) => e.symbol === "TCS").length, 2);
+  });
+
+  it("closed trades record post-sale 1M when later prints exist", () => {
+    const hx = { X: bars("2024-01-02", 80, 100, 0) };
+    for (const bar of hx.X) {
+      const day = new Date(bar.t * 1000).toISOString().slice(0, 10);
+      if (day >= "2024-02-05") {
+        bar.c = 130;
+        bar.raw = 130;
+      }
+    }
+    const p = buildPath(
+      [buy("X", 10, 100, "2024-01-02"), sell("X", 10, 100, "2024-01-06")],
+      hx,
+      hx.X,
+    );
+    const c = p.closed[0];
+    assert.ok(c);
+    assert.ok(c.post1m != null);
+    assert.ok(Math.abs(c.post1m! - 30) < 1, String(c.post1m));
+  });
+
+  it("never-sold stays a hypothetical leftover of purchased qty", () => {
+    const hx = { X: bars("2024-01-02", 20, 10, 0) };
+    hx.X.forEach((b) => {
+      b.c = 12;
+      b.raw = 12;
+    });
+    hx.X[0].c = 10;
+    hx.X[0].raw = 10;
+    const p = buildPath([buy("X", 10, 10, "2024-01-02"), sell("X", 10, 11, "2024-01-10")], hx, hx.X);
+    assert.equal(p.wealthNow, 0);
+    assert.ok(p.neverSoldLast != null && Math.abs(p.neverSoldLast! - 120) < 1e-6);
   });
 });

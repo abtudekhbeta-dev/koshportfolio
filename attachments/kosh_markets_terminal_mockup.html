@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kosh Markets Terminal Mockup</title>
+<style>
+:root{--bg:#0b0d10;--p:#111419;--p2:#151920;--line:#252a32;--text:#e7ebf0;--muted:#8e98a7;--g:#27c58a;--r:#ef6461;--gold:#d8b56a;--blue:#6ea8ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:13px Arial,sans-serif;overflow:hidden}
+.app{height:100vh;display:grid;grid-template-rows:48px 1fr 265px}.top{display:flex;align-items:center;border-bottom:1px solid var(--line);padding:0 14px;gap:18px;background:#0d1014}
+.logo{font-size:19px;font-weight:800}.logo i{color:var(--gold);font-style:normal}.search{width:310px;background:#171b21;border:1px solid #2b313a;border-radius:6px;padding:8px 11px;color:#9ba4b1}.nav{display:flex;gap:18px;color:#8e98a7}.nav .a{color:#fff}.status{margin-left:auto;color:#9ba4b1}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--g);margin-right:6px}
+.workspace{min-height:0;display:grid;grid-template-columns:42px 1fr 285px}.tools{border-right:1px solid var(--line);padding-top:12px;text-align:center;color:#7f8997;font-size:18px}.tools div{margin:0 0 16px}.tools .a{color:#fff}
+.main{min-width:0;display:flex;flex-direction:column}.bar{height:57px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 15px;gap:14px}.sym{font-size:16px;font-weight:750}.sub{font-size:10px;color:#687281;margin-top:3px}.price{font-size:17px;font-weight:700}.up{color:var(--g)}.down{color:var(--r)}.live{font-size:10px;color:#70d5ae;border:1px solid #275f49;background:#11231c;padding:3px 6px;border-radius:4px}.tf{margin-left:auto;display:flex;gap:4px}.tf span{padding:6px 7px;color:#8e98a7;border-radius:4px}.tf .sel{background:#252b34;color:#fff}
+.chart{position:relative;flex:1;padding:8px 12px}.chart svg{width:100%;height:100%}.ohlc{position:absolute;top:13px;left:22px;color:#8993a2;font-size:11px}.watch{border-left:1px solid var(--line);background:#101318;min-width:0}.wh{height:44px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 12px;font-weight:700}.wt{padding:9px 11px;border-bottom:1px solid #1d2229;color:#7d8795;font-size:11px}.wt b{color:#fff;margin-right:14px}.row{display:grid;grid-template-columns:1fr auto;padding:9px 11px;border-bottom:1px solid #1d2229}.row.sel{background:#171c23}.name{font-weight:650}.small{font-size:10px;color:#707a88;margin-top:3px}.rv{text-align:right}.chg{font-size:11px;margin-top:3px}.badge{font-size:9px;background:#1b222c;color:#9ba6b5;padding:2px 4px;border-radius:3px}
+.bottom{border-top:1px solid var(--line);background:#0f1217;display:grid;grid-template-columns:1.35fr 1fr 1fr 1fr;min-height:0}.block{border-right:1px solid var(--line);padding:14px 16px;overflow:hidden}.block:last-child{border:0}.tabs{display:flex;gap:17px;border-bottom:1px solid #232832;padding-bottom:8px;margin-bottom:10px;color:#7d8795;font-size:12px}.tabs .a{color:#fff}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.metric{background:#141920;border:1px solid #202631;border-radius:6px;padding:8px}.metric b{display:block;font-size:14px;margin-bottom:3px}.metric small{color:#7e8998}.kicker{text-transform:uppercase;letter-spacing:.08em;font-size:10px;color:#7e8998;margin-bottom:9px}.ins{border-left:2px solid var(--gold);padding-left:9px;margin-bottom:9px}.ins strong{display:block;font-size:12px;margin-bottom:3px}.ins p{margin:0;color:#9aa3b0;font-size:11px;line-height:1.45}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="top">
+<div class="logo">K<i>O</i>SH</div><div class="search">⌕ &nbsp; Search stock, symbol or ISIN</div>
+<div class="nav"><span>Dashboard</span><span class="a">Markets</span><span>Portfolio</span><span>Screen</span></div>
+<div class="status"><span class="dot"></span>NSE Live &nbsp;|&nbsp; 03:18 PM</div>
+</header>
+<section class="workspace">
+<aside class="tools"><div class="a">⌁</div><div>＋</div><div>╱</div><div>⊙</div><div>◫</div><div>⌖</div><div>⚙</div></aside>
+<main class="main">
+<div class="bar">
+<div><div class="sym">TECHNOE <span style="font-size:10px;color:#778190">NSE</span></div><div class="sub">Techno Electric & Engineering Company</div></div>
+<div class="price">₹1,030.50</div><div class="up">+4.65%</div><div class="live">● LIVE</div>
+<div class="tf"><span>1m</span><span>3m</span><span class="sel">5m</span><span>15m</span><span>30m</span><span>1H</span><span>D</span><span>W</span></div>
+</div>
+<div class="chart">
+<div class="ohlc">TECHNOE · 5 · NSE &nbsp; O 990.30 &nbsp; H 1,039.00 &nbsp; L 989.60 &nbsp; C 1,030.50</div>
+<svg viewBox="0 0 1000 500" preserveAspectRatio="none">
+<g stroke="#1d2229"><path d="M0 90H1000M0 170H1000M0 250H1000M0 330H1000M0 410H1000M150 0V500M350 0V500M550 0V500M750 0V500"/></g>
+<polyline fill="none" stroke="#6ea8ff" stroke-width="2" points="0,370 55,340 110,355 165,300 220,330 275,245 330,275 385,185 440,210 495,155 550,195 605,125 660,145 715,105 770,155 825,95 880,115 935,70 1000,85"/>
+<polyline fill="none" stroke="#d8b56a" stroke-width="1.2" points="0,405 70,380 140,350 210,325 280,300 350,275 420,245 490,225 560,200 630,175 700,150 770,130 840,115 910,98 1000,90"/>
+<g stroke="#7d8795"><path d="M80 395V350M140 360V315M200 325V280M260 300V250M320 270V220M380 220V170M440 230V180M500 195V145M560 185V135M620 155V105M680 165V115M740 140V90M800 130V80M860 110V60M920 105V55"/></g>
+<g fill="#27c58a"><path d="M73 390h14v-25H73zM133 355h14v-25h-14zM193 317h14v-22h-14zM253 292h14v-27h-14zM313 265h14v-30h-14zM373 213h14v-28h-14zM493 188h14v-28h-14zM553 180h14v-30h-14zM613 149h14v-29h-14zM733 132h14v-27h-14zM793 120h14V92h-14zM853 98h14V72h-14z"/></g>
+<g fill="#ef6461"><path d="M433 227h14v-22h-14zM673 155h14v-23h-14zM913 97h14V72h-14z"/></g>
+<g opacity=".35" fill="#27c58a"><path d="M40 490h16v-35H40zM160 490h16v-42h-16zM220 490h16v-65h-16zM340 490h16v-70h-16zM520 490h16v-80h-16zM640 490h16v-70h-16zM760 490h16v-78h-16zM820 490h16v-58h-16zM880 490h16v-70h-16zM940 490h16v-50h-16z"/></g>
+<line x1="0" y1="125" x2="1000" y2="125" stroke="#6ea8ff" stroke-dasharray="5 5" opacity=".5"/>
+</svg>
+</div>
+</main>
+<aside class="watch">
+<div class="wh">Watchlists <span style="margin-left:auto;color:#778291">＋</span></div>
+<div class="wt"><b>My Watchlist</b> Portfolio &nbsp; Power</div>
+<div class="row sel"><div><div class="name">TECHNOE <span class="badge">Owned</span></div><div class="small">NSE · Techno Electric</div></div><div class="rv">₹1,030.50<div class="chg up">+4.65%</div></div></div>
+<div class="row"><div><div class="name">RELIANCE</div><div class="small">NSE · Reliance Industries</div></div><div class="rv">₹1,432.20<div class="chg up">+1.82%</div></div></div>
+<div class="row"><div><div class="name">TCS</div><div class="small">NSE · Tata Consultancy</div></div><div class="rv">₹2,105.00<div class="chg down">-3.88%</div></div></div>
+<div class="row"><div><div class="name">ADANI</div><div class="small">NSE · Adani Enterprises</div></div><div class="rv">₹1,436.10<div class="chg up">+3.55%</div></div></div>
+<div class="row"><div><div class="name">JNKINDIA</div><div class="small">NSE · JNK India</div></div><div class="rv">₹413.90<div class="chg up">+0.47%</div></div></div>
+<div class="row"><div><div class="name">TTML</div><div class="small">NSE · Tata Teleservices</div></div><div class="rv">₹35.73<div class="chg down">-2.48%</div></div></div>
+<div class="row"><div><div class="name">GMRP</div><div class="small">NSE · GMR Power</div></div><div class="rv">₹92.31<div class="chg up">+0.20%</div></div></div>
+</aside>
+</section>
+<section class="bottom">
+<div class="block"><div class="tabs"><span class="a">Overview</span><span>Fundamentals</span><span>Valuation</span><span>News</span></div>
+<div class="grid"><div class="metric"><small>Market Cap</small><b>₹25,400 Cr</b></div><div class="metric"><small>P/E</small><b>10.2x</b></div><div class="metric"><small>Industry P/E</small><b>29.8x</b></div><div class="metric"><small>ROCE</small><b>26.4%</b></div><div class="metric"><small>Debt / Equity</small><b>0.08x</b></div><div class="metric"><small>3Y Profit CAGR</small><b>31%</b></div></div></div>
+<div class="block"><div class="kicker">Kosh valuation</div><div class="ins"><strong>Below historical valuation</strong><p>Current P/E is below the available historical range while earnings remain supported.</p></div><div class="ins"><strong>Industry gap</strong><p>Company trades below industry P/E. Assess the gap alongside growth, ROCE and business quality.</p></div></div>
+<div class="block"><div class="kicker">Kosh view</div><div class="ins"><strong>Quality</strong><p>ROCE remains strong relative to available company history.</p></div><div class="ins"><strong>Growth</strong><p>Profit growth is positive over the tracked period.</p></div><div class="ins"><strong>Portfolio</strong><p>You own this stock · 7.2% portfolio weight.</p></div></div>
+<div class="block"><div class="kicker">Quick actions</div><div class="metric"><b>Open Full Analysis →</b><small>Deep fundamental + valuation research</small></div><br><div class="metric"><b>Compare →</b><small>Compare with another stock</small></div></div>
+</section>
+</div>
+</body></html>

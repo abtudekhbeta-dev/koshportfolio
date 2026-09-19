@@ -354,15 +354,39 @@ describe("upsert and sanitize", () => {
 });
 
 describe("path trade lines", () => {
-  it("skips duplicate buys on add", () => {
+  it("keeps two identical executions without a broker id", () => {
     const a = [{ symbol: "TCS", name: "TCS", qty: 8, price: 2100, date: "2023-01-10", side: 1 as const }];
     const b = [
       { symbol: "TCS", name: "TCS", qty: 8, price: 2100, date: "2023-01-10", side: 1 as const },
       { symbol: "INFY", name: "INFY", qty: 10, price: 1400, date: "2023-02-01", side: 1 as const },
     ];
     const out = mergeTradeLines(a, b);
+    assert.equal(out.length, 3);
+    assert.equal(out.filter((t) => t.symbol === "TCS").length, 2);
+  });
+
+  it("skips an incoming line only when the broker trade id matches", () => {
+    const a = [{ symbol: "TCS", name: "TCS", qty: 8, price: 2100, date: "2023-01-10", side: 1 as const, id: "T1" }];
+    const b = [
+      { symbol: "TCS", name: "TCS", qty: 8, price: 2100, date: "2023-01-10", side: 1 as const, id: "T1" },
+      { symbol: "INFY", name: "INFY", qty: 10, price: 1400, date: "2023-02-01", side: 1 as const, id: "T2" },
+    ];
+    const out = mergeTradeLines(a, b);
     assert.equal(out.length, 2);
     assert.ok(out.find((t) => t.symbol === "INFY"));
+  });
+
+  it("reads broker trade id and keeps two same-qty fills", () => {
+    const rows = [
+      { Symbol: "TCS", Side: "BUY", Qty: 10, Price: 100, Date: "2024-01-02 10:01:00", "Trade ID": "A1" },
+      { Symbol: "TCS", Side: "BUY", Qty: 10, Price: 100, Date: "2024-01-02 10:02:00", "Trade ID": "A2" },
+    ];
+    const trades = extractTradeLines(rows);
+    assert.equal(trades.length, 2);
+    assert.equal(trades[0].id, "A1");
+    assert.equal(trades[1].id, "A2");
+    assert.equal(trades[0].src, 0);
+    assert.equal(trades[1].src, 1);
   });
 
   it("lists undated, missing price and zero qty honestly", () => {

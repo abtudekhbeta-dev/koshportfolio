@@ -181,6 +181,31 @@ const SECTOR_KEYS = [
   "basicindustry",
 ];
 
+const TRADE_ID_KEYS = [
+  "tradeid",
+  "tradeno",
+  "tradenumber",
+  "tradeidentifier",
+  "traderef",
+  "executionid",
+  "execid",
+  "executionno",
+  "fillid",
+  "fillno",
+  "orderid",
+  "orderno",
+  "ordernumber",
+  "exchangeorderid",
+  "exchorderid",
+  "exchordid",
+  "uniqueid",
+  "transactionid",
+  "txnid",
+  "dealid",
+  "tradeuid",
+  "id",
+];
+
 const SIDE_KEYS = [
   "side",
   "buysell",
@@ -594,7 +619,54 @@ type Trade = {
   side: 1 | -1;
   isin?: string;
   sector?: string;
+  id?: string;
+  src?: number;
 };
+
+function pickTradeId(map: Record<string, unknown>): string | undefined {
+  for (const k of TRADE_ID_KEYS) {
+    const v = String(pick(map, [k]) || "").trim();
+    if (!v) continue;
+    if (isIsin(v)) continue;
+    if (/^(buy|sell|equity|trade|stock)$/i.test(v)) continue;
+    return v;
+  }
+  return undefined;
+}
+
+export function tradeHasClock(t: { boughtAt?: string | null }) {
+  const s = t.boughtAt || "";
+  if (!/T\d{2}:\d{2}/.test(s)) return false;
+  return !/T00:00:00/.test(s);
+}
+
+export function tradeMs(t: { boughtAt?: string | null; date?: string | null }) {
+  const s = t.boughtAt || t.date;
+  const n = s ? Date.parse(s) : NaN;
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Date, then clock if both have one, then original file row. Never force buys first. */
+export function sortTrades<T extends TradeLine>(trades: T[]): T[] {
+  return [...(trades || [])]
+    .map((t, i) => ({ t, i }))
+    .sort((A, B) => {
+      const a = A.t;
+      const b = B.t;
+      const da = a.date || "";
+      const db = b.date || "";
+      if (da !== db) return da.localeCompare(db);
+      if (tradeHasClock(a) && tradeHasClock(b)) {
+        const d = tradeMs(a) - tradeMs(b);
+        if (d) return d;
+      }
+      const sa = a.src ?? A.i;
+      const sb = b.src ?? B.i;
+      if (sa !== sb) return sa - sb;
+      return A.i - B.i;
+    })
+    .map((x) => x.t);
+}
 
 function isTradeBook(rows: Record<string, unknown>[]): boolean {
   let n = 0;
@@ -621,6 +693,7 @@ function isTradeBook(rows: Record<string, unknown>[]): boolean {
 
 function extractTrades(rows: Record<string, unknown>[]): Trade[] {
   const out: Trade[] = [];
+  let src = 0;
   for (const row of rows) {
     const map = rowMap(row);
     const rawIsin = findIsin(map);
@@ -648,6 +721,8 @@ function extractTrades(rows: Record<string, unknown>[]): Trade[] {
       side,
       isin: isEquityIsin(rawIsin) ? rawIsin : undefined,
       sector: normalizeSectorLabel(String(pick(map, SECTOR_KEYS) || "")) || undefined,
+      id: pickTradeId(map),
+      src: src++,
     });
   }
   return out;
@@ -664,6 +739,8 @@ export function extractTradeLines(rows: Record<string, unknown>[]): TradeLine[] 
     side: t.side,
     isin: t.isin,
     sector: t.sector,
+    id: t.id,
+    src: t.src,
   }));
 }
 
@@ -677,13 +754,9 @@ function netTrades(trades: Trade[]): Holding[] {
   }
   const out: Holding[] = [];
   for (const [k, list] of by) {
-    list.sort((a, b) => {
-      const da = a.boughtAt || a.date || "";
-      const db = b.boughtAt || b.date || "";
-      return da.localeCompare(db);
-    });
+    const ordered = sortTrades(list as TradeLine[]) as Trade[];
     const lots: { qty: number; px: number; date: string | null; boughtAt: string | null }[] = [];
-    for (const t of list) {
+    for (const t of ordered) {
       if (t.side > 0) {
         lots.push({ qty: t.qty, px: t.price, date: t.date, boughtAt: t.boughtAt });
         continue;
@@ -1057,33 +1130,41 @@ export function mergeHoldings(existing: Holding[], incoming: Holding[]): Holding
   return [...map.values()];
 }
 
-function tradeKey(t: TradeLine) {
-  return [baseSym(t.symbol), t.date || "", t.side, String(t.qty), (t.price || 0).toFixed(4)].join("|");
+function tradeBrokerId(t: TradeLine) {
+  const id = String(t.id || "").trim();
+  return id || "";
 }
 
+function asTradeLine(t: TradeLine): TradeLine {
+  const id = tradeBrokerId(t) || undefined;
+  return {
+    ...t,
+    symbol: baseSym(t.symbol),
+    name: t.name || t.symbol,
+    qty: t.qty,
+    price: t.price > 0 ? t.price : 0,
+    date: t.date || null,
+    side: t.side,
+    id,
+    src: t.src,
+    priceFilled: t.priceFilled || undefined,
+  };
+}
+
+/** Keep every execution. Skip only when both rows share the same broker trade id. */
 export function mergeTradeLines(existing: TradeLine[], incoming: TradeLine[]): TradeLine[] {
-  const map = new Map<string, TradeLine>();
+  const out: TradeLine[] = [];
+  const seen = new Set<string>();
   for (const t of [...(existing || []), ...(incoming || [])]) {
     if (!(t.qty > 0) || (t.side !== 1 && t.side !== -1)) continue;
-    const row: TradeLine = {
-      ...t,
-      symbol: baseSym(t.symbol),
-      name: t.name || t.symbol,
-      qty: t.qty,
-      price: t.price > 0 ? t.price : 0,
-      date: t.date || null,
-      side: t.side,
-      priceFilled: t.priceFilled || undefined,
-    };
-    map.set(tradeKey(row), row);
+    const row = asTradeLine(t);
+    if (row.id) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+    }
+    out.push(row);
   }
-  return [...map.values()].sort((a, b) => {
-    const da = a.date || "";
-    const db = b.date || "";
-    if (da !== db) return da.localeCompare(db);
-    if (a.side !== b.side) return b.side - a.side;
-    return a.symbol.localeCompare(b.symbol);
-  });
+  return sortTrades(out);
 }
 
 /** Honest notes for Path upload: undated, missing price, zero qty. */
@@ -1112,6 +1193,8 @@ export function sanitizeTrades(rows: TradeLine[] | undefined): TradeLine[] {
       price: Number(t.price) || 0,
       side: t.side === -1 ? -1 : 1,
       date: t.date || null,
+      id: t.id ? String(t.id).trim() : undefined,
+      src: t.src,
     })),
   );
 }

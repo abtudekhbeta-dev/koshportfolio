@@ -75,11 +75,13 @@ describe("valuation", () => {
     assert.ok(!/market'?s ask/i.test(v.read));
   });
 
-  it("implied growth helper is PE / 1.5 and is not presented as a fact", () => {
-    assert.equal(impliedGrowthFromPe(30), 20);
+  it("does not set implied growth from P/E ÷ 1.5", () => {
+    assert.equal(impliedGrowthFromPe(30), null);
     assert.equal(impliedGrowthFromPe(null), null);
     const v = buildValuation({ price: 100, fund: fund({ eps: 5, pe: 20, profitCagr5: 10, industryPe: 18 }) });
+    assert.equal(v.impliedGrowth, null);
     assert.ok(!/1\.5 PEG/i.test(v.read));
+    assert.ok(v.reverse.impliedCagr != null);
   });
 
   it("reverse valuation needs industry multiple — no invented exit", () => {

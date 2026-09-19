@@ -101,7 +101,7 @@ export function useBook(portfolio: Portfolio | undefined) {
   return useQuery({
     queryKey: [
       "book",
-      "v12",
+      "v13",
       portfolio?.id,
       portfolio?.bench,
       portfolio?.includeCommodities,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { Search } from "lucide-react";
 import { apiSearch } from "@/lib/kosh/api";
@@ -13,9 +13,11 @@ export function SearchBar() {
   const [hits, setHits] = useState<{ symbol: string; name: string; exch: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const nav = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const recents = useKosh((s) => s.recents);
   const watch = useKosh((s) => s.watch);
   const pushRecent = useKosh((s) => s.pushRecent);
+  const setDeskSymbol = useKosh((s) => s.setDeskSymbol);
   const timer = useRef<number>(0);
 
   useEffect(() => {
@@ -54,6 +56,10 @@ export function SearchBar() {
     pushRecent({ symbol: s, name: name || s });
     setOpen(false);
     setQ("");
+    if (pathname === "/markets" || pathname.startsWith("/markets/")) {
+      setDeskSymbol(s, name || s);
+      return;
+    }
     void nav({ to: "/s/$symbol", params: { symbol: s } });
   }
 
