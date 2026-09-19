@@ -243,9 +243,9 @@ function FinTable({ rows, kind }: { rows: FinRow[]; kind: FinKind }) {
   };
   return (
     <div className="overflow-x-auto rounded-md shadow-[var(--shadow-border)]">
-      <table className="w-full min-w-[280px] border-collapse text-left text-[13px]">
+      <table className="kosh-table w-full border-collapse text-left text-[13px]">
         <thead>
-          <tr className="border-b border-border bg-bg">
+          <tr className="bg-bg">
             <th className="sticky left-0 z-10 min-w-[4.5rem] border-r border-border bg-bg-elevated px-2 py-2 text-[12px] font-semibold text-fg">
               ₹ Cr
             </th>
@@ -263,7 +263,7 @@ function FinTable({ rows, kind }: { rows: FinRow[]; kind: FinKind }) {
               ["Profit", "profit", "text-up"],
             ] as const
           ).map(([name, key, tone], ri) => (
-            <tr key={key} className={ri ? "bg-bg/40" : "border-b border-border/70"}>
+            <tr key={key} className={ri ? "bg-bg/40" : undefined}>
               <td className="sticky left-0 z-10 border-r border-border bg-bg-elevated px-2 py-2 text-[13px] font-semibold text-fg">
                 {name}
               </td>
@@ -297,16 +297,20 @@ export function OwnershipBlock({ fund }: { fund: Fundamentals | null | undefined
   const p = fund?.promoters ?? null;
   const fii = fund?.fii ?? null;
   const dii = fund?.dii ?? null;
+  const pledge = fund?.pledge ?? null;
   return (
     <div className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
       <Label>Ownership</Label>
-      <p className="mt-1 text-[12px] text-subtle">Promoter, FII and DII from the latest shareholding print. Blank means missing.</p>
-      <div className="mt-3 grid grid-cols-3 gap-2">
+      <p className="mt-1 text-[12px] text-subtle">
+        Promoter, FII and DII from the latest shareholding print. Pledge is promoter shares pledged as a % of the company. Blank means missing.
+      </p>
+      <div className={cn("mt-3 grid gap-2", pledge != null ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
         {(
           [
             ["Promoters", p],
             ["FII", fii],
             ["DII", dii],
+            ...(pledge != null ? ([["Pledge", pledge]] as const) : []),
           ] as const
         ).map(([k, v]) => (
           <div key={k} className="rounded-sm bg-bg px-3 py-3 shadow-[var(--shadow-border)]">
@@ -352,28 +356,39 @@ export function FinancialSnapshot({ fund, bare, price }: { fund: Fundamentals | 
     ["Face value", fund.face != null ? `₹${fund.face}` : "—", undefined, "Face value of one share."],
     ["Sales growth (yr)", fund.salesYoY != null ? fmtPct(fund.salesYoY) : "—", fund.salesYoY != null ? (fund.salesYoY >= 0 ? "up" : "down") : undefined, "Latest yearly sales versus the year before."],
     ["Profit growth (yr)", fund.profitYoY != null ? fmtPct(fund.profitYoY) : "—", fund.profitYoY != null ? (fund.profitYoY >= 0 ? "up" : "down") : undefined, "Latest yearly profit versus the year before."],
-    ["PEG", fund.peg != null ? fund.peg.toFixed(2) + (fund.pegVia ? " · " + fund.pegVia : "") : "—", fund.peg != null ? (fund.peg <= 1.5 ? "up" : fund.peg >= 3 ? "down" : undefined) : undefined, "P/E ÷ profit CAGR. Only when growth is positive."],
-    ["Graham number", (() => {
-      const g = grahamNumber(fund.eps, fund.book);
-      if (g == null) return "—";
-      if (price && price > 0) {
-        const gap = (price / g - 1) * 100;
-        return `₹${g.toFixed(0)} · last ${gap >= 0 ? "+" : ""}${gap.toFixed(0)}%`;
-      }
-      return `₹${g.toFixed(0)}`;
-    })(), undefined, "√(22.5 × EPS × book value). A textbook ceiling, not a target."],
     ["Interest cover", fund.interestCover != null ? fund.interestCover.toFixed(1) + "×" : "—", fund.interestCover != null ? (fund.interestCover >= 4 ? "up" : fund.interestCover < 1.5 ? "down" : undefined) : undefined, "Operating profit ÷ interest. How many times interest is earned."],
     ["Promoters", fund.promoters != null ? `${fund.promoters.toFixed(1)}%` : "—", fund.promoters != null ? (fund.promoters >= 50 ? "up" : fund.promoters < 25 ? "down" : undefined) : undefined, "Promoter holding on the latest shareholding print."],
     ["FII", fund.fii != null ? `${fund.fii.toFixed(1)}%` : "—", undefined, "Foreign institutional holding on the latest print."],
     ["DII", fund.dii != null ? `${fund.dii.toFixed(1)}%` : "—", undefined, "Domestic institutional holding on the latest print."],
   ];
+  if (fund.forwardPe != null) {
+    rows.splice(3, 0, ["Forward P/E", fund.forwardPe.toFixed(1), undefined, "Printed forward P/E on the company card. Not an estimate we invented."]);
+  }
+  if (fund.forwardEps != null) {
+    rows.splice(rows.findIndex((r) => r[0] === "EPS (TTM)") + 1, 0, ["Forward EPS", `₹${fund.forwardEps.toFixed(2)}`, undefined, "Printed forward EPS on the company card. Hidden when the card does not print it."]);
+  }
+  if (fund.peg != null) {
+    const i = rows.findIndex((r) => r[0] === "Profit growth (yr)");
+    rows.splice(i + 1, 0, ["PEG", fund.peg.toFixed(2) + (fund.pegVia ? " · " + fund.pegVia : ""), fund.peg <= 1.5 ? "up" : fund.peg >= 3 ? "down" : undefined, "P/E ÷ delivered profit CAGR. Only when growth is positive. Not a forward PEG."]);
+  }
+  if (fund.forwardPeg != null) {
+    const i = rows.findIndex((r) => r[0] === "PEG");
+    rows.splice((i >= 0 ? i : rows.findIndex((r) => r[0] === "Profit growth (yr)")) + 1, 0, ["Forward PEG", fund.forwardPeg.toFixed(2), fund.forwardPeg <= 1.5 ? "up" : fund.forwardPeg >= 3 ? "down" : undefined, "Printed forward PEG on the company card. Hidden when missing — not trailing PEG."]);
+  }
+  const graham = grahamNumber(fund.eps, fund.book);
+  if (graham != null) {
+    const gap = price && price > 0 ? (price / graham - 1) * 100 : null;
+    const gLabel = gap == null ? `₹${graham.toFixed(0)}` : `₹${graham.toFixed(0)} · last ${gap >= 0 ? "+" : ""}${gap.toFixed(0)}%`;
+    const i = rows.findIndex((r) => r[0] === "Interest cover");
+    rows.splice(i >= 0 ? i : rows.length, 0, ["Graham number (optional)", gLabel, undefined, "√(22.5 × EPS × book value). A textbook ceiling, not a target."]);
+  }
   return (
     <div className={bare ? "" : "mt-5"}>
       {!bare ? <Label>Financial snapshot</Label> : null}
       {!bare ? <p className="mt-1 text-[11px] text-subtle">Company card — blank means missing, not a guess. Hover a label.</p> : null}
       <dl className="mt-2 grid grid-cols-1 gap-x-8 sm:grid-cols-2">
         {rows.map(([k, v, tone, help]) => (
-          <div key={k} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-1.5">
+          <div key={k} className="kosh-row kosh-row-stack">
             <dt className="text-[13px] text-muted">
               <Tooltip content={help}>
                 <button type="button" className="text-left text-[13px] text-muted hover:text-fg">
@@ -403,9 +418,9 @@ function WorthTable({ title, points }: { title: string; points: FinPoint[] }) {
     <div className="mt-6">
       <div className="text-[13px] font-semibold tracking-[0.06em] text-fg uppercase">{title}</div>
       <div className="mt-2 overflow-x-auto rounded-md shadow-[var(--shadow-border)]">
-        <table className="w-full min-w-[520px] border-collapse text-left text-[14px]">
+        <table className="kosh-table w-full border-collapse text-left text-[14px]">
           <thead>
-            <tr className="border-b border-border bg-bg">
+            <tr className="bg-bg">
               <th className="sticky left-0 z-10 min-w-[10rem] border-r border-border bg-bg-elevated px-4 py-3 text-[14px] font-semibold text-fg">₹ Crore</th>
               {show.map((p) => (
                 <th key={p.period} className="px-3 py-2.5 text-right text-[13px] font-semibold text-fg">
@@ -437,9 +452,9 @@ function ShareTable({ rows }: { rows: ShPoint[] }) {
     <div className="mt-6">
       <div className="text-[13px] font-semibold tracking-[0.06em] text-fg uppercase">Shareholding</div>
       <div className="mt-2 overflow-x-auto rounded-md shadow-[var(--shadow-border)]">
-        <table className="w-full min-w-[520px] border-collapse text-left text-[14px]">
+        <table className="kosh-table w-full border-collapse text-left text-[14px]">
           <thead>
-            <tr className="border-b border-border bg-bg">
+            <tr className="bg-bg">
               <th className="sticky left-0 z-10 min-w-[8.5rem] border-r border-border bg-bg-elevated px-3 py-2.5 text-[13px] font-semibold text-fg">Period</th>
               <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-fg">Promoters</th>
               <th className="px-3 py-2.5 text-right text-[13px] font-semibold text-fg">FII</th>
@@ -448,7 +463,7 @@ function ShareTable({ rows }: { rows: ShPoint[] }) {
           </thead>
           <tbody>
             {show.map((r) => (
-              <tr key={r.period} className="border-b border-border/60 last:border-0">
+              <tr key={r.period} className="last:border-0">
                 <td className="sticky left-0 z-10 border-r border-border bg-bg-elevated px-3 py-3 text-[15px] font-semibold text-fg">
                   {formatFinMonth(r.period)}
                 </td>
@@ -558,9 +573,9 @@ export function SkillMarkdown({ text, color }: { text: string; color?: boolean }
     const bodyRows = rows.slice(1);
     nodes.push(
       <div key={"t" + nodes.length} className="my-3 overflow-x-auto rounded-md bg-bg-elevated shadow-[var(--shadow-border)]">
-        <table className="w-full min-w-[420px] text-[13px]">
+        <table className="kosh-table w-full text-[13px]">
           <thead>
-            <tr className="border-b border-border text-left">
+            <tr className="text-left">
               {head.map((c, i) => (
                 <th key={i} className="px-3 py-2 text-[11px] font-medium tracking-[0.06em] text-subtle uppercase">
                   {c}
@@ -570,7 +585,7 @@ export function SkillMarkdown({ text, color }: { text: string; color?: boolean }
           </thead>
           <tbody>
             {bodyRows.map((row, ri) => (
-              <tr key={ri} className="border-b border-border/60 last:border-0">
+              <tr key={ri}>
                 {row.map((c, ci) => (
                   <td key={ci} className="px-3 py-2 align-top">
                     {color ? <ColorLine text={c} /> : c}
@@ -975,9 +990,9 @@ export function StructureView({ block }: { block: StructureBlock }) {
       {block.setup ? <P>{block.setup}</P> : null}
       {block.support.length || block.resistance.length ? (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[280px] text-left text-[13px]">
+          <table className="kosh-table w-full text-left text-[13px]">
             <thead className="text-[11px] tracking-[0.08em] text-subtle uppercase">
-              <tr className="border-b border-border">
+              <tr>
                 <th className="py-1.5 pr-3 font-medium">Side</th>
                 <th className="py-1.5 pr-3 font-medium">Level</th>
                 <th className="py-1.5 font-medium">Why</th>
@@ -985,14 +1000,14 @@ export function StructureView({ block }: { block: StructureBlock }) {
             </thead>
             <tbody>
               {block.support.map((r, i) => (
-                <tr key={"s" + i} className="border-b border-border/60">
+                <tr key={"s" + i}>
                   <td className="py-1.5 pr-3 text-up">Support</td>
                   <td className="py-1.5 pr-3 font-mono tabular">{fmt(r.price)}</td>
                   <td className="py-1.5 text-muted">{r.note}</td>
                 </tr>
               ))}
               {block.resistance.map((r, i) => (
-                <tr key={"r" + i} className="border-b border-border/60">
+                <tr key={"r" + i}>
                   <td className="py-1.5 pr-3 text-down">Resistance</td>
                   <td className="py-1.5 pr-3 font-mono tabular">{fmt(r.price)}</td>
                   <td className="py-1.5 text-muted">{r.note}</td>

@@ -319,9 +319,9 @@ function CompareTable({
     <section>
       <h2 className="mb-3 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">{title}</h2>
       <div className="overflow-x-auto rounded-lg bg-surface shadow-[var(--shadow-border)]">
-        <table className="w-full min-w-[560px] text-[13px]">
+        <table className="kosh-table w-full text-[13px]">
           <thead>
-            <tr className="border-b border-border text-left">
+            <tr className="text-left">
               <th className="px-3 py-2 text-[11px] font-medium tracking-[0.06em] text-subtle uppercase">Metric</th>
               <th className="px-3 py-2 text-right text-[11px] font-medium tracking-[0.06em] text-subtle uppercase">{aName}</th>
               <th className="px-3 py-2 text-right text-[11px] font-medium tracking-[0.06em] text-subtle uppercase">{bName}</th>
@@ -337,7 +337,7 @@ function CompareTable({
               const win = winnerOf(av, bv, d.better);
               const gap = av != null && bv != null ? av - bv : null;
               return (
-                <tr key={row.id} className="border-b border-border/60">
+                <tr key={row.id}>
                   <td className="px-3 py-2.5">
                     <MetricLabel id={row.id} />
                     <p className="mt-0.5 max-w-xs text-[11px] leading-snug text-muted">{d.short}</p>

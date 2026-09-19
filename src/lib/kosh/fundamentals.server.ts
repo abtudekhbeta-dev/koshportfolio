@@ -271,6 +271,9 @@ export async function fetchFundamentals(symbol: string): Promise<Fundamentals | 
       dii: diiPct(latestSh),
       roce: pick(list, "ROCE", "Return on Capital Employed", "ROCE %"),
       peg: pick(list, "PEG", "PEG Ratio", "PEG ratio"),
+      forwardPe: pick(list, "Forward PE", "Forward P/E", "Fwd PE", "Forward P/E Ratio", "Forward PE Ratio", "Forward PE(x)"),
+      forwardEps: pick(list, "Forward EPS", "Fwd EPS", "Estimated EPS", "EPS Forward"),
+      forwardPeg: pick(list, "Forward PEG", "Fwd PEG", "Forward PEG Ratio"),
       opm: pick(list, "OPM", "Operating Profit Margin", "OPM %", "Operating Margin", "EBIT Margin"),
       salesCagr3: cagrFrom(points(rev?.yearly), 3),
       profitCagr3: cagrFrom(points(profit?.yearly), 3),
@@ -282,6 +285,9 @@ export async function fetchFundamentals(symbol: string): Promise<Fundamentals | 
       cfo: points(cfoLine?.yearly),
       qCfo: points(cfoLine?.quarterly),
       cfoPat: null,
+      finPeriod: points(rev?.yearly).at(-1)?.period || points(profit?.yearly).at(-1)?.period || null,
+      shPeriod: shareholding.at(-1)?.period || null,
+      retrievedAt: Date.now(),
     };
     const lastCfo = out.cfo.at(-1)?.value;
     const lastPat = out.profits.at(-1)?.value;

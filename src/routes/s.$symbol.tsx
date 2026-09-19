@@ -7,8 +7,9 @@ import { AskAi } from "@/components/ask-ai";
 import { CandleChart, fetchSpec } from "@/components/charts/candle-chart";
 import { NavChart } from "@/components/charts/nav-chart";
 import { FinancialSnapshot, OwnershipBlock } from "@/components/analysis-view";
-import { SnapshotCard, ValuationCard } from "@/components/kosh-snapshot";
+import { SnapshotCard, ValuationModels, CoverageLine } from "@/components/kosh-snapshot";
 import { AddToPortfolio } from "@/components/add-to-portfolio";
+import { EnrichButton } from "@/components/enrich-button";
 import { AttentionStrip } from "@/components/attention-strip";
 import { LivePrice } from "@/components/live-price";
 import { NewsBoard } from "@/components/news-board";
@@ -24,11 +25,13 @@ import { businessView } from "@/lib/kosh/business";
 import { dash, fmtPct, fmtPx, mixCagr, pathFromBars, riskMetrics, sliceNav, windowReturn, ytdReturn } from "@/lib/kosh/engine";
 import { fmtVol, retFrom, volAvg } from "@/lib/kosh/ohlc";
 import { capFromMcap, sectorOf } from "@/lib/kosh/sectors";
-import { pickPeers } from "@/lib/kosh/peers";
+import { pickPeers, peerInsight } from "@/lib/kosh/peers";
 import { universeName } from "@/lib/kosh/universe";
 import { skillOf, pickScreenRow } from "@/lib/kosh/screens";
 import { buildSnapshot } from "@/lib/kosh/snapshot";
-import { buildValuation, earningsQualityRead } from "@/lib/kosh/valuation";
+import { fillFundamentals } from "@/lib/kosh/fund-merge";
+import { buildValuationModels, earningsQualityRead } from "@/lib/kosh/valuation";
+import { buildCoverage, peDiscrepancy } from "@/lib/kosh/coverage";
 import { bareSymbol, isWatched, useKosh, type AlertKind } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import type { ChartRange, DealEvent, OhlcPack } from "@/lib/kosh/types";
@@ -40,8 +43,8 @@ function StockPage() {
   const pushRecent = useKosh((s) => s.pushRecent);
 
   const ohlc = useQuery({
-    queryKey: ["ohlc", symbol, "2y", "1d"],
-    queryFn: () => apiOhlc(symbol, "2y", "1d"),
+    queryKey: ["ohlc", symbol, "5y", "1d"],
+    queryFn: () => apiOhlc(symbol, "5y", "1d"),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });
@@ -102,11 +105,12 @@ function StockBody({
   const interval = useKosh((s) => s.chartPrefs.interval);
 
   const stats = useMemo(() => {
+    const retBars = bars.map((b) => ({ ...b, c: b.adj && b.adj > 0 ? b.adj : b.c }));
     return {
-      ret1w: retFrom(bars, 7),
-      ret1m: retFrom(bars, 31),
-      ret3m: retFrom(bars, 93),
-      ret1y: retFrom(bars, 365),
+      ret1w: retFrom(retBars, 7),
+      ret1m: retFrom(retBars, 31),
+      ret3m: retFrom(retBars, 93),
+      ret1y: retFrom(retBars, 365),
       volAvg: volAvg(bars, 20),
     };
   }, [bars]);
@@ -138,6 +142,11 @@ function StockBody({
   const reads = useKosh((s) => s.skillReads);
   const listed = pack.firstTrade ? new Date(pack.firstTrade * 1000).toISOString().slice(0, 4) : "—";
   const bare = symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
+  const deepSnap = useKosh((s) => s.deepFunds[bare]);
+  const fundData = useMemo(() => {
+    if (fund.data && deepSnap?.fund) return fillFundamentals(fund.data, deepSnap.fund);
+    return fund.data || deepSnap?.fund || null;
+  }, [fund.data, deepSnap]);
   const sector = sectorOf(symbol);
   const mineRow = pickScreenRow(screen.data?.rows, bare) || (screen.data?.rows || []).find((r) => r.symbol === bare);
   const snap = useMemo(
@@ -146,30 +155,58 @@ function StockBody({
         symbol: bare,
         name,
         price: px,
-        fund: fund.data,
+        fund: fundData,
         row: mineRow,
         skill: skillOf(reads, bare),
+        bars: bars.map((b) => ({ t: b.t, c: b.c })),
       }),
-    [bare, name, px, fund.data, mineRow, reads],
+    [bare, name, px, fundData, mineRow, reads, bars],
   );
-  const val = useMemo(() => buildValuation({ price: px, fund: fund.data }), [px, fund.data]);
-  const eq = useMemo(() => earningsQualityRead(fund.data), [fund.data]);
+  const models = useMemo(
+    () => buildValuationModels({ price: px, fund: fundData, bars: bars.map((b) => ({ t: b.t, c: b.c })) }),
+    [px, fundData, bars],
+  );
+  const eq = useMemo(() => earningsQualityRead(fundData), [fundData]);
   const peerPick = pickPeers(bare, screen.data?.rows || [], {
-    mcapCr: fund.data?.mcapCr ?? mineRow?.mcapCr,
-    pe: fund.data?.pe ?? mineRow?.pe,
+    mcapCr: fundData?.mcapCr ?? mineRow?.mcapCr,
+    pe: fundData?.pe ?? mineRow?.pe,
     sector,
   });
   const peers = peerPick.rows;
+  const insight = peerInsight(
+    {
+      pe: fundData?.pe ?? mineRow?.pe,
+      roce: fundData?.roce ?? mineRow?.roce,
+      salesYoY: fundData?.salesYoY ?? mineRow?.salesYoY,
+      profitCagr3: fundData?.profitCagr3 ?? mineRow?.profitCagr3,
+      profitYoY: fundData?.profitYoY ?? mineRow?.profitYoY,
+    },
+    peers,
+  );
+  const cov = useMemo(
+    () =>
+      buildCoverage({
+        fund: fundData,
+        row: mineRow,
+        price: px,
+        peerCount: peers.length,
+      }),
+    [fundData, mineRow, px, peers.length],
+  );
+  const peGap = peDiscrepancy(fundData?.pe, mineRow?.pe);
+  const priceAsOf = bars.at(-1)?.t ? new Date(bars[bars.length - 1].t * 1000).toISOString().slice(0, 10) : null;
+  const finPeriod = fundData?.finPeriod || fundData?.sales?.at(-1)?.period || null;
+  const shPeriod = fundData?.shPeriod || fundData?.shareholding?.at(-1)?.period || null;
   const mine = alerts.filter((a) => a.symbol === bare);
-  const cap = capFromMcap(fund.data?.mcapCr ?? mineRow?.mcapCr, symbol);
+  const cap = capFromMcap(fundData?.mcapCr ?? mineRow?.mcapCr, symbol);
   const card = businessView(symbol, {
-    summary: fund.data?.summary,
-    industry: fund.data?.industry,
-    ceo: fund.data?.ceo,
-    founded: fund.data?.founded,
-    website: fund.data?.website,
+    summary: fundData?.summary,
+    industry: fundData?.industry,
+    ceo: fundData?.ceo,
+    founded: fundData?.founded,
+    website: fundData?.website,
   });
-  const site = fund.data?.website || null;
+  const site = fundData?.website || null;
   const host = site ? (() => { try { return new URL(site).hostname.replace(/^www\./, ""); } catch { return null; } })() : null;
 
   return (
@@ -197,6 +234,8 @@ function StockBody({
           <h1 className="mt-1 text-[28px] font-semibold tracking-tight">{name}</h1>
           <p className="mt-1 text-[12px] text-muted">
             {bare} · {pack.exchange || "NSE"} · {cap} · listed {listed}
+            {mineRow?.series ? ` · ${mineRow.series}` : ""}
+            {mineRow?.gsm ? " · GSM" : ""}
             {site ? (
               <>
                 {" · "}
@@ -205,6 +244,15 @@ function StockBody({
                 </a>
               </>
             ) : null}
+          </p>
+          <p className="mt-1 text-[11px] text-subtle">
+            Price {priceAsOf || "—"}
+            {finPeriod ? ` · Financials ${finPeriod}` : " · Financials period unavailable"}
+            {shPeriod ? ` · Shareholding ${shPeriod}` : " · Shareholding period unavailable"}
+            {fundData?.retrievedAt
+              ? ` · Card ${new Date(fundData.retrievedAt).toISOString().slice(0, 10)}`
+              : ""}
+            {deepSnap?.fund ? " · Full company data loaded" : ""}
           </p>
             </div>
           </div>
@@ -232,13 +280,21 @@ function StockBody({
               {watched ? "Watching" : "Watch"}
             </Button>
             <AddToPortfolio symbol={bare} name={name} px={px} bars={bars} sector={sector} />
+            <EnrichButton symbols={[bare]} />
           </div>
         </div>
       </header>
 
-      <AttentionStrip symbols={[{ symbol: bare, name }]} title="Next 7 days" />
+      <AttentionStrip symbols={[{ symbol: bare, name }]} title="Near-term triggers" />
 
-      <SnapshotCard snap={snap} />
+      {peGap ? (
+        <p className="rounded-lg bg-surface px-4 py-3 text-[13px] text-muted shadow-[var(--shadow-border)]">
+          {peGap.note} Card {peGap.card.toFixed(1)} vs market print {peGap.market.toFixed(1)}.
+        </p>
+      ) : null}
+      <SnapshotCard snap={snap} simple={models.simple} />
+      <CoverageLine cov={cov} />
+      <ValuationModels pack={models} />
 
       <nav className="flex flex-wrap gap-1" role="tablist" aria-label="Stock sections">
         {(
@@ -311,8 +367,7 @@ function StockBody({
       </div>
 
       <section id="snapshot" className={cn("grid gap-4", tab !== "financials" && "hidden")}>
-        <OwnershipBlock fund={fund.data} />
-        <ValuationCard val={val} />
+        <OwnershipBlock fund={fundData} />
         <div className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
           <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Earnings quality</h2>
           <p className="mt-1 text-[12px] text-subtle">Operating cash versus reported profit. Missing cash flow stays blank.</p>
@@ -326,7 +381,7 @@ function StockBody({
             <p className="mt-3 text-sm text-muted">Loading company numbers…</p>
           ) : (
             <div className="mt-2">
-              <FinancialSnapshot fund={fund.data} bare price={px} />
+              <FinancialSnapshot fund={fundData} bare price={px} />
             </div>
           )}
         </div>
@@ -601,14 +656,15 @@ function StockBody({
         <p className="mt-1 mb-3 text-[12px] text-subtle">
           Closest listed names in the same business, ranked by size — not the rest of the sector.
         </p>
+        {insight ? <p className="mb-3 text-[13px] leading-relaxed text-fg">{insight}</p> : null}
         {screen.isPending ? (
           <p className="text-sm text-muted">Peers fill from the live screen once prices are in.</p>
         ) : peers.length ? (
           <div className="overflow-x-auto rounded-lg bg-surface shadow-[var(--shadow-border)]">
-            <table className="w-full min-w-[520px] text-left text-[13px]">
+            <table className="kosh-table w-full text-left text-[13px]">
               <thead className="text-[11px] tracking-[0.06em] text-subtle uppercase">
-                <tr className="border-b border-border">
-                  {["Name", "Price", "Today", "1M", "1Y"].map((h) => (
+                <tr>
+                  {["Name", "Price", "Today", "P/E", "ROCE", "1Y"].map((h) => (
                     <th key={h} className="px-3 py-2 font-medium">
                       {h}
                     </th>
@@ -617,7 +673,7 @@ function StockBody({
               </thead>
               <tbody>
                 {peers.map((r) => (
-                  <tr key={r.symbol} className="border-b border-border/60 last:border-0">
+                  <tr key={r.symbol}>
                     <td className="px-3 py-2">
                       <Link to="/s/$symbol" params={{ symbol: r.symbol }} className="hover:text-chart">
                         {r.name}
@@ -625,9 +681,8 @@ function StockBody({
                     </td>
                     <td className="px-3 py-2 font-mono tabular">{fmtPx(r.price)}</td>
                     <td className={cn("px-3 py-2 font-mono tabular", r.changePct >= 0 ? "text-up" : "text-down")}>{fmtPct(r.changePct)}</td>
-                    <td className={cn("px-3 py-2 font-mono tabular", (r.ret1m ?? 0) >= 0 ? "text-up" : "text-down")}>
-                      {r.ret1m == null ? "—" : fmtPct(r.ret1m)}
-                    </td>
+                    <td className="px-3 py-2 font-mono tabular">{r.pe != null ? r.pe.toFixed(1) : "—"}</td>
+                    <td className="px-3 py-2 font-mono tabular">{r.roce != null ? `${r.roce.toFixed(1)}%` : "—"}</td>
                     <td className={cn("px-3 py-2 font-mono tabular", (r.ret1y ?? 0) >= 0 ? "text-up" : "text-down")}>
                       {r.ret1y == null ? "—" : fmtPct(r.ret1y)}
                     </td>
@@ -760,9 +815,9 @@ function DealsBlock({ symbol, name }: { symbol: string; name: string }) {
         <p className="mt-3 text-sm text-muted">Loading deals…</p>
       ) : deals.length ? (
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[420px] text-left text-[13px]">
+          <table className="kosh-table w-full text-left text-[13px]">
             <thead className="text-[11px] tracking-[0.06em] text-subtle uppercase">
-              <tr className="border-b border-border">
+              <tr>
                 <th className="px-3 py-2 font-medium">Date</th>
                 <th className="px-3 py-2 font-medium">Kind</th>
                 <th className="px-3 py-2 font-medium">Note</th>
@@ -770,7 +825,7 @@ function DealsBlock({ symbol, name }: { symbol: string; name: string }) {
             </thead>
             <tbody>
               {deals.map((d, i) => (
-                <tr key={d.kind + d.date + d.note.slice(0, 24) + i} className="border-b border-border/60 last:border-0">
+                <tr key={d.kind + d.date + d.note.slice(0, 24) + i}>
                   <td className="px-3 py-2 font-mono tabular">{d.date}</td>
                   <td className="px-3 py-2">{dealKind(d.kind)}</td>
                   <td className="px-3 py-2 text-muted">{d.note}</td>

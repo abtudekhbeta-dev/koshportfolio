@@ -1,7 +1,8 @@
-/** Deterministic valuation — no AI price target. Blank when the inputs are missing. */
+/** Scenario valuation — not intrinsic value. Blank when the inputs are missing. */
 
 import { grahamNumber, pegRatio } from "./portfolio-stats.ts";
-import type { Fundamentals } from "./types.ts";
+import { parsePeriod, formatFinPeriod } from "./fin-series.ts";
+import type { FinPoint, Fundamentals } from "./types.ts";
 
 export type ValueCase = {
   label: "Bear" | "Base" | "Bull";
@@ -11,6 +12,14 @@ export type ValueCase = {
   value: number;
   vsPrice: number | null;
   note: string;
+};
+
+export type ReverseVal = {
+  exitPe: number | null;
+  impliedCagr: number | null;
+  years: number;
+  discount: number;
+  body: string;
 };
 
 export type Valuation = {
@@ -23,6 +32,7 @@ export type Valuation = {
   peg: number | null;
   pegVia: string | null;
   impliedGrowth: number | null;
+  reverse: ReverseVal;
   discount: number;
   years: number;
   cases: ValueCase[];
@@ -49,13 +59,71 @@ function fwdValue(eps: number, growthPct: number, exitPe: number, years: number,
 }
 
 /**
- * What the current P/E is asking in earnings growth if a 1.5 PEG were fair.
- * Not a forecast.
+ * Illustration only: P/E divided by 1.5. Not the market's implied growth.
  */
 export function impliedGrowthFromPe(pe: number | null | undefined): number | null {
   const p = num(pe);
   if (p == null || !(p > 0) || p > 400) return null;
   return p / 1.5;
+}
+
+/** What 5-year EPS CAGR would justify today's price at a stated exit multiple, discounted at 12%. */
+export function reverseImpliedCagr(
+  price: number | null | undefined,
+  eps: number | null | undefined,
+  exitPe: number | null | undefined,
+  years = YEARS,
+  discount = DISCOUNT,
+): number | null {
+  const p = num(price);
+  const e = num(eps);
+  const m = num(exitPe);
+  if (p == null || e == null || m == null || !(p > 0) || !(e > 0) || !(m > 0)) return null;
+  const rhs = (p * Math.pow(1 + discount, years)) / (e * m);
+  if (!(rhs > 0)) return null;
+  const g = Math.pow(rhs, 1 / years) - 1;
+  if (!Number.isFinite(g) || g < -0.9 || g > 4) return null;
+  return g * 100;
+}
+
+function buildReverse(price: number | null, eps: number | null, industryPe: number | null): ReverseVal {
+  const years = YEARS;
+  const discount = DISCOUNT * 100;
+  if (price == null || !(price > 0) || eps == null || !(eps > 0)) {
+    return {
+      exitPe: null,
+      impliedCagr: null,
+      years,
+      discount,
+      body: "Insufficient reliable data for reverse valuation — need last price and positive EPS.",
+    };
+  }
+  if (industryPe == null || !(industryPe > 4) || industryPe > 80) {
+    return {
+      exitPe: null,
+      impliedCagr: null,
+      years,
+      discount,
+      body: "Insufficient reliable data for reverse valuation — no reported industry multiple to use as the exit.",
+    };
+  }
+  const g = reverseImpliedCagr(price, eps, industryPe);
+  if (g == null) {
+    return {
+      exitPe: industryPe,
+      impliedCagr: null,
+      years,
+      discount,
+      body: "The reverse sum did not resolve to a usable growth rate. No figure is printed.",
+    };
+  }
+  return {
+    exitPe: industryPe,
+    impliedCagr: g,
+    years,
+    discount,
+    body: `At the reported industry multiple of ${industryPe.toFixed(0)}× as a 5-year exit, discounted at 12% as a modelling assumption, today's price implies about ${g.toFixed(0)}% annual EPS growth. That is the growth the price is asking for under those assumptions — not a forecast.`,
+  };
 }
 
 export function buildValuation(input: {
@@ -72,6 +140,7 @@ export function buildValuation(input: {
   const peg = num(f?.peg) ?? pegRatio(pe, f?.profitCagr5) ?? pegRatio(pe, f?.profitCagr3);
   const pegVia = f?.pegVia || (pegRatio(pe, f?.profitCagr5) != null ? "5Y profit growth" : pegRatio(pe, f?.profitCagr3) != null ? "3Y profit growth" : null);
   const impliedGrowth = impliedGrowthFromPe(pe);
+  const reverse = buildReverse(price, eps, industryPe);
 
   const missing: string[] = [];
   if (price == null) missing.push("last price");
@@ -89,6 +158,7 @@ export function buildValuation(input: {
     const basePe = clamp(ind ?? 16, 8, 22);
     const bearPe = clamp((ind ?? 16) * 0.7, 6, 14);
     const bullPe = clamp((ind ?? 18) * 1.15, 10, 28);
+    const exitNote = ind == null ? "16× is a modelling cap — industry P/E is missing, not assumed as fact." : "exit at the reported industry multiple, capped.";
     const mk = (label: ValueCase["label"], g: number, exitPe: number, note: string): ValueCase => {
       const value = fwdValue(eps, g, exitPe, YEARS, DISCOUNT);
       return {
@@ -102,13 +172,13 @@ export function buildValuation(input: {
       };
     };
     cases.push(
-      mk("Bear", bearG, bearPe, `Haircut the recorded profit CAGR by 6 pp, exit at ${bearPe.toFixed(0)}×.`),
-      mk("Base", baseG, basePe, `Keep the recorded profit CAGR, exit at ${basePe.toFixed(0)}× (industry cap).`),
-      mk("Bull", bullG, bullPe, `Give growth +5 pp, exit at ${bullPe.toFixed(0)}×. Still discounted at 12%.`),
+      mk("Bear", bearG, bearPe, `Haircut the recorded profit CAGR by 6 pp, exit at ${bearPe.toFixed(0)}×. ${exitNote}`),
+      mk("Base", baseG, basePe, `Keep the recorded profit CAGR, exit at ${basePe.toFixed(0)}×. ${exitNote}`),
+      mk("Bull", bullG, bullPe, `Give growth +5 pp, exit at ${bullPe.toFixed(0)}×. 12% discount is a modelling assumption.`),
     );
   }
 
-  const read = interpret({ price, pe, industryPe, graham, grahamGap, peg, impliedGrowth, cases, growth });
+  const read = interpret({ price, pe, industryPe, graham, grahamGap, peg, reverse, cases, growth });
 
   return {
     price,
@@ -120,6 +190,7 @@ export function buildValuation(input: {
     peg,
     pegVia,
     impliedGrowth,
+    reverse,
     discount: DISCOUNT * 100,
     years: YEARS,
     cases,
@@ -135,44 +206,39 @@ function interpret(v: {
   graham: number | null;
   grahamGap: number | null;
   peg: number | null;
-  impliedGrowth: number | null;
+  reverse: ReverseVal;
   cases: ValueCase[];
   growth: number | null;
 }): string {
-  if (v.pe == null && v.graham == null && !v.cases.length) {
-    return "Not enough published numbers for a valuation read. Kosh does not invent a price.";
+  if (v.pe == null && !v.cases.length) {
+    return "Insufficient reliable data for a valuation model. Kosh does not invent a price.";
   }
   const bits: string[] = [];
+  bits.push("These cases are a scenario tool, not intrinsic value.");
   if (v.pe != null && v.industryPe != null) {
-    const gap = ((v.pe / v.industryPe - 1) * 100);
+    const gap = (v.pe / v.industryPe - 1) * 100;
     if (Math.abs(gap) < 10) bits.push(`P/E is in line with the reported industry (${v.pe.toFixed(0)} vs ${v.industryPe.toFixed(0)}).`);
     else if (gap > 0) bits.push(`P/E is ${gap.toFixed(0)}% above the reported industry multiple — the price is paying up, not a bargain print.`);
     else bits.push(`P/E is ${Math.abs(gap).toFixed(0)}% below the reported industry multiple. Cheap only if earnings quality holds.`);
   } else if (v.pe != null) {
     bits.push(`Trailing P/E is ${v.pe.toFixed(1)}. Industry P/E is unavailable, so this is not a relative call.`);
   }
-  if (v.impliedGrowth != null) {
-    bits.push(`At a 1.5 PEG, this multiple is asking for about ${v.impliedGrowth.toFixed(0)}% earnings growth. That is the market’s ask, not a forecast.`);
-  }
-  if (v.graham != null && v.grahamGap != null) {
-    bits.push(
-      v.grahamGap > 15
-        ? `Last price sits ${v.grahamGap.toFixed(0)}% above the Graham number — a textbook ceiling, not a buy call.`
-        : v.grahamGap < -15
-          ? `Last price sits ${Math.abs(v.grahamGap).toFixed(0)}% below the Graham number. That is a filter, not a buy.`
-          : `Last price is close to the Graham number.`,
-    );
-  }
+  if (v.reverse.impliedCagr != null) bits.push(v.reverse.body);
   if (v.peg != null) {
     bits.push(v.peg <= 1.2 ? `PEG ${v.peg.toFixed(2)} is not stretched versus recorded profit growth.` : v.peg >= 3 ? `PEG ${v.peg.toFixed(2)} is expensive versus recorded profit growth.` : `PEG ${v.peg.toFixed(2)}.`);
   }
   const base = v.cases.find((c) => c.label === "Base");
   if (base && base.vsPrice != null) {
     bits.push(
-      `Under the base case (recorded CAGR, 12% discount, 5-year exit) the implied value is ${base.vsPrice >= 0 ? "+" : ""}${base.vsPrice.toFixed(0)}% versus last price. Change the growth or the exit multiple and the number moves — it is not a buy call.`,
+      `Under the base case (recorded CAGR, 12% discount as a modelling assumption, 5-year exit) the implied value is ${base.vsPrice >= 0 ? "+" : ""}${base.vsPrice.toFixed(0)}% versus last price. Change the growth or the exit multiple and the number moves — it is not a buy call.`,
     );
   } else if (v.growth == null) {
     bits.push("No 3Y/5Y profit CAGR on the company card, so the three cases stay blank.");
+  }
+  if (v.graham != null && v.grahamGap != null) {
+    bits.push(
+      `Traditional Graham check: last price is ${v.grahamGap >= 0 ? "+" : ""}${v.grahamGap.toFixed(0)}% versus ₹${v.graham.toFixed(0)}. A textbook filter, not a buy call.`,
+    );
   }
   return bits.join(" ") || "Numbers are on the card. No extra story is added.";
 }
@@ -204,3 +270,280 @@ export function earningsQualityRead(f: Fundamentals | null | undefined): {
   }
   return { cfoPat: ratio, tag: "Weak cash", body: `Operating cash is ${ratio.toFixed(2)}× reported profit. Treat the earnings print as low quality until cash catches up.` };
 }
+
+export type ValueWord = "Cheaper" | "About right" | "Expensive" | "Not enough data";
+
+export type PePoint = {
+  period: string;
+  label: string;
+  year: number;
+  pat: number;
+  eps: number | null;
+  price: number | null;
+  pe: number | null;
+};
+
+export type ValRow = { label: string; value: string };
+
+export type ValModel = {
+  id: "A+" | "C" | "D";
+  title: string;
+  word: ValueWord;
+  figure: string;
+  body: string;
+  rows: ValRow[];
+  note: string;
+};
+
+export type ValuationModelsPack = {
+  models: ValModel[];
+  simple: ValModel;
+  hist: PePoint[];
+  graham: number | null;
+  grahamGap: number | null;
+};
+
+type CloseBar = { t: number; c: number };
+
+function wordOf(current: number | null, fair: number | null, cheaperIfLower = true): ValueWord {
+  if (current == null || !(current > 0) || fair == null || !(fair > 0)) return "Not enough data";
+  const ratio = cheaperIfLower ? current / fair : fair / current;
+  if (ratio <= 0.85) return "Cheaper";
+  if (ratio >= 1.15) return "Expensive";
+  return "About right";
+}
+
+function wordByGap(payingFor: number | null, delivered: number | null): ValueWord {
+  if (payingFor == null || delivered == null || !Number.isFinite(payingFor) || !Number.isFinite(delivered)) {
+    return "Not enough data";
+  }
+  const gap = payingFor - delivered;
+  if (gap >= 5) return "Expensive";
+  if (gap <= -5) return "Cheaper";
+  return "About right";
+}
+
+/** Last session on or before the IST month-end, within ~45 days. */
+export function yearEndClose(bars: CloseBar[], year: number, month = 3): number | null {
+  if (!bars.length || !Number.isFinite(year)) return null;
+  const lastDay = month === 2 ? 28 : [4, 6, 9, 11].includes(month) ? 30 : 31;
+  const end = Date.parse(`${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}T23:59:59+05:30`) / 1000;
+  if (!Number.isFinite(end)) return null;
+  const start = end - 45 * 86400;
+  let best: number | null = null;
+  for (const b of bars) {
+    const px = b.c;
+    if (!(px > 0)) continue;
+    if (b.t > start && b.t <= end) best = px;
+  }
+  return best;
+}
+
+/**
+ * Reconstruct year-end P/E from yearly profit and the year-end price.
+ * EPS_t ≈ current EPS × (PAT_t / PAT_now). Share count is assumed roughly stable.
+ * This is not a filing P/E series.
+ */
+export function reconstructPeHistory(input: {
+  profits: FinPoint[] | null | undefined;
+  currentEps: number | null | undefined;
+  bars: CloseBar[] | null | undefined;
+}): PePoint[] {
+  const epsNow = num(input.currentEps);
+  const bars = input.bars || [];
+  const yearly: { period: string; pat: number; y: number; m: number }[] = [];
+  for (const p of input.profits || []) {
+    if (!Number.isFinite(p.value) || p.value === 0) continue;
+    const parsed = parsePeriod(p.period);
+    if (!parsed) continue;
+    const isYear = /^\d{4}$/.test(String(p.period).trim()) || parsed.m === 3 || /^FY/i.test(String(p.period));
+    if (!isYear && parsed.m !== 3) continue;
+    yearly.push({ period: p.period, pat: p.value, y: parsed.y, m: parsed.m || 3 });
+  }
+  yearly.sort((a, b) => a.y - b.y || a.m - b.m);
+  const last = yearly.at(-1);
+  if (!last || !(last.pat > 0)) return [];
+  const out: PePoint[] = [];
+  for (const y of yearly) {
+    const eps = epsNow != null && last.pat > 0 ? epsNow * (y.pat / last.pat) : null;
+    const price = yearEndClose(bars, y.y, y.m || 3);
+    const pe = eps != null && eps > 0 && price != null && price > 0 ? price / eps : null;
+    out.push({
+      period: y.period,
+      label: formatFinPeriod(y.period, "year"),
+      year: y.y,
+      pat: y.pat,
+      eps: eps != null && Number.isFinite(eps) ? eps : null,
+      price,
+      pe: pe != null && Number.isFinite(pe) && pe > 0 && pe < 400 ? pe : null,
+    });
+  }
+  return out;
+}
+
+/** Residual-income P/B. g is capped below both ROE and the 12% discount. */
+export function justifiedPb(roePct: number | null | undefined, gPct: number | null | undefined, rPct = 12): number | null {
+  const roe = num(roePct);
+  const r = num(rPct);
+  if (roe == null || r == null || !(r > 0)) return null;
+  const roeU = roe / 100;
+  const rU = r / 100;
+  const cap = Math.min(roeU, rU) - 0.01;
+  if (!(cap > 0)) return null;
+  let gU = num(gPct) != null ? (gPct as number) / 100 : 0;
+  gU = Math.min(Math.max(gU, -0.05), cap);
+  if (!(rU > gU)) return null;
+  const pb = (roeU - gU) / (rU - gU);
+  if (!Number.isFinite(pb) || pb <= 0 || pb > 50) return null;
+  return pb;
+}
+
+function modelA(input: {
+  pe: number | null;
+  industryPe: number | null;
+  eps: number | null;
+  hist: PePoint[];
+}): ValModel {
+  const word = wordOf(input.pe, input.industryPe, true);
+  const rows: ValRow[] = [];
+  if (input.pe != null) rows.push({ label: "P/E today", value: `${input.pe.toFixed(1)}×` });
+  if (input.industryPe != null) rows.push({ label: "Industry P/E", value: `${input.industryPe.toFixed(1)}×` });
+  if (input.eps != null && input.eps > 0) rows.push({ label: "EPS today", value: `₹${input.eps.toFixed(1)}` });
+
+  const currentPe = input.pe;
+  const higher = [...input.hist]
+    .filter((p) => p.pe != null && (currentPe == null || p.pe > currentPe + 0.4))
+    .sort((a, b) => (b.pe || 0) - (a.pe || 0))[0];
+  const peak = [...input.hist].filter((p) => p.pe != null).sort((a, b) => (b.pe || 0) - (a.pe || 0))[0];
+  const then = higher || (peak && currentPe != null && peak.pe != null && peak.pe > currentPe ? peak : null);
+
+  if (then && then.pe != null) {
+    rows.push({ label: `P/E ${then.label}`, value: `${then.pe.toFixed(1)}×` });
+    if (then.eps != null) rows.push({ label: `EPS ${then.label}`, value: `₹${then.eps.toFixed(1)}` });
+  }
+
+  const bits: string[] = [];
+  if (input.pe != null && input.industryPe != null) {
+    const gap = (input.pe / input.industryPe - 1) * 100;
+    if (Math.abs(gap) < 10) bits.push(`P/E is in line with the reported industry (${input.pe.toFixed(0)} vs ${input.industryPe.toFixed(0)}).`);
+    else if (gap > 0) bits.push(`P/E is ${gap.toFixed(0)}% above the reported industry multiple.`);
+    else bits.push(`P/E is ${Math.abs(gap).toFixed(0)}% below the reported industry multiple.`);
+  } else {
+    bits.push("Industry P/E is not on the card, so there is no relative call.");
+  }
+  if (then && then.pe != null && then.eps != null && input.eps != null) {
+    const epsMove = input.eps - then.eps;
+    bits.push(
+      `When P/E was ${then.pe.toFixed(0)}× (${then.label}), EPS was ₹${then.eps.toFixed(1)}. Today EPS is ₹${input.eps.toFixed(1)}${epsMove > 0 ? " — earnings have grown since that richer multiple" : epsMove < 0 ? " — earnings are lower than at that richer multiple" : ""}.`,
+    );
+  } else if (input.hist.some((p) => p.pe != null)) {
+    bits.push("No earlier reconstructed year had a higher P/E than today.");
+  } else {
+    bits.push("A reconstructed P/E history needs yearly profit and year-end prices. Share count is assumed roughly stable — this is not a filing P/E.");
+  }
+
+  const figure =
+    input.pe != null && input.industryPe != null
+      ? `${input.pe.toFixed(0)}× vs ${input.industryPe.toFixed(0)}× industry`
+      : input.pe != null
+        ? `${input.pe.toFixed(1)}× P/E`
+        : "No P/E";
+
+  return {
+    id: "A+",
+    title: "P/E vs industry, EPS then vs now",
+    word,
+    figure,
+    body: bits.join(" "),
+    rows,
+    note: "Reconstructed P/E uses yearly profit and the year-end price. Share count is assumed roughly stable. Not a filing series and not a buy call.",
+  };
+}
+
+function modelC(input: { price: number | null; eps: number | null; industryPe: number | null; delivered: number | null }): ValModel {
+  const paying = reverseImpliedCagr(input.price, input.eps, input.industryPe);
+  const word = wordByGap(paying, input.delivered);
+  const rows: ValRow[] = [];
+  if (paying != null) rows.push({ label: "Growth the price is paying for", value: `${paying.toFixed(0)}% a year` });
+  if (input.delivered != null) rows.push({ label: "Growth delivered", value: `${input.delivered.toFixed(0)}% a year` });
+  if (input.industryPe != null) rows.push({ label: "Exit multiple used", value: `${input.industryPe.toFixed(0)}× industry` });
+
+  let body: string;
+  if (paying == null) {
+    body = "Need last price, positive EPS, and a reported industry multiple to say what growth the price is already paying for.";
+  } else if (input.delivered == null) {
+    body = `The price is already paying for about ${paying.toFixed(0)}% annual earnings growth over 5 years (industry exit, 12% discount as a modelling assumption). Delivered profit CAGR is not on the card, so there is nothing to compare it with.`;
+  } else {
+    body = `The price is already paying for about ${paying.toFixed(0)}% annual earnings growth over 5 years. The company has delivered ${input.delivered.toFixed(0)}% profit CAGR. That is a comparison under those assumptions — not a forecast.`;
+  }
+
+  return {
+    id: "C",
+    title: "Growth the price is paying for",
+    word: paying == null ? "Not enough data" : input.delivered == null ? "Not enough data" : word,
+    figure: paying != null && input.delivered != null ? `Paying for ${paying.toFixed(0)}% · delivered ${input.delivered.toFixed(0)}%` : paying != null ? `Paying for ${paying.toFixed(0)}%` : "No figure",
+    body,
+    rows,
+    note: "5-year exit at the reported industry multiple, discounted at 12% as a modelling assumption. Not a forecast.",
+  };
+}
+
+function modelD(input: { pb: number | null; roe: number | null; growth: number | null }): ValModel {
+  const gKnown = input.growth != null;
+  const g = gKnown ? input.growth : 0;
+  const just = justifiedPb(input.roe, g, 12);
+  const word = wordOf(input.pb, just, true);
+  const rows: ValRow[] = [];
+  if (input.pb != null) rows.push({ label: "P/B today", value: `${input.pb.toFixed(2)}×` });
+  if (just != null) rows.push({ label: "Justified P/B", value: `${just.toFixed(2)}×` });
+  if (input.roe != null) rows.push({ label: "ROE", value: `${input.roe.toFixed(1)}%` });
+  rows.push({ label: "Discount (r)", value: "12%" });
+  rows.push({
+    label: "Growth used (g)",
+    value: gKnown ? `${(g as number).toFixed(0)}%` : "0% (no CAGR on card)",
+  });
+
+  let body: string;
+  if (input.roe == null) {
+    body = "Need ROE to justify a P/B. The card does not have it.";
+  } else if (just == null) {
+    body = "ROE is not high enough versus the 12% discount to justify a P/B on this model.";
+  } else if (input.pb == null) {
+    body = `Justified P/B is ${just.toFixed(2)}× from ROE ${(input.roe).toFixed(0)}% and g ${gKnown ? (g as number).toFixed(0) + "%" : "0% (no profit CAGR on the card)"}. Today's P/B is not on the card.`;
+  } else {
+    body = `Justified P/B is ${just.toFixed(2)}× from ROE ${input.roe.toFixed(0)}% (r = 12% labelled). Today's P/B is ${input.pb.toFixed(2)}×. g is ${gKnown ? (g as number).toFixed(0) + "% from recorded profit CAGR" : "set to 0% because a profit CAGR is not on the card"}.`;
+  }
+
+  return {
+    id: "D",
+    title: "Justified P/B from ROE",
+    word: just == null || input.pb == null ? "Not enough data" : word,
+    figure: just != null && input.pb != null ? `${input.pb.toFixed(2)}× vs ${just.toFixed(2)}× justified` : just != null ? `${just.toFixed(2)}× justified` : "No figure",
+    body,
+    rows,
+    note: "P/B = (ROE − g) / (r − g) with r = 12%. g is capped below ROE and r. Not a buy call.",
+  };
+}
+
+export function buildValuationModels(input: {
+  price?: number | null;
+  fund?: Fundamentals | null;
+  bars?: CloseBar[] | null;
+}): ValuationModelsPack {
+  const f = input.fund || null;
+  const price = num(input.price);
+  const eps = num(f?.eps);
+  const pe = num(f?.pe) ?? (price != null && eps != null && eps > 0 ? price / eps : null);
+  const industryPe = num(f?.industryPe);
+  const pb = num(f?.pb);
+  const roe = num(f?.roe);
+  const delivered = num(f?.profitCagr5) ?? num(f?.profitCagr3);
+  const hist = reconstructPeHistory({ profits: f?.profits, currentEps: eps, bars: input.bars });
+  const a = modelA({ pe, industryPe, eps, hist });
+  const c = modelC({ price, eps, industryPe, delivered });
+  const d = modelD({ pb, roe, growth: delivered });
+  const graham = grahamNumber(eps, f?.book);
+  const grahamGap = graham != null && price != null && graham > 0 ? (price / graham - 1) * 100 : null;
+  return { models: [a, c, d], simple: a, hist, graham, grahamGap };
+}
+

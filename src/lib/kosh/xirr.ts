@@ -38,6 +38,11 @@ function newton(flows: { t: number; v: number }[]): number | null {
   return Math.abs(npv(r)) < 5 ? r * 100 : null;
 }
 
+/** Annualised XIRR from dated cash flows (negative = money out). */
+export function xirrFromFlows(flows: { t: number; v: number }[]): number | null {
+  return newton(flows);
+}
+
 export function bookXirr(lines: XirrLine[], datedOnly: boolean, asOf = Date.now()): XirrResult {
   let datedValue = 0;
   let missingValue = 0;

@@ -148,9 +148,20 @@ export async function apiSkillPut(read: SkillRead) {
   });
 }
 
-export async function apiFundamentals(symbol: string) {
-  const d = await json<{ fund: Fundamentals | null }>("/api/fundamentals?symbol=" + encodeURIComponent(symbol));
+export async function apiFundamentals(symbol: string, deep = false) {
+  const d = await json<{ fund: Fundamentals | null; sources?: string[] }>(
+    "/api/fundamentals?symbol=" + encodeURIComponent(symbol) + (deep ? "&deep=1" : ""),
+  );
   return d.fund;
+}
+
+export async function apiEnrich(symbols: string[]) {
+  if (!symbols.length) return { funds: {} as Record<string, Fundamentals>, sources: {} as Record<string, string[]> };
+  return json<{ funds: Record<string, Fundamentals>; sources: Record<string, string[]> }>("/api/enrich", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbols }),
+  });
 }
 
 export async function apiMacro() {

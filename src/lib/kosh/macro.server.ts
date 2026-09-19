@@ -2,6 +2,7 @@
 
 import type { DealEvent, FiidiiRow, MacroPack, ResultEvent } from "./types";
 import { SCREEN_UNIVERSE, universeName } from "./universe";
+import { parseIstDate } from "./dates";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -109,6 +110,7 @@ function macroEvents(): ResultEvent[] {
         date: iso(nfp),
         purpose: "US non-farm payrolls (first Friday)",
         kind: "macro",
+        expected: true,
       });
     }
   }
@@ -120,6 +122,7 @@ function macroEvents(): ResultEvent[] {
       date: iso(budget),
       purpose: "Union Budget (typical 1 Feb window)",
       kind: "macro",
+      expected: true,
     });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 18);
@@ -141,10 +144,12 @@ async function fetchResults(): Promise<ResultEvent[]> {
       if (!symbol || !purpose) continue;
       const kind = eventKind(purpose);
       if (kind !== "results" && !uni.has(symbol)) continue;
+      const date = parseIstDate(String(o.date || ""));
+      if (!date) continue;
       board.push({
         symbol,
         name: universeName(symbol) || String(o.company || symbol),
-        date: String(o.date || ""),
+        date,
         purpose,
         kind,
       });
@@ -195,15 +200,7 @@ async function nseJson(path: string): Promise<unknown> {
 }
 
 function dealDate(raw: unknown): string {
-  const s = String(raw || "").trim();
-  const m = s.match(/(\d{4}-\d{2}-\d{2})/);
-  if (m) return m[1];
-  const dmy = s.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
-  if (dmy) {
-    const y = dmy[3].length === 2 ? "20" + dmy[3] : dmy[3];
-    return `${y}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
-  }
-  return s.slice(0, 10);
+  return parseIstDate(String(raw || "").trim()) || "";
 }
 
 async function fetchDeals(): Promise<DealEvent[]> {
@@ -266,7 +263,7 @@ async function fetchDeals(): Promise<DealEvent[]> {
 }
 
 export async function fetchMacro(): Promise<MacroPack> {
-  const hit = cache.get("v3");
+  const hit = cache.get("v4");
   if (hit && Date.now() - hit.at < TTL) return hit.data;
   const [fiidii, results, deals] = await Promise.all([fetchFiidii(), fetchResults(), fetchDeals()]);
   const data: MacroPack = {
@@ -275,6 +272,6 @@ export async function fetchMacro(): Promise<MacroPack> {
     deals,
     asOf: new Date().toISOString(),
   };
-  cache.set("v3", { at: Date.now(), data });
+  cache.set("v4", { at: Date.now(), data });
   return data;
 }

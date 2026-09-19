@@ -6,6 +6,7 @@ import { apiMacro } from "@/lib/kosh/api";
 import { fmtPct } from "@/lib/kosh/engine";
 import type { FiidiiRow, ResultEvent, ScreenRow } from "@/lib/kosh/types";
 import { marketTemp } from "@/lib/kosh/screens";
+import { compareIstDate, formatIstDate } from "@/lib/kosh/dates";
 import { cn } from "@/lib/utils";
 
 function cr(n: number) {
@@ -80,7 +81,7 @@ export function EventCalendar({ compact, symbols }: { compact?: boolean; symbols
       if (!want || r.kind === "macro") return true;
       return want.includes(String(r.symbol || "").toUpperCase().replace(/\.(NS|BO)$/i, ""));
     });
-    return [...filtered].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    return [...filtered].sort((a, b) => compareIstDate(a.date, b.date));
   }, [q.data, filter, symbols?.join(",")]);
   const shown = compact ? rows.slice(0, 12) : rows.slice(0, 24);
 
@@ -118,6 +119,11 @@ export function EventCalendar({ compact, symbols }: { compact?: boolean; symbols
                 <span className={cn("mr-2 rounded-sm px-1.5 py-0.5 text-[10px] font-medium uppercase", toneOf(kind))}>
                   {kind === "results" ? "Results" : kind === "macro" ? "Macro" : "Stock"}
                 </span>
+                {r.expected ? (
+                  <span className="mr-2 rounded-sm bg-warn/20 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em] text-warn uppercase">
+                    Expected
+                  </span>
+                ) : null}
                 {r.name}
                 <span className="text-[11px] text-subtle"> · {r.purpose}</span>
               </>
@@ -131,7 +137,7 @@ export function EventCalendar({ compact, symbols }: { compact?: boolean; symbols
               ) : (
                 <span className="min-w-0 truncate">{label}</span>
               )}
-              <span className="shrink-0 font-mono text-[12px] text-muted tabular">{r.date}</span>
+              <span className="shrink-0 font-mono text-[12px] text-muted tabular">{formatIstDate(r.date)}</span>
             </li>
             );
           })}

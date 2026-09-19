@@ -139,6 +139,55 @@ export function pickPeers(
   return { line: sector, rows: fill.slice(0, n) };
 }
 
+function median(nums: number[]) {
+  if (!nums.length) return null;
+  const a = [...nums].sort((x, y) => x - y);
+  const m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+
+function growthOf(r: { salesYoY?: number | null; profitCagr3?: number | null; profitYoY?: number | null }) {
+  return r.profitCagr3 ?? r.salesYoY ?? r.profitYoY ?? null;
+}
+
+/**
+ * One insight sentence when PE, ROCE and growth exist on the name and on peers.
+ * Never pads with a sector when the business line is missing.
+ */
+export function peerInsight(
+  mine: { pe?: number | null; roce?: number | null; salesYoY?: number | null; profitCagr3?: number | null; profitYoY?: number | null } | null | undefined,
+  peers: { pe?: number | null; roce?: number | null; salesYoY?: number | null; profitCagr3?: number | null; profitYoY?: number | null }[],
+): string | null {
+  if (!mine) return null;
+  const pe = mine.pe;
+  const roce = mine.roce;
+  const g = growthOf(mine);
+  const withPe = peers.map((p) => p.pe).filter((n): n is number => n != null && n > 0);
+  const withRoce = peers.map((p) => p.roce).filter((n): n is number => n != null && Number.isFinite(n));
+  const withG = peers.map(growthOf).filter((n): n is number => n != null && Number.isFinite(n));
+  if (pe == null || !(pe > 0) || withPe.length < 2) return null;
+  if (roce == null || withRoce.length < 2) return null;
+  if (g == null || withG.length < 2) return null;
+  const peMed = median(withPe);
+  const roceMed = median(withRoce);
+  const gMed = median(withG);
+  if (peMed == null || roceMed == null || gMed == null || !(peMed > 0)) return null;
+  const peGap = ((pe / peMed) - 1) * 100;
+  const roceGap = roce - roceMed;
+  const gGap = g - gMed;
+  const pay =
+    Math.abs(peGap) < 8
+      ? "You are paying roughly in line with this business line"
+      : peGap > 0
+        ? `You are paying ${peGap.toFixed(0)}% more than this business line`
+        : `You are paying ${Math.abs(peGap).toFixed(0)}% less than this business line`;
+  const qual =
+    Math.abs(roceGap) < 2 && Math.abs(gGap) < 4
+      ? "for similar ROCE and growth."
+      : `for ${roceGap >= 0 ? "+" : ""}${roceGap.toFixed(0)} pp ROCE and ${gGap >= 0 ? "+" : ""}${gGap.toFixed(0)} pp growth versus the same names.`;
+  return `${pay} ${qual} Not a cheap/expensive call on its own.`;
+}
+
 export type BusinessPile = {
   line: string;
   names: { symbol: string; name: string; weight: number }[];

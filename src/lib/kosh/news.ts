@@ -124,3 +124,15 @@ export function newsMaterial(title: string): "high" | "medium" | "low" {
     return "medium";
   return "low";
 }
+
+/** One line from the headline bucket. Not a price call. */
+export function newsWhy(title: string): string {
+  const b = newsBucket(title);
+  if (b === "results") return "A results print can change earnings and the multiple.";
+  if (b === "deals") return "Ownership or capital-structure news — check control, dilution, or a change in the float.";
+  if (b === "policy") return "Regulation can reprice a whole line of business, not just one print.";
+  if (b === "business") return "Operating news (capacity, orders, plants) matters if it changes the earnings path.";
+  const mat = newsMaterial(title);
+  if (mat === "high") return "Headline wording is not a conclusion; treat this as something to verify.";
+  return "Background. Unlikely to change the thesis on its own.";
+}

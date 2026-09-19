@@ -319,6 +319,29 @@ export const ISIN_TO_TICKER: Record<string, string> = {
   INE1YPB01014: "AGL",
 };
 
+const LIVE_ISIN: Record<string, string> = {};
+
+/** Overlay from the live NSE master. Does not replace the static map. */
+export function registerLiveIsins(map: Record<string, string>) {
+  for (const [k, v] of Object.entries(map || {})) {
+    const isin = String(k || "")
+      .trim()
+      .toUpperCase();
+    const tick = String(v || "")
+      .trim()
+      .toUpperCase();
+    if (/^IN[A-Z0-9]{10}$/.test(isin) && tick) LIVE_ISIN[isin] = tick;
+  }
+}
+
+export function tickerFromIsin(isin: string): string | undefined {
+  const k = String(isin || "")
+    .trim()
+    .toUpperCase();
+  if (!k) return undefined;
+  return LIVE_ISIN[k] || ISIN_TO_TICKER[k];
+}
+
 /** NSE Yahoo symbols that differ from the broker ticker. */
 export const YF_ALIAS: Record<string, string> = {
   ACLGLOBL: "AGL",

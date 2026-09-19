@@ -53,9 +53,9 @@ function Sectors() {
         </div>
       </section>
       <div className="hidden overflow-x-auto rounded-lg bg-surface shadow-[var(--shadow-border)] md:block">
-        <table className="w-full min-w-[760px] text-[13px]">
+        <table className="kosh-table w-full text-[13px]">
           <thead>
-            <tr className="border-b border-border text-left">
+            <tr className="text-left">
               <th className="px-3 py-2 text-[11px] font-medium tracking-[0.06em] text-subtle uppercase">Sector</th>
               <th className="px-3 py-2 text-right text-[11px] font-medium tracking-[0.06em] text-subtle uppercase">Weight</th>
               <th className="px-3 py-2 text-right text-[11px] font-medium tracking-[0.06em] text-subtle uppercase">1M you</th>
@@ -71,7 +71,7 @@ function Sectors() {
               const w = value ? (s.value / value) * 100 : 0;
               const gap = s.windows.y1 != null && s.index.y1 != null ? s.windows.y1 - s.index.y1 : null;
               return (
-                <tr key={s.sector} className="border-b border-border/60">
+                <tr key={s.sector}>
                   <td className="px-3 py-2.5">
                     <div className="font-medium">{s.sector}</div>
                     <div className="text-[11px] text-subtle">

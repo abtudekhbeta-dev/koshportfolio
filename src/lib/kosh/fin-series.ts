@@ -45,6 +45,12 @@ export function parsePeriod(period: string): { y: number; m: number; t: number }
     const y = year2(Number(mon[2]));
     return { y, m, t: y * 100 + m };
   }
+  const nse = s.match(/^(\d{1,2})[-/ ]([A-Za-z]{3})[a-z]*\.?[-/ ](\d{2}|\d{4})$/);
+  if (nse) {
+    const m = MON[nse[2].slice(0, 3).toLowerCase()];
+    const y = year2(Number(nse[3]));
+    if (m) return { y, m, t: y * 100 + m };
+  }
   const q = s.match(/^Q([1-4])\s*FY\s*['’′]?(\d{2}|\d{4})$/i);
   if (q) {
     const qi = Number(q[1]);

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { skillPass, skillReadFrom, skillReadMerge, skillOf, rankMultibagger, SOUND_RULES, pickScreenRow, screenKey, screenRowFromQuote, mergeScreenRows, applyScreen, blankScreenRow, type SkillRead } from "./screens.ts";
+import { skillPass, skillReadFrom, skillReadMerge, skillOf, rankMultibagger, candidateMultibagger, scoreMultibagger, SOUND_RULES, GROWTH_RULES, matchLabel, pickScreenRow, screenKey, screenRowFromQuote, mergeScreenRows, applyScreen, blankScreenRow, type SkillRead } from "./screens.ts";
 
 function read(p: Partial<SkillRead>): SkillRead {
   return {
@@ -194,6 +194,75 @@ describe("rankMultibagger", () => {
     };
     const out = rankMultibagger([row], SOUND_RULES, "roe");
     assert.equal(out.length, 0);
+  });
+});
+
+describe("multibagger candidate vs strict", () => {
+  it("shows a candidate when enough checks pass and one field is blank — missing is not a pass", () => {
+    const row = {
+      ...blankScreenRow("CAND"),
+      price: 100,
+      promoters: 55,
+      de: 0.2,
+      roce: 24,
+      peg: 1.1,
+      opm: 18,
+      salesCagr3: 20,
+      profitCagr3: 40,
+      profitCagr5: 18,
+      salesYoY: 12,
+      roe: 22,
+    };
+    assert.equal(rankMultibagger([row], SOUND_RULES, "roe").length, 1);
+    const missPeg = { ...row, peg: null };
+    assert.equal(rankMultibagger([missPeg], SOUND_RULES, "roe").length, 0);
+    const cand = candidateMultibagger([missPeg], SOUND_RULES, "roe");
+    assert.equal(cand.length, 1);
+    assert.equal(cand[0].matchKind, "candidate");
+    assert.ok((cand[0].unchecked || []).some((x) => /PEG/i.test(x)));
+    assert.equal(matchLabel(cand[0]), "8/9 passed · 1 unavailable");
+  });
+
+  it("fails a name that misses a required number we do have — not a candidate", () => {
+    const row = {
+      ...blankScreenRow("FAIL"),
+      price: 10,
+      promoters: 20,
+      de: 3,
+      roce: 5,
+      peg: 8,
+      opm: 2,
+      salesCagr3: 2,
+      profitCagr3: 1,
+      profitCagr5: 1,
+      salesYoY: 1,
+      roe: 4,
+    };
+    const scored = scoreMultibagger([row], SOUND_RULES);
+    assert.equal(scored[0].kind, "fail");
+    assert.equal(candidateMultibagger([row], SOUND_RULES, "roe").length, 0);
+  });
+
+  it("marks unknown when almost every field is blank", () => {
+    const row = { ...blankScreenRow("UNK"), price: 12 };
+    const scored = scoreMultibagger([row], SOUND_RULES);
+    assert.equal(scored[0].kind, "unknown");
+    assert.equal(candidateMultibagger([row], SOUND_RULES, "roe").length, 0);
+  });
+
+  it("emerging compounder is strict on GROWTH_RULES", () => {
+    const pass = {
+      ...blankScreenRow("G"),
+      price: 50,
+      roe: 18,
+      salesYoY: 14,
+      de: 0.4,
+      profitYoY: 20,
+    };
+    const miss = { ...pass, de: null };
+    assert.equal(rankMultibagger([pass], GROWTH_RULES, "roe").length, 1);
+    assert.equal(rankMultibagger([miss], GROWTH_RULES, "roe").length, 0);
+    assert.equal(candidateMultibagger([miss], GROWTH_RULES, "roe").length, 1);
   });
 });
 

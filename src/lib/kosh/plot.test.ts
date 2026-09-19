@@ -106,4 +106,28 @@ describe("plot", () => {
     assert.ok(bars.some((b) => b.h > 10));
     assert.ok(bars.every((b) => b.h >= 0 && b.h <= 100));
   });
+
+  it("domain ignores a hidden series so the scale follows what is on", () => {
+    const rows = [
+      { day: "a", port: 100, bench: 100, path: 10, sameCash: 10 },
+      { day: "b", port: 400, bench: 110, path: 12, sameCash: 11 },
+    ];
+    const all = domain(rows);
+    const pathOnly = domain(rows, ["path", "sameCash"]);
+    assert.ok(all.hi > 200);
+    assert.ok(pathOnly.hi < 50);
+  });
+
+  it("growth uses portUnit so extra cash does not look like return", () => {
+    const rows: NavPoint[] = [
+      { t: 1, day: "2024-01-02", port: 1000, bench: 1000, covered: 1, names: 1, wAvail: 1, portUnit: 100, benchUnit: 100 },
+      { t: 2, day: "2024-01-10", port: 2000, bench: 1100, covered: 1, names: 1, wAvail: 1, portUnit: 100, benchUnit: 110 },
+    ];
+    const { rows: g } = buildRows(rows, "cum", "MAX");
+    assert.ok(g[0].port != null && g[1].port != null);
+    assert.ok(Math.abs(g[0].port - 100) < 1e-6);
+    assert.ok(Math.abs(g[1].port - 100) < 1e-6, String(g[1].port));
+    const { rows: r } = buildRows(rows, "inr", "MAX", 2000);
+    assert.ok(r[1].port != null && r[1].port > 1500);
+  });
 });

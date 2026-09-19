@@ -8,11 +8,14 @@ import {
 } from "./engine.ts";
 import type { ChartMode, ChartRange, NavPoint } from "./types";
 
-export type PlotRow = { day: string; port: number | null; bench: number | null };
+export type PlotRow = { day: string; port: number | null; bench: number | null; path?: number | null; sameCash?: number | null };
 export type PlotStyle = "area" | "line" | "step" | "bar" | "columns";
+export type PlotKey = "port" | "bench" | "path" | "sameCash";
 
 export const MIX_STROKE = "#7aa2ff";
 export const BENCH_STROKE = "#9a9aa4";
+export const PATH_STROKE = "#e0a45a";
+export const SAME_STROKE = "#7d9570";
 export const DOWN_STROKE = "#ef6e6e";
 export const GRID_STROKE = "#26262b";
 export const TICK_FILL = "#6e6e76";
@@ -41,13 +44,34 @@ export function thin(rows: PlotRow[], cap = 360): PlotRow[] {
   return out;
 }
 
+function indexExtra(rows: { day: string; path?: number | null; sameCash?: number | null }[]) {
+  const p0 = rows.find((r) => r.path != null && r.path > 0)?.path || null;
+  const s0 = rows.find((r) => r.sameCash != null && r.sameCash > 0)?.sameCash || null;
+  return rows.map((r) => ({
+    path: p0 && r.path != null && r.path > 0 ? (r.path / p0) * 100 : null,
+    sameCash: s0 && r.sameCash != null && r.sameCash > 0 ? (r.sameCash / s0) * 100 : null,
+  }));
+}
+
+/** Growth / drawdown / rolling use cash-flow-stripped units when present. Rupees keep wealth. */
+function withUnits(nav: NavPoint[], mode: ChartMode): NavPoint[] {
+  if (mode === "inr") return nav;
+  return nav.map((p) => ({
+    ...p,
+    port: p.portUnit != null && p.portUnit > 0 ? p.portUnit : p.port,
+    bench: p.benchUnit != null && p.benchUnit > 0 ? p.benchUnit : p.bench,
+    path: p.pathUnit != null && p.pathUnit > 0 ? p.pathUnit : p.path,
+  }));
+}
+
 export function buildRows(
   nav: NavPoint[],
   mode: ChartMode,
   range: ChartRange,
   nowValue?: number,
 ): { rows: PlotRow[]; yTitle: string; bar: boolean } {
-  const sliced = sliceNav(nav, range);
+  const sliced = withUnits(sliceNav(nav, range), mode);
+  const full = withUnits(nav, mode);
   if (mode === "dd") {
     const idx = withDrawdown(toIndexed(sliced));
     let bPeak = 0;
@@ -77,7 +101,7 @@ export function buildRows(
   }
   if (mode === "roll1y" || mode === "roll3m") {
     const days = mode === "roll3m" ? 93 : 365;
-    const src = sliced.length > 20 ? sliced : nav;
+    const src = sliced.length > 20 ? sliced : full;
     const rs = rollingSeries(src, days);
     return {
       rows: thin(rs.map((p) => ({ day: p.day, port: p.port, bench: p.bench }))),
@@ -86,12 +110,12 @@ export function buildRows(
     };
   }
   if (mode === "m") {
-    const src = sliced.length > 10 ? sliced : nav;
+    const src = sliced.length > 10 ? sliced : full;
     const ms = monthBuckets(src);
     return { rows: ms.map((p) => ({ day: p.key, port: p.port, bench: p.bench })), yTitle: "Month %", bar: true };
   }
   if (mode === "w") {
-    const src = sliced.length > 10 ? sliced : nav;
+    const src = sliced.length > 10 ? sliced : full;
     const ws = weekBuckets(src);
     return { rows: ws.map((p) => ({ day: p.key, port: p.port, bench: p.bench })), yTitle: "Week %", bar: true };
   }
@@ -105,24 +129,38 @@ export function buildRows(
           day: p.day,
           port: p.portIdx * scale,
           bench: p.benchIdx != null ? p.benchIdx * scale : null,
+          path: p.path != null && p.path > 0 ? p.path : null,
+          sameCash: p.sameCash != null && p.sameCash > 0 ? p.sameCash : null,
         })),
       ),
       yTitle: "₹ portfolio",
       bar: false,
     };
   }
+  const extra = indexExtra(idx);
   return {
-    rows: thin(idx.map((p) => ({ day: p.day, port: p.portIdx, bench: p.benchIdx }))),
+    rows: thin(
+      idx.map((p, i) => ({
+        day: p.day,
+        port: p.portIdx,
+        bench: p.benchIdx,
+        path: extra[i]?.path ?? null,
+        sameCash: extra[i]?.sameCash ?? null,
+      })),
+    ),
     yTitle: "Indexed 100",
     bar: false,
   };
 }
 
-export function domain(rows: PlotRow[]): { lo: number; hi: number } {
+export function domain(rows: PlotRow[], keys?: PlotKey[]): { lo: number; hi: number } {
+  const want = keys?.length ? keys : (["port", "bench", "path", "sameCash"] as PlotKey[]);
   const vals: number[] = [];
   for (const r of rows) {
-    if (r.port != null && Number.isFinite(r.port)) vals.push(r.port);
-    if (r.bench != null && Number.isFinite(r.bench)) vals.push(r.bench);
+    for (const k of want) {
+      const v = r[k];
+      if (v != null && Number.isFinite(v)) vals.push(v);
+    }
   }
   if (!vals.length) return { lo: 0, hi: 1 };
   let lo = Math.min(...vals);
@@ -149,7 +187,7 @@ export function yOf(v: number, lo: number, hi: number) {
 
 type Pt = { x: number; y: number };
 
-function ptsOf(rows: PlotRow[], key: "port" | "bench", lo: number, hi: number): (Pt | null)[] {
+function ptsOf(rows: PlotRow[], key: PlotKey, lo: number, hi: number): (Pt | null)[] {
   const n = rows.length;
   return rows.map((r, i) => {
     const v = r[key];
@@ -171,7 +209,7 @@ function segsOf(pts: (Pt | null)[]): Pt[][] {
   return segs;
 }
 
-export function seriesPath(rows: PlotRow[], key: "port" | "bench", lo: number, hi: number): string {
+export function seriesPath(rows: PlotRow[], key: PlotKey, lo: number, hi: number): string {
   const n = rows.length;
   const parts: string[] = [];
   let drawing = false;
@@ -210,11 +248,11 @@ function catmull(seg: Pt[]): string {
   return d;
 }
 
-export function smoothPath(rows: PlotRow[], key: "port" | "bench", lo: number, hi: number): string {
+export function smoothPath(rows: PlotRow[], key: PlotKey, lo: number, hi: number): string {
   return segsOf(ptsOf(rows, key, lo, hi)).map(catmull).join(" ");
 }
 
-export function stepPath(rows: PlotRow[], key: "port" | "bench", lo: number, hi: number): string {
+export function stepPath(rows: PlotRow[], key: PlotKey, lo: number, hi: number): string {
   return segsOf(ptsOf(rows, key, lo, hi))
     .map((seg) => {
       if (!seg.length) return "";
@@ -274,7 +312,7 @@ export function yTicks(lo: number, hi: number, n = 5): number[] {
   return out;
 }
 
-export function countable(rows: PlotRow[], key: "port" | "bench") {
+export function countable(rows: PlotRow[], key: PlotKey) {
   return rows.filter((r) => r[key] != null && Number.isFinite(r[key] as number)).length;
 }
 
@@ -302,7 +340,7 @@ export function smaRows(rows: PlotRow[], win = 21): PlotRow[] {
 
 export type Extreme = { i: number; v: number; ch: number; day: string };
 
-export function extremes(rows: PlotRow[]): {
+export function extremes(rows: PlotRow[], key: PlotKey = "port"): {
   peak: Extreme;
   trough: Extreme;
   best: Extreme;
@@ -315,7 +353,7 @@ export function extremes(rows: PlotRow[]): {
   let worst = { ...empty, ch: Infinity };
   let prev: number | null = null;
   for (let i = 0; i < rows.length; i++) {
-    const v = rows[i].port;
+    const v = rows[i][key];
     if (v == null || !Number.isFinite(v)) continue;
     if (v > peak.v) peak = { i, v, ch: 0, day: rows[i].day };
     if (v < trough.v) trough = { i, v, ch: 0, day: rows[i].day };
@@ -418,26 +456,43 @@ export function buildSvgDoc(args: {
   fill?: boolean;
   showBench?: boolean;
   style?: PlotStyle;
+  showPath?: boolean;
+  showSame?: boolean;
+  showMix?: boolean;
+  pathPrimary?: boolean;
+  benchStroke?: string;
 }): string {
   const { rows, bar, rupee, mixStroke } = args;
   const n = rows.length;
   const style: PlotStyle = args.style || (args.fill === false ? "line" : "area");
   const extra = args.showSma && args.sma ? args.sma : [];
-  const { lo, hi } = domain(rows.concat(extra));
-  const ticks = yTicks(lo, hi);
   const wantBench = args.showBench !== false;
-  const showBench = wantBench && countable(rows, "bench") >= 2;
   const useBars = bar || style === "bar" || style === "columns";
+  const showBench = wantBench && countable(rows, "bench") >= 2;
+  const showMix = (useBars || args.showMix !== false) && countable(rows, "port") >= 2;
+  const showPath = Boolean(args.showPath) && countable(rows, "path") >= 2 && !useBars;
+  const showSame = Boolean(args.showSame) && countable(rows, "sameCash") >= 2 && !useBars;
+  const keys: PlotKey[] = [];
+  if (showMix) keys.push("port");
+  if (showBench) keys.push("bench");
+  if (showPath) keys.push("path");
+  if (showSame) keys.push("sameCash");
+  const { lo, hi } = domain(rows.concat(extra), keys.length ? keys : ["port"]);
+  const ticks = yTicks(lo, hi);
   const pathFn = style === "step" ? stepPath : smoothPath;
-  const portD = useBars ? "" : pathFn(rows, "port", lo, hi);
+  const portD = useBars || !showMix ? "" : pathFn(rows, "port", lo, hi);
   const benchD = useBars || !showBench ? "" : pathFn(rows, "bench", lo, hi);
-  const fillOn = !useBars && (style === "area" || (args.fill !== false && style !== "line" && style !== "step"));
+  const pathD = showPath ? pathFn(rows, "path", lo, hi) : "";
+  const sameD = showSame ? pathFn(rows, "sameCash", lo, hi) : "";
+  const fillOn = showMix && !useBars && (style === "area" || (args.fill !== false && style !== "line" && style !== "step"));
   const fillD = fillOn ? smoothAreaPath(rows, lo, hi) : "";
   const smaD = !useBars && args.showSma && args.sma ? pathFn(args.sma, "port", lo, hi) : "";
   const xCount = Math.min(6, n);
   const xIdx = n
     ? Array.from({ length: xCount }, (_, i) => Math.round((i * (n - 1)) / Math.max(1, xCount - 1)))
     : [];
+  const benchStroke = args.benchStroke || BENCH_STROKE;
+  const lastStroke = args.pathPrimary ? PATH_STROKE : mixStroke;
 
   const p: string[] = [];
   p.push(
@@ -487,22 +542,46 @@ export function buildSvgDoc(args: {
         `<path d="${smaD}" fill="none" stroke="${SMA_STROKE}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>`,
       );
     }
+    if (sameD.startsWith("M")) {
+      p.push(
+        `<path d="${sameD}" fill="none" stroke="${SAME_STROKE}" stroke-width="1.5" stroke-dasharray="5 4" stroke-linejoin="round" stroke-linecap="round"/>`,
+      );
+    }
     if (benchD.startsWith("M")) {
       p.push(
-        `<path d="${benchD}" fill="none" stroke="${BENCH_STROKE}" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/>`,
+        `<path d="${benchD}" fill="none" stroke="${benchStroke}" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/>`,
       );
     }
-    if (portD.startsWith("M")) {
-      p.push(
-        `<path d="${portD}" fill="none" stroke="${mixStroke}" stroke-width="2.3" stroke-linejoin="round" stroke-linecap="round"/>`,
-      );
+    if (args.pathPrimary) {
+      if (portD.startsWith("M")) {
+        p.push(
+          `<path d="${portD}" fill="none" stroke="${mixStroke}" stroke-width="1.35" stroke-opacity="0.45" stroke-linejoin="round" stroke-linecap="round"/>`,
+        );
+      }
+      if (pathD.startsWith("M")) {
+        p.push(
+          `<path d="${pathD}" fill="none" stroke="${PATH_STROKE}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`,
+        );
+      }
+    } else {
+      if (pathD.startsWith("M")) {
+        p.push(
+          `<path d="${pathD}" fill="none" stroke="${PATH_STROKE}" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round"/>`,
+        );
+      }
+      if (portD.startsWith("M")) {
+        p.push(
+          `<path d="${portD}" fill="none" stroke="${mixStroke}" stroke-width="2.3" stroke-linejoin="round" stroke-linecap="round"/>`,
+        );
+      }
     }
-    const lastI = [...rows.keys()].reverse().find((i) => rows[i].port != null && Number.isFinite(rows[i].port as number));
-    if (lastI != null && rows[lastI].port != null) {
+    const lastKey: PlotKey = args.pathPrimary && showPath ? "path" : showMix ? "port" : showSame ? "sameCash" : showBench ? "bench" : "port";
+    const lastI = [...rows.keys()].reverse().find((i) => rows[i][lastKey] != null && Number.isFinite(rows[i][lastKey] as number));
+    if (lastI != null && rows[lastI][lastKey] != null) {
       const x = xOf(lastI, n);
-      const y = yOf(rows[lastI].port as number, lo, hi);
+      const y = yOf(rows[lastI][lastKey] as number, lo, hi);
       p.push(
-        `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3.6" fill="${mixStroke}" stroke="#09090b" stroke-width="1.4"/>`,
+        `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3.6" fill="${lastStroke}" stroke="#09090b" stroke-width="1.4"/>`,
       );
     }
   }

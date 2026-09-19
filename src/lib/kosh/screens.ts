@@ -103,9 +103,9 @@ export type ScreenFilter = {
 
 export const SCREEN_PRESETS: { id: ScreenId; label: string; hint: string }[] = [
   { id: "all", label: "All listed", hint: "Every NSE equity. A blank cell is missing, not a pass." },
-  { id: "soundmb", label: "Sound multibagger", hint: "All checks present and pass: 3Y/5Y growth, promoter >50%, DE ≤0.5, ROCE ≥20%, OPM ≥12%, PEG ≤2" },
-  { id: "turnmb", label: "Turnaround multibagger", hint: "All checks present and pass: profit turn, 1Y profit ≥100%, sales ≥15%, DE ≤1, ROCE ≥12%, promoter ≥40%" },
-  { id: "qgrowth", label: "Quality growth", hint: "ROE ≥15%, sales 1Y ≥12%, profit growth available, debt/equity ≤1" },
+  { id: "soundmb", label: "Quality compounder", hint: "Strict: every check present and pass — 3Y/5Y growth, promoter >50%, D/E ≤0.5, ROCE ≥20%, OPM ≥12%, PEG ≤2" },
+  { id: "qgrowth", label: "Emerging compounder", hint: "Strict: ROE ≥15%, sales 1Y ≥12%, profit growth available, D/E ≤1" },
+  { id: "turnmb", label: "Turnaround", hint: "Strict: profit turn, 1Y profit ≥100%, sales ≥15%, D/E ≤1, ROCE ≥12%, promoter ≥40%" },
   { id: "retest", label: "Breakout retest", hint: "Broke a major high, came back to the level, and still holds" },
   { id: "athretest", label: "ATH retest", hint: "All-time high broken, then retested" },
   { id: "breakout", label: "Breakout", hint: "Near 52-week high with volume ≥ 1.5×" },
@@ -228,21 +228,7 @@ export function applyScreen(rows: ScreenRow[], id: ScreenId) {
   if (id === "athretest") return sortRows(src.filter((r) => r.athRetest === true), "offHigh", "desc");
   if (id === "soundmb") return rankMultibagger(src, SOUND_RULES, "roe");
   if (id === "turnmb") return rankMultibagger(src, TURN_RULES, "salesYoY");
-  if (id === "qgrowth")
-    return sortRows(
-      src.filter(
-        (r) =>
-          r.roe != null &&
-          r.roe >= 15 &&
-          r.salesYoY != null &&
-          r.salesYoY >= 12 &&
-          r.de != null &&
-          r.de <= 1 &&
-          ((r.profitYoY != null && r.profitYoY >= 12) || (r.profitCagr3 != null && r.profitCagr3 >= 12)),
-      ),
-      "roe",
-      "desc",
-    );
+  if (id === "qgrowth") return rankMultibagger(src, GROWTH_RULES, "roe");
   if (id === "stake")
     return sortRows(
       src.filter((r) => (r.fiiDelta != null && r.fiiDelta > 0) || (r.diiDelta != null && r.diiDelta > 0)),
@@ -283,27 +269,62 @@ export const TURN_RULES: MbRule[] = [
   { id: "prom", label: "Promoter ≥ 40%", has: (r) => r.promoters != null, ok: (r) => (r.promoters ?? 0) >= 40 },
 ];
 
-/** Rank only names where every check can be scored. Missing data is not a pass. */
-export function rankMultibagger(rows: ScreenRow[], rules: MbRule[], sortKey: SortKey) {
-  const scored = rows
-    .map((r) => {
-      const have = rules.filter((x) => x.has(r));
-      const pass = have.filter((x) => x.ok(r));
-      const fail = have.filter((x) => !x.ok(r));
-      const unchecked = rules.filter((x) => !x.has(r)).map((x) => x.label);
-      const missed = fail.map((x) => x.label);
-      return {
-        r: { ...r, passCount: pass.length, missed, unchecked },
-        nHave: have.length,
-        nPass: pass.length,
-        nNeed: rules.length,
-        ratio: have.length ? pass.length / have.length : 0,
-      };
-    })
-    .filter((x) => x.nHave === x.nNeed && x.nPass === x.nNeed);
+export const GROWTH_RULES: MbRule[] = [
+  { id: "roe", label: "ROE ≥ 15%", has: (r) => r.roe != null, ok: (r) => (r.roe ?? 0) >= 15 },
+  { id: "sales1", label: "Sales 1Y ≥ 12%", has: (r) => r.salesYoY != null, ok: (r) => (r.salesYoY ?? 0) >= 12 },
+  { id: "de", label: "D/E ≤ 1", has: (r) => r.de != null, ok: (r) => r.de != null && r.de <= 1 },
+  {
+    id: "pat",
+    label: "Profit growth ≥ 12%",
+    has: (r) => r.profitYoY != null || r.profitCagr3 != null,
+    ok: (r) => (r.profitYoY ?? -999) >= 12 || (r.profitCagr3 ?? -999) >= 12,
+  },
+];
+
+export type MatchKind = "strict" | "candidate" | "fail" | "unknown";
+
+export type MbScore = {
+  r: ScreenRow;
+  kind: MatchKind;
+  nHave: number;
+  nPass: number;
+  nNeed: number;
+  nFail: number;
+  nMiss: number;
+};
+
+function enoughPresent(nHave: number, nNeed: number) {
+  return nHave >= Math.max(3, Math.ceil(nNeed / 2));
+}
+
+export function scoreMultibagger(rows: ScreenRow[], rules: MbRule[]): MbScore[] {
+  return rows.map((r) => {
+    const have = rules.filter((x) => x.has(r));
+    const pass = have.filter((x) => x.ok(r));
+    const fail = have.filter((x) => !x.ok(r));
+    const miss = rules.filter((x) => !x.has(r));
+    const nNeed = rules.length;
+    let kind: MatchKind;
+    if (have.length === 0 || !enoughPresent(have.length, nNeed)) kind = "unknown";
+    else if (fail.length > 0) kind = "fail";
+    else if (have.length === nNeed && pass.length === nNeed) kind = "strict";
+    else kind = "candidate";
+    return {
+      r: { ...r, passCount: pass.length, missed: fail.map((x) => x.label), unchecked: miss.map((x) => x.label), matchKind: kind },
+      kind,
+      nHave: have.length,
+      nPass: pass.length,
+      nNeed,
+      nFail: fail.length,
+      nMiss: miss.length,
+    };
+  });
+}
+
+function sortScored(scored: MbScore[], sortKey: SortKey) {
   scored.sort((a, b) => {
-    if (b.ratio !== a.ratio) return b.ratio - a.ratio;
     if (b.nPass !== a.nPass) return b.nPass - a.nPass;
+    if (b.nHave !== a.nHave) return b.nHave - a.nHave;
     const av = a.r[sortKey];
     const bv = b.r[sortKey];
     const an = typeof av === "number" && Number.isFinite(av) ? av : null;
@@ -314,6 +335,41 @@ export function rankMultibagger(rows: ScreenRow[], rules: MbRule[], sortKey: Sor
     return bn - an;
   });
   return scored.map((x) => x.r);
+}
+
+/** Rank only names where every check can be scored. Missing data is not a pass. */
+export function rankMultibagger(rows: ScreenRow[], rules: MbRule[], sortKey: SortKey) {
+  return sortScored(
+    scoreMultibagger(rows, rules).filter((x) => x.kind === "strict"),
+    sortKey,
+  );
+}
+
+/** No known fail, enough present, one or more required fields still blank. */
+export function candidateMultibagger(rows: ScreenRow[], rules: MbRule[], sortKey: SortKey) {
+  return sortScored(
+    scoreMultibagger(rows, rules).filter((x) => x.kind === "candidate"),
+    sortKey,
+  );
+}
+
+export function matchLabel(r: Pick<ScreenRow, "passCount" | "missed" | "unchecked">) {
+  const nPass = r.passCount ?? 0;
+  const nFail = r.missed?.length ?? 0;
+  const nMiss = r.unchecked?.length ?? 0;
+  const nNeed = nPass + nFail + nMiss;
+  if (!nNeed) return "";
+  const bits = [`${nPass}/${nNeed} passed`];
+  if (nMiss) bits.push(`${nMiss} unavailable`);
+  if (nFail) bits.push(`${nFail} failed`);
+  return bits.join(" · ");
+}
+
+export function rulesForScreen(id: ScreenId): MbRule[] | null {
+  if (id === "soundmb") return SOUND_RULES;
+  if (id === "turnmb") return TURN_RULES;
+  if (id === "qgrowth") return GROWTH_RULES;
+  return null;
 }
 
 export function sectorPulse(rows: ScreenRow[]) {

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { newsAboutCompany, newsMaterial, newsToneLabel } from "./news.ts";
+import { newsAboutCompany, newsMaterial, newsToneLabel, newsWhy } from "./news.ts";
 
 describe("newsAboutCompany", () => {
   it("drops market wraps and stocks-to-watch lists", () => {
@@ -35,6 +35,12 @@ describe("news material and wording", () => {
     assert.equal(newsMaterial("SEBI opens probe into ABC Ltd"), "high");
     assert.equal(newsMaterial("TCS order win of $2 bn"), "medium");
     assert.equal(newsMaterial("Broker reiterates hold on Infosys"), "low");
+  });
+
+  it("adds a why-it-matters line from the bucket, not a price call", () => {
+    assert.ok(/earnings/i.test(newsWhy("Reliance Q1 earnings beat estimates")));
+    assert.ok(/Regulation/i.test(newsWhy("SEBI opens probe into ABC Ltd")));
+    assert.ok(!/buy/i.test(newsWhy("TCS order win of $2 bn").toLowerCase().replace("buyback", "")));
   });
 
   it("labels tone as wording, not a conclusion", () => {

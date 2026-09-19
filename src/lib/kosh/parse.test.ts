@@ -2,10 +2,13 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   applyHoldingPatch,
+  auditTradeLines,
   extractHoldings,
+  extractTradeLines,
   fillHoldings,
   guessTicker,
   mergeHoldings,
+  mergeTradeLines,
   parseCsv,
   parseMatrix,
   parseSpreadsheet,
@@ -236,6 +239,10 @@ describe("trade book netting", () => {
     assert.ok(bem);
     assert.equal(bem!.qty, 20);
     assert.equal(bem!.date, "2024-03-01");
+    const trades = extractTradeLines(rows);
+    assert.equal(trades.length, 5);
+    assert.equal(trades.filter((t) => t.side < 0).length, 2);
+    assert.equal(trades.find((t) => t.symbol === "INFY" && t.side < 0)?.qty, 5);
   });
 
   it("uses remaining lots for average after a partial exit", () => {
@@ -343,5 +350,27 @@ describe("upsert and sanitize", () => {
     ]);
     assert.equal(out[0].symbol, "BEMHY");
     assert.equal(out[0].qty, 20);
+  });
+});
+
+describe("path trade lines", () => {
+  it("skips duplicate buys on add", () => {
+    const a = [{ symbol: "TCS", name: "TCS", qty: 8, price: 2100, date: "2023-01-10", side: 1 as const }];
+    const b = [
+      { symbol: "TCS", name: "TCS", qty: 8, price: 2100, date: "2023-01-10", side: 1 as const },
+      { symbol: "INFY", name: "INFY", qty: 10, price: 1400, date: "2023-02-01", side: 1 as const },
+    ];
+    const out = mergeTradeLines(a, b);
+    assert.equal(out.length, 2);
+    assert.ok(out.find((t) => t.symbol === "INFY"));
+  });
+
+  it("lists undated, missing price and zero qty honestly", () => {
+    const notes = auditTradeLines([
+      { symbol: "TCS", name: "TCS", qty: 8, price: 0, date: "2023-01-10", side: 1 },
+      { symbol: "INFY", name: "Infosys", qty: 10, price: 1400, date: null, side: 1 },
+    ]);
+    assert.ok(notes.some((n) => /day’s close|day's close|no price/i.test(n)));
+    assert.ok(notes.some((n) => /no date/i.test(n)));
   });
 });

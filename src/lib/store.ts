@@ -1,8 +1,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Holding, Portfolio, JournalEntry } from "@/lib/kosh/types";
-import { applyHoldingPatch, fillHoldings, mergeHoldings, sanitizeHoldings, upsertHoldings, type FillOpts } from "@/lib/kosh/parse";
-import { samplePortfolio } from "@/lib/kosh/sample";
+import type { Holding, Portfolio, JournalEntry, TradeLine, Fundamentals } from "@/lib/kosh/types";
+import { applyHoldingPatch, fillHoldings, mergeHoldings, mergeTradeLines, sanitizeHoldings, sanitizeTrades, upsertHoldings, type FillOpts } from "@/lib/kosh/parse";
+import { samplePortfolio, SAMPLE_TRADES } from "@/lib/kosh/sample";
 import type { ScreenFilter, SkillRead } from "@/lib/kosh/screens";
 
 export type IconId = "k-path" | "bowl" | "twin" | "ledger" | "coin" | "fold";
@@ -154,6 +154,8 @@ function withDefaultLists(lists: WatchList[], watch: string[] = []): WatchList[]
   return extras.length ? [...lists, ...extras] : lists;
 }
 
+export type DeepFundSnap = { fund: Fundamentals; at: number; sources: string[] };
+
 type KoshState = {
   portfolios: Portfolio[];
   iconId: IconId;
@@ -173,10 +175,11 @@ type KoshState = {
   tourDone: boolean;
   chartPrefs: ChartPrefs;
   navPrefs: NavPrefs;
+  deepFunds: Record<string, DeepFundSnap>;
   hydrate: (ports: Portfolio[]) => void;
   setIconId: (id: IconId) => void;
   setTheme: (t: ThemeId) => void;
-  addPortfolio: (name: string, holdings?: Holding[], bench?: string) => string;
+  addPortfolio: (name: string, holdings?: Holding[], bench?: string, trades?: TradeLine[]) => string;
   renamePortfolio: (id: string, name: string) => void;
   duplicatePortfolio: (id: string) => string | null;
   deletePortfolio: (id: string) => void;
@@ -188,6 +191,10 @@ type KoshState = {
   updateHolding: (id: string, symbol: string, patch: Partial<Holding>) => void;
   removeHolding: (id: string, symbol: string) => void;
   replaceHoldings: (id: string, holdings: Holding[]) => void;
+  setTrades: (id: string, trades: TradeLine[]) => void;
+  mergeTrades: (id: string, trades: TradeLine[]) => void;
+  setDeepFund: (symbol: string, snap: DeepFundSnap) => void;
+  setDeepFunds: (rows: Record<string, DeepFundSnap>) => void;
   toggleWatch: (symbol: string) => void;
   addWatchList: (name: string) => string;
   renameWatchList: (id: string, name: string) => void;
@@ -232,19 +239,31 @@ export const useKosh = create<KoshState>()(
       tourDone: false,
       chartPrefs: { ...DEFAULT_CHART_PREFS, inds: { ...DEFAULT_INDS } },
       navPrefs: { ...DEFAULT_NAV_PREFS },
+      deepFunds: {},
       hydrate: (ports) => {
         if (ports.length)
           set({
-            portfolios: ports.map((p) => ({ ...p, holdings: sanitizeHoldings(p.holdings || []) })),
+            portfolios: ports.map((p) => ({
+              ...p,
+              holdings: sanitizeHoldings(p.holdings || []),
+              trades: sanitizeTrades(p.trades),
+            })),
           });
       },
       setIconId: (iconId) => set({ iconId }),
       setTheme: (theme) => set({ theme }),
-      addPortfolio: (name, holdings = [], bench = "nifty") => {
+      addPortfolio: (name, holdings = [], bench = "nifty", trades = []) => {
         const id = uid();
         set({
           portfolios: [
-            { id, name: name || "Main", holdings: sanitizeHoldings(holdings), bench, includeCommodities: true },
+            {
+              id,
+              name: name || "Main",
+              holdings: sanitizeHoldings(holdings),
+              bench,
+              includeCommodities: true,
+              trades: sanitizeTrades(trades),
+            },
             ...get().portfolios,
           ],
         });
@@ -255,7 +274,7 @@ export const useKosh = create<KoshState>()(
       duplicatePortfolio: (id) => {
         const p = get().portfolios.find((x) => x.id === id);
         if (!p) return null;
-        return get().addPortfolio(`${p.name} copy`, p.holdings, p.bench);
+        return get().addPortfolio(`${p.name} copy`, p.holdings, p.bench, p.trades);
       },
       deletePortfolio: (id) => set({ portfolios: get().portfolios.filter((p) => p.id !== id) }),
       setBench: (id, bench) =>
@@ -298,6 +317,24 @@ export const useKosh = create<KoshState>()(
         }),
       replaceHoldings: (id, holdings) =>
         set({ portfolios: get().portfolios.map((p) => (p.id === id ? { ...p, holdings } : p)) }),
+      setTrades: (id, trades) =>
+        set({
+          portfolios: get().portfolios.map((p) => (p.id === id ? { ...p, trades: sanitizeTrades(trades) } : p)),
+        }),
+      mergeTrades: (id, trades) =>
+        set({
+          portfolios: get().portfolios.map((p) =>
+            p.id === id ? { ...p, trades: mergeTradeLines(p.trades || [], sanitizeTrades(trades)) } : p,
+          ),
+        }),
+      setDeepFund: (symbol, snap) =>
+        set({
+          deepFunds: { ...get().deepFunds, [bareSymbol(symbol)]: snap },
+        }),
+      setDeepFunds: (rows) =>
+        set({
+          deepFunds: { ...get().deepFunds, ...rows },
+        }),
       toggleWatch: (symbol) => {
         const n = bareSymbol(symbol);
         const id = get().activeWatchId;
@@ -437,9 +474,13 @@ export const useKosh = create<KoshState>()(
             };
           })(),
           navPrefs: { ...DEFAULT_NAV_PREFS, ...(p.navPrefs || {}) },
+          deepFunds: p.deepFunds || {},
           portfolios: (p.portfolios?.length ? p.portfolios : current.portfolios).map((port) => ({
             ...port,
             holdings: sanitizeHoldings(port.holdings || []),
+            trades: sanitizeTrades(
+              port.trades?.length ? port.trades : port.id === "sample" ? SAMPLE_TRADES : [],
+            ),
           })),
         };
       },

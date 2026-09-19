@@ -861,6 +861,7 @@ export function assembleBook(args: {
     equityValue,
     levers,
     corr,
+    path: null,
   };
 }
 

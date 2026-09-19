@@ -6,6 +6,7 @@ import { attentionWeight, buildAttention, type AttentionItem } from "@/lib/kosh/
 import { StockLink } from "@/components/stock-link";
 import { Button } from "@/components/ui/button";
 import { buildDigest } from "@/components/news-share";
+import { formatIstShort } from "@/lib/kosh/dates";
 import { cn } from "@/lib/utils";
 
 function openShare(kind: "whatsapp" | "telegram" | "gmail", subject: string, body: string) {
@@ -35,7 +36,7 @@ function kindLabel(k: AttentionItem["kind"]) {
 
 export function AttentionStrip({
   symbols,
-  title = "Next 7 days",
+  title = "Near-term triggers",
 }: {
   symbols: { symbol: string; name: string; weight?: number }[];
   title?: string;
@@ -137,7 +138,12 @@ export function AttentionStrip({
             ) : (
               <span className="text-muted">{it.title}</span>
             )}
-            {it.date ? <span className="font-mono tabular text-subtle">{it.date.slice(5)}</span> : null}
+            {it.expected ? (
+              <span className="rounded-sm bg-warn/20 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em] text-warn uppercase">
+                Expected
+              </span>
+            ) : null}
+            {it.date ? <span className="font-mono tabular text-subtle">{formatIstShort(it.date)}</span> : null}
           </li>
         ))}
       </ul>

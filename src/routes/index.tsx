@@ -31,7 +31,7 @@ const FEATURES = [
   {
     k: "Find names",
     t: "Not another PE sort",
-    d: "Sound multibagger. Turnaround multibagger. Breakout-and-retest. Built for names that can actually change earnings power.",
+    d: "Quality compounder. Emerging compounder. Turnaround. Built for names that can actually change earnings power — missing data is never a pass.",
     to: "/screen" as const,
   },
   {

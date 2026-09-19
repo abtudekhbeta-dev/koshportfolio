@@ -23,6 +23,7 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TradeRouteImport } from './routes/trade'
 import { Route as WatchRouteImport } from './routes/watch'
 import { Route as ApiCloseRouteImport } from './routes/api/close'
+import { Route as ApiEnrichRouteImport } from './routes/api/enrich'
 import { Route as ApiFundamentalsRouteImport } from './routes/api/fundamentals'
 import { Route as ApiHistoriesRouteImport } from './routes/api/histories'
 import { Route as ApiHistoryRouteImport } from './routes/api/history'
@@ -43,6 +44,7 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as PIdIndexRouteImport } from './routes/p.$id.index'
 import { Route as PIdHoldingsRouteImport } from './routes/p.$id.holdings'
 import { Route as PIdImproveRouteImport } from './routes/p.$id.improve'
+import { Route as PIdPathRouteImport } from './routes/p.$id.path'
 import { Route as PIdPerformanceRouteImport } from './routes/p.$id.performance'
 import { Route as PIdRiskRouteImport } from './routes/p.$id.risk'
 import { Route as PIdSectorsRouteImport } from './routes/p.$id.sectors'
@@ -115,6 +117,11 @@ const WatchRoute = WatchRouteImport.update({
 const ApiCloseRoute = ApiCloseRouteImport.update({
   id: '/api/close',
   path: '/api/close',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiEnrichRoute = ApiEnrichRouteImport.update({
+  id: '/api/enrich',
+  path: '/api/enrich',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiFundamentalsRoute = ApiFundamentalsRouteImport.update({
@@ -217,6 +224,11 @@ const PIdImproveRoute = PIdImproveRouteImport.update({
   path: '/improve',
   getParentRoute: () => PIdRoute,
 } as any)
+const PIdPathRoute = PIdPathRouteImport.update({
+  id: '/path',
+  path: '/path',
+  getParentRoute: () => PIdRoute,
+} as any)
 const PIdPerformanceRoute = PIdPerformanceRouteImport.update({
   id: '/performance',
   path: '/performance',
@@ -248,6 +260,7 @@ export interface FileRoutesByFullPath {
   '/trade': typeof TradeRoute
   '/watch': typeof WatchRoute
   '/api/close': typeof ApiCloseRoute
+  '/api/enrich': typeof ApiEnrichRoute
   '/api/fundamentals': typeof ApiFundamentalsRoute
   '/api/histories': typeof ApiHistoriesRoute
   '/api/history': typeof ApiHistoryRoute
@@ -267,6 +280,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/p/$id/holdings': typeof PIdHoldingsRoute
   '/p/$id/improve': typeof PIdImproveRoute
+  '/p/$id/path': typeof PIdPathRoute
   '/p/$id/performance': typeof PIdPerformanceRoute
   '/p/$id/risk': typeof PIdRiskRoute
   '/p/$id/sectors': typeof PIdSectorsRoute
@@ -287,6 +301,7 @@ export interface FileRoutesByTo {
   '/trade': typeof TradeRoute
   '/watch': typeof WatchRoute
   '/api/close': typeof ApiCloseRoute
+  '/api/enrich': typeof ApiEnrichRoute
   '/api/fundamentals': typeof ApiFundamentalsRoute
   '/api/histories': typeof ApiHistoriesRoute
   '/api/history': typeof ApiHistoryRoute
@@ -305,6 +320,7 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/p/$id/holdings': typeof PIdHoldingsRoute
   '/p/$id/improve': typeof PIdImproveRoute
+  '/p/$id/path': typeof PIdPathRoute
   '/p/$id/performance': typeof PIdPerformanceRoute
   '/p/$id/risk': typeof PIdRiskRoute
   '/p/$id/sectors': typeof PIdSectorsRoute
@@ -326,6 +342,7 @@ export interface FileRoutesById {
   '/trade': typeof TradeRoute
   '/watch': typeof WatchRoute
   '/api/close': typeof ApiCloseRoute
+  '/api/enrich': typeof ApiEnrichRoute
   '/api/fundamentals': typeof ApiFundamentalsRoute
   '/api/histories': typeof ApiHistoriesRoute
   '/api/history': typeof ApiHistoryRoute
@@ -345,6 +362,7 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/p/$id/holdings': typeof PIdHoldingsRoute
   '/p/$id/improve': typeof PIdImproveRoute
+  '/p/$id/path': typeof PIdPathRoute
   '/p/$id/performance': typeof PIdPerformanceRoute
   '/p/$id/risk': typeof PIdRiskRoute
   '/p/$id/sectors': typeof PIdSectorsRoute
@@ -367,6 +385,7 @@ export interface FileRouteTypes {
     | '/trade'
     | '/watch'
     | '/api/close'
+    | '/api/enrich'
     | '/api/fundamentals'
     | '/api/histories'
     | '/api/history'
@@ -386,6 +405,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/p/$id/holdings'
     | '/p/$id/improve'
+    | '/p/$id/path'
     | '/p/$id/performance'
     | '/p/$id/risk'
     | '/p/$id/sectors'
@@ -406,6 +426,7 @@ export interface FileRouteTypes {
     | '/trade'
     | '/watch'
     | '/api/close'
+    | '/api/enrich'
     | '/api/fundamentals'
     | '/api/histories'
     | '/api/history'
@@ -424,6 +445,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/p/$id/holdings'
     | '/p/$id/improve'
+    | '/p/$id/path'
     | '/p/$id/performance'
     | '/p/$id/risk'
     | '/p/$id/sectors'
@@ -444,6 +466,7 @@ export interface FileRouteTypes {
     | '/trade'
     | '/watch'
     | '/api/close'
+    | '/api/enrich'
     | '/api/fundamentals'
     | '/api/histories'
     | '/api/history'
@@ -463,6 +486,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/p/$id/holdings'
     | '/p/$id/improve'
+    | '/p/$id/path'
     | '/p/$id/performance'
     | '/p/$id/risk'
     | '/p/$id/sectors'
@@ -484,6 +508,7 @@ export interface RootRouteChildren {
   TradeRoute: typeof TradeRoute
   WatchRoute: typeof WatchRoute
   ApiCloseRoute: typeof ApiCloseRoute
+  ApiEnrichRoute: typeof ApiEnrichRoute
   ApiFundamentalsRoute: typeof ApiFundamentalsRoute
   ApiHistoriesRoute: typeof ApiHistoriesRoute
   ApiHistoryRoute: typeof ApiHistoryRoute
@@ -601,6 +626,13 @@ declare module '@tanstack/react-router' {
       path: '/api/close'
       fullPath: '/api/close'
       preLoaderRoute: typeof ApiCloseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/enrich': {
+      id: '/api/enrich'
+      path: '/api/enrich'
+      fullPath: '/api/enrich'
+      preLoaderRoute: typeof ApiEnrichRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/fundamentals': {
@@ -743,6 +775,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PIdImproveRouteImport
       parentRoute: typeof PIdRoute
     }
+    '/p/$id/path': {
+      id: '/p/$id/path'
+      path: '/path'
+      fullPath: '/p/$id/path'
+      preLoaderRoute: typeof PIdPathRouteImport
+      parentRoute: typeof PIdRoute
+    }
     '/p/$id/performance': {
       id: '/p/$id/performance'
       path: '/performance'
@@ -770,6 +809,7 @@ declare module '@tanstack/react-router' {
 interface PIdRouteChildren {
   PIdHoldingsRoute: typeof PIdHoldingsRoute
   PIdImproveRoute: typeof PIdImproveRoute
+  PIdPathRoute: typeof PIdPathRoute
   PIdPerformanceRoute: typeof PIdPerformanceRoute
   PIdRiskRoute: typeof PIdRiskRoute
   PIdSectorsRoute: typeof PIdSectorsRoute
@@ -779,6 +819,7 @@ interface PIdRouteChildren {
 const PIdRouteChildren: PIdRouteChildren = {
   PIdHoldingsRoute: PIdHoldingsRoute,
   PIdImproveRoute: PIdImproveRoute,
+  PIdPathRoute: PIdPathRoute,
   PIdPerformanceRoute: PIdPerformanceRoute,
   PIdRiskRoute: PIdRiskRoute,
   PIdSectorsRoute: PIdSectorsRoute,
@@ -802,6 +843,7 @@ const rootRouteChildren: RootRouteChildren = {
   TradeRoute: TradeRoute,
   WatchRoute: WatchRoute,
   ApiCloseRoute: ApiCloseRoute,
+  ApiEnrichRoute: ApiEnrichRoute,
   ApiFundamentalsRoute: ApiFundamentalsRoute,
   ApiHistoriesRoute: ApiHistoriesRoute,
   ApiHistoryRoute: ApiHistoryRoute,

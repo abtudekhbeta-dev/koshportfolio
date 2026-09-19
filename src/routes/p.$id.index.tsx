@@ -10,6 +10,7 @@ import { Kpi, toneOf } from "@/components/kpi";
 import { ShareRing, MiniBars, CapSplit } from "@/components/charts/share-ring";
 import { insights, fmtInr, fmtPct } from "@/lib/kosh/engine";
 import { bookXirr } from "@/lib/kosh/xirr";
+import { overlayOnMix } from "@/lib/kosh/path";
 import { apiNews, apiScreener, apiFundamentals } from "@/lib/kosh/api";
 import { mixVsNifty, niftyOverlap, bareSym } from "@/lib/kosh/portfolio-stats";
 import { AttentionStrip } from "@/components/attention-strip";
@@ -48,6 +49,9 @@ function Overview() {
   const metalsOn = book.includeCommodities;
   const hasMetals = book.commodityValue > 0;
   const screen = useQuery({ queryKey: ["screener"], queryFn: apiScreener, staleTime: 10 * 60 * 1000 });
+  const trades = portfolio.trades || [];
+  const path = book.path;
+  const chartNav = path?.nav?.length ? overlayOnMix(book.mix.nav, path.nav) : book.mix.nav;
 
   return (
     <div className="kosh-page grid gap-8">
@@ -62,8 +66,7 @@ function Overview() {
           Your XIRR{" "}
           <span className={cn("font-mono tabular", xirr.xirr >= 0 ? "text-up" : "text-down")}>{xirr.xirr.toFixed(1)}%</span>
           {xirr.from ? ` from ${xirr.from}` : ""}
-          {xirr.nMissing ? ` · ${fmtInr(xirr.missingValue)} has no date` : ""}. This is your money-weighted return from
-          dated buys. The chart below is not that figure.
+          {xirr.nMissing ? ` · ${fmtInr(xirr.missingValue)} has no date` : ""}. Money-weighted from dated remaining lots — sold lines and dividends are not in this figure. The chart below is the current mix, not your XIRR.
         </p>
       ) : (
         <p className="text-[13px] text-muted">
@@ -79,7 +82,7 @@ function Overview() {
       )}
       <AttentionStrip
         symbols={rows.filter((r) => r.kind !== "commodity").map((r) => ({ symbol: r.symbol, name: r.name, weight: r.weight }))}
-        title="Next 7 days"
+        title="Near-term triggers"
       />
 
       {hasMetals ? (
@@ -98,20 +101,30 @@ function Overview() {
 
       <section>
         <h2 className="mb-1 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">
-          Current holdings historical performance vs {book.benchName}
+          This mix vs {book.benchName}
+          {path?.nav?.length ? " — and your path" : ""}
         </h2>
         <p className="mb-3 text-[12px] text-muted">
-          Today’s weights × each name’s full daily history (adjusted close). This is not your XIRR and not a reconstruction
-          of what you held in 2018. A late listing joins when it appears — it does not wipe earlier years.
+          Blue is today’s remaining names, taken back through each stock’s adjusted daily prices. It is not your XIRR
+          and not a reconstruction of what you held in 2018.
+          {path?.nav?.length
+            ? " The warm line is your path: the rupees you actually held after each buy and sell. Tap a name on the chart to hide it."
+            : " Upload a buy/sell file on Path to add that line here."}{" "}
           {hasMetals && !metalsOn ? " Gold and silver sit on Holdings but are out of this line and the totals." : ""}{" "}
+          <Link to="/p/$id/path" params={{ id: portfolio.id }} className="text-chart hover:underline">
+            Open Path
+          </Link>
+          {" · "}
           <Link to="/compare" className="text-chart hover:underline">
             Compare this portfolio
           </Link>
         </p>
         <NavChart
-          nav={book.mix.nav}
-          portLabel="Current mix"
+          nav={chartNav}
+          portLabel="This mix"
           benchLabel={book.benchName}
+          pathLabel={path?.nav?.length ? "Your path" : undefined}
+          sameLabel={path?.nav?.length ? `Same money in ${book.benchName}` : undefined}
           coverage={`${book.coverage}${book.mix.missing.length ? " · skipped " + book.mix.missing.join(", ") : ""}`}
           nowValue={book.value}
           metals={
@@ -125,6 +138,15 @@ function Overview() {
           }
         />
       </section>
+
+      {trades.length && path ? null : (
+        <p className="text-[13px] text-muted">
+          This mix is today’s remaining names. Your path needs a dated buy/sell file — it does not change Mix.{" "}
+          <Link to="/p/$id/path" params={{ id: portfolio.id }} className="text-chart hover:underline">
+            Open Path
+          </Link>
+        </p>
+      )}
 
       <OvernightCard rows={rows} screen={screen.data?.rows} />
       <DispositionList rows={rows} />
@@ -318,7 +340,7 @@ function MixFacts({
   const vs = mixVsNifty(eq, map, screen);
   const ov = niftyOverlap(eq);
   const line = (label: string, a: number | null, b: number | null, fmt: (x: number) => string) => (
-    <div className="flex items-baseline justify-between gap-3 border-b border-border/60 py-1.5">
+    <div className="kosh-row kosh-row-stack py-1.5">
       <dt className="text-[13px] text-muted">{label}</dt>
       <dd className="font-mono text-[14px] tabular">
         {a == null ? "—" : fmt(a)}

@@ -1,12 +1,12 @@
-import type { Holding } from "./types";
+import type { Holding, TradeLine } from "./types";
 import {
-  ISIN_TO_TICKER,
   TICKER_NAMES,
   displayName,
   isEquityIsin,
   isIsin,
   isMfIsin,
   normalizeSectorLabel,
+  tickerFromIsin,
 } from "./names.ts";
 import { baseSym } from "./sectors.ts";
 
@@ -476,10 +476,13 @@ export function guessTicker(raw: string, name?: string, isin?: string): string {
   const isinUp = String(isin || "")
     .trim()
     .toUpperCase();
-  if (isEquityIsin(isinUp) && ISIN_TO_TICKER[isinUp]) return ISIN_TO_TICKER[isinUp];
+  if (isEquityIsin(isinUp)) {
+    const mapped = tickerFromIsin(isinUp);
+    if (mapped) return mapped;
+  }
   const cleaned = cleanSym(raw);
   if (isIsin(cleaned)) {
-    const mapped = ISIN_TO_TICKER[cleaned] || lookupName(name || "") || lookupName(raw);
+    const mapped = tickerFromIsin(cleaned) || lookupName(name || "") || lookupName(raw);
     if (mapped && !isIsin(mapped)) return mapped;
     return cleaned;
   }
@@ -650,6 +653,20 @@ function extractTrades(rows: Record<string, unknown>[]): Trade[] {
   return out;
 }
 
+export function extractTradeLines(rows: Record<string, unknown>[]): TradeLine[] {
+  return extractTrades(rows).map((t) => ({
+    symbol: t.symbol,
+    name: t.name,
+    qty: t.qty,
+    price: t.price,
+    date: t.date,
+    boughtAt: t.boughtAt,
+    side: t.side,
+    isin: t.isin,
+    sector: t.sector,
+  }));
+}
+
 function netTrades(trades: Trade[]): Holding[] {
   const by = new Map<string, Trade[]>();
   for (const t of trades) {
@@ -740,7 +757,7 @@ export function extractHoldings(rows: Record<string, unknown>[]): Holding[] {
     const invested = num(pick(map, INVESTED_KEYS));
     let avg = num(pick(map, AVG_KEYS));
     if (invested > 0 && qty > 0) avg = invested / qty;
-    if (!(avg > 0) && isIsin(symbol) && !ISIN_TO_TICKER[symbol]) continue;
+    if (!(avg > 0) && isIsin(symbol) && !tickerFromIsin(symbol)) continue;
     const dateRaw = pick(map, DATE_KEYS);
     const when = parseHoldingWhen(dateRaw);
     const fileSector = normalizeSectorLabel(String(pick(map, SECTOR_KEYS) || ""));
@@ -788,7 +805,7 @@ export function parseMatrix(matrix: unknown[][]): Holding[] {
   return parseMatrixDetailed(matrix).holdings;
 }
 
-export type ParsedBook = { holdings: Holding[]; fromTrades: boolean };
+export type ParsedBook = { holdings: Holding[]; fromTrades: boolean; trades: TradeLine[] };
 
 function matrixToRows(matrix: unknown[][]): Record<string, unknown>[] {
   const rows = (matrix || []).map((r) => (Array.isArray(r) ? r : [r]));
@@ -817,9 +834,10 @@ function matrixToRows(matrix: unknown[][]): Record<string, unknown>[] {
 
 export function parseMatrixDetailed(matrix: unknown[][]): ParsedBook {
   const objects = matrixToRows(matrix);
-  if (!objects.length) return { holdings: [], fromTrades: false };
+  if (!objects.length) return { holdings: [], fromTrades: false, trades: [] };
   const fromTrades = isTradeBook(objects);
-  return { holdings: extractHoldings(objects), fromTrades };
+  const trades = fromTrades ? extractTradeLines(objects) : [];
+  return { holdings: extractHoldings(objects), fromTrades, trades };
 }
 
 function lastWins(rows: Holding[]): Holding[] {
@@ -934,7 +952,11 @@ export async function parseSpreadsheetDetailed(buf: ArrayBuffer): Promise<Parsed
   hits.sort((a, b) => a.score - b.score);
   const holdings = combineBooks(hits);
   const hasSnap = hits.some((h) => !h.fromTrades);
-  return { holdings, fromTrades: Boolean(holdings.length) && !hasSnap };
+  const trades = mergeTradeLines(
+    [],
+    hits.flatMap((h) => h.trades || []),
+  );
+  return { holdings, fromTrades: Boolean(holdings.length) && !hasSnap, trades };
 }
 
 function decodeText(buf: ArrayBuffer): string {
@@ -958,7 +980,7 @@ export async function parseHoldingsFileDetailed(file: File): Promise<ParsedBook>
   const text = decodeText(buf);
   const rows = parseCsv(text);
   const fromTrades = isTradeBook(rows);
-  return { holdings: extractHoldings(rows), fromTrades };
+  return { holdings: extractHoldings(rows), fromTrades, trades: fromTrades ? extractTradeLines(rows) : [] };
 }
 
 export async function parseHoldingsFile(file: File): Promise<Holding[]> {
@@ -966,19 +988,28 @@ export async function parseHoldingsFile(file: File): Promise<Holding[]> {
   return holdings;
 }
 
-export async function parseHoldingsFiles(files: File[]): Promise<{ holdings: Holding[]; errors: string[] }> {
+export async function parseHoldingsFiles(
+  files: File[],
+): Promise<{ holdings: Holding[]; trades: TradeLine[]; errors: string[] }> {
   const parts: ParsedBook[] = [];
   const errors: string[] = [];
   for (const f of files) {
     try {
       const got = await parseHoldingsFileDetailed(f);
-      if (!got.holdings.length) errors.push(f.name + " — no ticker + qty columns found");
+      if (!got.holdings.length && !got.trades?.length) errors.push(f.name + " — no ticker + qty columns found");
       else parts.push(got);
     } catch (err) {
       errors.push(f.name + " — " + (err instanceof Error ? err.message : "could not read"));
     }
   }
-  return { holdings: combineBooks(parts), errors };
+  return {
+    holdings: combineBooks(parts),
+    trades: mergeTradeLines(
+      [],
+      parts.flatMap((p) => p.trades || []),
+    ),
+    errors,
+  };
 }
 
 export function parseVoice(text: string): Holding[] {
@@ -1024,6 +1055,65 @@ export function mergeHoldings(existing: Holding[], incoming: Holding[]): Holding
     }
   }
   return [...map.values()];
+}
+
+function tradeKey(t: TradeLine) {
+  return [baseSym(t.symbol), t.date || "", t.side, String(t.qty), (t.price || 0).toFixed(4)].join("|");
+}
+
+export function mergeTradeLines(existing: TradeLine[], incoming: TradeLine[]): TradeLine[] {
+  const map = new Map<string, TradeLine>();
+  for (const t of [...(existing || []), ...(incoming || [])]) {
+    if (!(t.qty > 0) || (t.side !== 1 && t.side !== -1)) continue;
+    const row: TradeLine = {
+      ...t,
+      symbol: baseSym(t.symbol),
+      name: t.name || t.symbol,
+      qty: t.qty,
+      price: t.price > 0 ? t.price : 0,
+      date: t.date || null,
+      side: t.side,
+      priceFilled: t.priceFilled || undefined,
+    };
+    map.set(tradeKey(row), row);
+  }
+  return [...map.values()].sort((a, b) => {
+    const da = a.date || "";
+    const db = b.date || "";
+    if (da !== db) return da.localeCompare(db);
+    if (a.side !== b.side) return b.side - a.side;
+    return a.symbol.localeCompare(b.symbol);
+  });
+}
+
+/** Honest notes for Path upload: undated, missing price, zero qty. */
+export function auditTradeLines(trades: TradeLine[]): string[] {
+  const out: string[] = [];
+  for (const t of trades || []) {
+    const who = t.name || t.symbol || "A line";
+    if (!(t.qty > 0)) out.push(`${who} — zero quantity`);
+    if (!(t.price > 0) && t.date)
+      out.push(`${who} on ${t.date} — no price in the file. We will use that day’s close.`);
+    else if (!(t.price > 0)) out.push(`${who} — no price`);
+    if (!t.date) out.push(`${who} — no date (sits out of the path line)`);
+  }
+  return out;
+}
+
+export function sanitizeTrades(rows: TradeLine[] | undefined): TradeLine[] {
+  if (!rows?.length) return [];
+  return mergeTradeLines(
+    [],
+    rows.map((t) => ({
+      ...t,
+      symbol: guessTicker(t.symbol, t.name, t.isin),
+      name: t.name || t.symbol,
+      qty: Number(t.qty) || 0,
+      price: Number(t.price) || 0,
+      side: t.side === -1 ? -1 : 1,
+      date: t.date || null,
+    })),
+  );
 }
 
 function normName(s: string) {

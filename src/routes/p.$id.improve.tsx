@@ -1,11 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useBookCtx } from "@/components/book-context";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
-import { NavChart } from "@/components/charts/nav-chart";
-import { fmtInr, fmtPct, pickMaterialLevers, buildMixPath } from "@/lib/kosh/engine";
+import { fmtInr, fmtPct, pickMaterialLevers } from "@/lib/kosh/engine";
 import { bookXirr } from "@/lib/kosh/xirr";
 import { ShareRing, MiniBars } from "@/components/charts/share-ring";
 import { SkillMarkdown } from "@/components/analysis-view";
@@ -13,10 +11,9 @@ import { METRICS } from "@/lib/kosh/metrics";
 import { skillOf, skillPass, skillPeek } from "@/lib/kosh/screens";
 import { startImprove, isImproveLooping } from "@/lib/kosh/improve-run";
 import { sameBusinessPiles } from "@/lib/kosh/peers";
-import { apiHistories } from "@/lib/kosh/api";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import type { Holding, RiskLever } from "@/lib/kosh/types";
+import type { RiskLever } from "@/lib/kosh/types";
 import { StockLink } from "@/components/stock-link";
 
 export const Route = createFileRoute("/p/$id/improve")({ component: Improve });
@@ -246,13 +243,6 @@ function Improve() {
         </ul>
       </article>
 
-      <MixReplay
-        holdings={portfolio.holdings}
-        levers={material}
-        benchSymbol={book.benchSymbol}
-        benchName={book.benchName}
-      />
-
       <section className="grid gap-3 lg:grid-cols-3">
         {x.xirr != null ? (
           <div className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
@@ -395,9 +385,9 @@ function Improve() {
         {runErr || mine?.error ? <p className="mb-2 text-[13px] text-down">{runErr || mine?.error}</p> : null}
 
         <div className="overflow-x-auto rounded-lg bg-surface shadow-[var(--shadow-border)]">
-          <table className="w-full min-w-[32rem] text-left text-[13px]">
+          <table className="kosh-table w-full text-left text-[13px]">
             <thead className="text-[11px] font-semibold tracking-[0.08em] text-subtle uppercase">
-              <tr className="border-b border-border">
+              <tr>
                 <th className="px-3 py-2 font-semibold">Name</th>
                 <th className="px-3 py-2 font-semibold">Weight</th>
                 <th className="px-3 py-2 font-semibold">Fundamental</th>
@@ -411,7 +401,7 @@ function Improve() {
                 const fundTone = s?.fundTag ? (s.fundRating === "pass" ? "text-up" : "text-down") : "text-muted";
                 const qualTone = s?.qualTag ? (s.qualPotential === "yes" ? "text-up" : "text-down") : "text-muted";
                 return (
-                  <tr key={r.symbol} className="border-b border-border/60 last:border-0">
+                  <tr key={r.symbol}>
                     <td className="px-3 py-2">
                       <Link to="/s/$symbol" params={{ symbol: r.symbol }} className="font-medium hover:text-chart">
                         {r.name}
@@ -525,99 +515,5 @@ function Delta({
         </div>
       </button>
     </Tooltip>
-  );
-}
-
-function leverQty(h: Holding, levers: RiskLever[]) {
-  const lev = levers.find(
-    (l) => l.symbol.toUpperCase().replace(/\.(NS|BO)$/i, "") === h.symbol.toUpperCase().replace(/\.(NS|BO)$/i, ""),
-  );
-  if (!lev) return h.qty;
-  if (lev.action === "cut") return h.qty * 0.5;
-  if (lev.action === "trim") return h.qty * 0.75;
-  if (lev.action === "add") return h.qty * 1.25;
-  return h.qty;
-}
-
-function MixReplay({
-  holdings,
-  levers,
-  benchSymbol,
-  benchName,
-}: {
-  holdings: Holding[];
-  levers: RiskLever[];
-  benchSymbol: string;
-  benchName: string;
-}) {
-  const eq = holdings.filter((h) => h.kind !== "commodity");
-  const proposed = eq.map((h) => ({ ...h, qty: leverQty(h, levers) }));
-  const changed = levers.length > 0;
-  const hx = useQuery({
-    queryKey: ["mix-replay", eq.map((h) => h.symbol).join(","), benchSymbol],
-    queryFn: () => apiHistories([...eq.map((h) => h.symbol), benchSymbol], "max"),
-    staleTime: 30 * 60 * 1000,
-    enabled: eq.length > 0,
-  });
-  const pack = useMemo(() => {
-    const rows = hx.data || [];
-    const histories: Record<string, { t: number; c: number }[]> = {};
-    let benchBars: { t: number; c: number }[] = [];
-    for (const r of rows) {
-      const bars = r.bars || [];
-      const bare = String(r.input || r.symbol || "").replace(/\.(NS|BO)$/i, "");
-      histories[bare] = bars;
-      histories[r.input] = bars;
-      histories[r.symbol] = bars;
-      if (String(r.input).includes("NSEI") || String(r.symbol).includes("NSEI") || r.input === benchSymbol) benchBars = bars;
-    }
-    const byHold = (list: Holding[]) => {
-      const map: Record<string, { t: number; c: number }[]> = {};
-      for (const h of list) map[h.symbol] = histories[h.symbol] || histories[h.symbol.replace(/\.(NS|BO)$/i, "")] || [];
-      return map;
-    };
-    const current = buildMixPath(eq, byHold(eq), benchBars);
-    const alt = changed ? buildMixPath(proposed, byHold(proposed), benchBars) : null;
-    return { current, alt };
-  }, [hx.data, eq, proposed, changed, benchSymbol]);
-
-  return (
-    <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
-      <h3 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Historical mix replay</h3>
-      <p className="mt-1 max-w-2xl text-[13px] text-muted">
-        Today’s weights taken back through each name’s adjusted daily prices — the same method as Current holdings
-        historical performance. If there are material levers, the second line is those size changes applied, then replayed.
-        Not your XIRR. Not a reconstruction of old holdings.
-      </p>
-      {hx.isPending ? (
-        <p className="mt-3 text-sm text-muted">Loading daily history for the replay…</p>
-      ) : pack.current.nav.length ? (
-        <div className="mt-3 grid gap-4">
-          <NavChart
-            nav={pack.current.nav}
-            portLabel="Today’s mix"
-            benchLabel={benchName}
-            coverage={pack.current.coverage}
-          />
-          {pack.alt && pack.alt.nav.length ? (
-            <div>
-              <p className="mb-2 text-[12px] text-muted">
-                After {levers.map((l) => `${l.action} ${l.symbol}`).join(", ")}.
-              </p>
-              <NavChart
-                nav={pack.alt.nav}
-                portLabel="After levers"
-                benchLabel={benchName}
-                coverage={pack.alt.coverage}
-              />
-            </div>
-          ) : (
-            <p className="text-[13px] text-muted">No material size levers to replay yet.</p>
-          )}
-        </div>
-      ) : (
-        <p className="mt-3 text-sm text-muted">Not enough overlapping daily history to replay.</p>
-      )}
-    </section>
   );
 }

@@ -16,7 +16,7 @@ export type ScanName = {
   why: string;
 };
 
-export type Bar = { t: number; c: number };
+export type Bar = { t: number; c: number; raw?: number };
 
 export type OhlcBar = { t: number; o: number; h: number; l: number; c: number; v: number; adj?: number };
 
@@ -94,12 +94,28 @@ export type Holding = {
   lots?: Lot[];
 };
 
+/** One dated buy or sell from a trade file. side 1 = buy, -1 = sell. */
+export type TradeLine = {
+  symbol: string;
+  name: string;
+  qty: number;
+  price: number;
+  date: string | null;
+  boughtAt?: string | null;
+  side: 1 | -1;
+  isin?: string;
+  sector?: string;
+  /** Set when the file had no price and we used that day’s close. */
+  priceFilled?: boolean;
+};
+
 export type Portfolio = {
   id: string;
   name: string;
   holdings: Holding[];
   bench: string;
   includeCommodities?: boolean;
+  trades?: TradeLine[];
 };
 
 export type NavPoint = {
@@ -110,6 +126,14 @@ export type NavPoint = {
   covered: number;
   names: number;
   wAvail: number;
+  /** Your path wealth in rupees (or indexed later). Only set when a trade file exists. */
+  path?: number | null;
+  /** Same rupees into the index on the same days. */
+  sameCash?: number | null;
+  /** Cash-flow-stripped index (~100 start). Used for Growth / drawdown / rolling. */
+  portUnit?: number | null;
+  benchUnit?: number | null;
+  pathUnit?: number | null;
 };
 
 export type MixPath = {
@@ -120,6 +144,143 @@ export type MixPath = {
   coverage: string;
   method: string;
 };
+
+export type PathPoint = {
+  t: number;
+  day: string;
+  wealth: number;
+  sameCash: number | null;
+  /** Time-weighted unit value, 100 on the first day. Ignores extra cash you put in later. */
+  unit: number;
+  sameUnit: number | null;
+  covered: number;
+  names: number;
+};
+
+export type PathSlicePart = {
+  symbol: string;
+  name: string;
+  qty: number;
+  value: number;
+};
+
+/** What you actually held on a day (month-end snapshots). */
+export type PathSlice = {
+  day: string;
+  wealth: number;
+  parts: PathSlicePart[];
+};
+
+/** One name across the whole file — buys, sells, still held. */
+export type PathName = {
+  symbol: string;
+  name: string;
+  bought: number;
+  sold: number;
+  realized: number;
+  stillQty: number;
+  stillValue: number;
+  unrealized: number;
+  total: number;
+};
+
+export type ClosedTrade = {
+  symbol: string;
+  name: string;
+  qty: number;
+  buyDate: string;
+  sellDate: string;
+  buyPx: number;
+  sellPx: number;
+  pnl: number;
+  pnlPct: number;
+  days: number;
+};
+
+export type PathYear = {
+  year: string;
+  start: number;
+  end: number;
+  ret: number | null;
+  buys: number;
+  sells: number;
+  buyIn: number;
+  sellOut: number;
+};
+
+export type BuyAdded = {
+  symbol: string;
+  name: string;
+  qty: number;
+  date: string;
+  price: number;
+  invested: number;
+  remainingQty: number;
+  valueNow: number;
+  pnl: number;
+};
+
+export type PathEvent = {
+  date: string;
+  side: 1 | -1;
+  symbol: string;
+  name: string;
+  qty: number;
+  price: number;
+  amount: number;
+};
+
+export type PathHeld = {
+  symbol: string;
+  name: string;
+  qty: number;
+  avg: number;
+  value: number;
+};
+
+export type FilledPrice = {
+  symbol: string;
+  name: string;
+  date: string;
+  price: number;
+  sessionDay: string;
+  method: "day-close";
+  hadTime: boolean;
+};
+
+/** Point-in-time reconstruction from the trade file. Not the current mix. */
+export type PathPack = {
+  nav: PathPoint[];
+  xirr: number | null;
+  twr: number | null;
+  twrCagr: number | null;
+  sameCashLast: number | null;
+  sameCashXirr: number | null;
+  wealthNow: number;
+  from: string | null;
+  to: string | null;
+  closed: ClosedTrade[];
+  stillHeld: PathHeld[];
+  neverSoldLast: number | null;
+  contrib: BuyAdded[];
+  years: PathYear[];
+  events: PathEvent[];
+  missing: string[];
+  used: string[];
+  coverage: string;
+  nTrades: number;
+  nBuys: number;
+  nSells: number;
+  nUndated: number;
+  splitNote: boolean;
+  filledPrices: FilledPrice[];
+  snapshots: PathSlice[];
+  byName: PathName[];
+  windows: Record<string, WindowPair>;
+  months: MonthRow[];
+  risk: RiskMetrics | null;
+};
+
 
 export type WindowPair = { port: number | null; bench: number | null };
 
@@ -211,6 +372,8 @@ export type CorrPack = {
   matrix: (number | null)[][];
   vsNifty: (number | null)[];
   clusters: CorrCluster[];
+  /** How many names by weight were actually scored. */
+  cap?: number;
 };
 
 export type Sleeve = {
@@ -255,6 +418,7 @@ export type Book = {
   equityValue: number;
   levers: RiskLever[];
   corr: CorrPack;
+  path?: PathPack | null;
 };
 
 export type ChartRange = "1M" | "3M" | "6M" | "YTD" | "1Y" | "2Y" | "3Y" | "5Y" | "10Y" | "MAX" | "CUSTOM";
@@ -297,6 +461,10 @@ export type Fundamentals = {
   dii: number | null;
   roce: number | null;
   peg: number | null;
+  /** Forward P/E printed on a free company card. Hidden in UI when missing — never invented. */
+  forwardPe?: number | null;
+  forwardEps?: number | null;
+  forwardPeg?: number | null;
   opm: number | null;
   salesCagr3: number | null;
   profitCagr3: number | null;
@@ -308,6 +476,13 @@ export type Fundamentals = {
   cfo: FinPoint[];
   qCfo: FinPoint[];
   cfoPat: number | null;
+  /** Last yearly sales period on the card, if any. */
+  finPeriod?: string | null;
+  /** Latest shareholding period label. */
+  shPeriod?: string | null;
+  retrievedAt?: number | null;
+  /** Promoter shares pledged, as % of total equity. Blank if the filing has no number. */
+  pledge?: number | null;
 };
 
 export type ScreenRow = {
@@ -374,6 +549,11 @@ export type ScreenRow = {
   passCount?: number;
   missed?: string[];
   unchecked?: string[];
+  matchKind?: "strict" | "candidate" | "fail" | "unknown";
+  isin?: string | null;
+  series?: string | null;
+  listedOn?: string | null;
+  gsm?: boolean | null;
 };
 
 export type NewsItem = {
@@ -410,6 +590,8 @@ export type ResultEvent = {
   date: string;
   purpose: string;
   kind: "results" | "stock" | "macro";
+  /** Official date is not on file — the day is a calendar convention or a typical window. */
+  expected?: boolean;
 };
 
 export type DealEvent = {

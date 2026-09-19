@@ -1,13 +1,66 @@
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { KoshSnapshot } from "@/lib/kosh/snapshot";
-import type { Valuation } from "@/lib/kosh/valuation";
+import type { ValModel, ValueWord, ValuationModelsPack } from "@/lib/kosh/valuation";
+import { coverageLabel, type CoverageCard as CoverageModel } from "@/lib/kosh/coverage";
 
-export function SnapshotCard({ snap }: { snap: KoshSnapshot }) {
+export function CoverageCard({ cov }: { cov: CoverageModel }) {
   return (
     <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
-      <div className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Kosh snapshot</div>
-      <p className="mt-1 text-[12px] text-subtle">A short read of numbers we have. Blank is missing, not a guess.</p>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Data coverage</div>
+        <div className="font-mono text-[13px] tabular">
+          {coverageLabel(cov.level)} · {cov.pct}% · {cov.nOk}/{cov.nAll}
+        </div>
+      </div>
+      <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
+        {cov.buckets.map((b) => (
+          <li key={b.id} className="flex items-baseline justify-between gap-2 border-b border-border/50 py-1 text-[12px]">
+            <Tooltip content={b.hint}>
+              <button type="button" className="text-left text-muted hover:text-fg">
+                {b.label}
+              </button>
+            </Tooltip>
+            <span className={cn("font-medium", b.ok ? "text-up" : "text-muted")}>{b.ok ? "On file" : "Missing"}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+export function CoverageLine({ cov }: { cov: CoverageModel }) {
+  const missing = cov.buckets.filter((b) => !b.ok);
+  if (!missing.length) return null;
+  return (
+    <p className="text-[12px] text-muted">
+      Still missing: {missing.map((b) => b.label).join(", ")}. Blank is missing, not a pass.
+    </p>
+  );
+}
+
+function wordClass(word: ValueWord) {
+  if (word === "Cheaper") return "bg-up/15 text-up";
+  if (word === "Expensive") return "bg-down/15 text-down";
+  if (word === "About right") return "bg-chart/15 text-chart";
+  return "bg-surface-2 text-muted";
+}
+
+export function WordChip({ word }: { word: ValueWord }) {
+  return (
+    <span className={cn("rounded-sm px-2 py-0.5 text-[11px] font-semibold tracking-[0.04em]", wordClass(word))}>
+      {word}
+    </span>
+  );
+}
+
+export function SnapshotCard({ snap, simple }: { snap: KoshSnapshot; simple?: ValModel | null }) {
+  return (
+    <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Snapshot</div>
+        {simple ? <WordChip word={simple.word} /> : null}
+      </div>
       {(snap.fundTag || snap.qualTag) ? (
         <div className="mt-2 flex flex-wrap gap-2 text-[12px]">
           {snap.fundTag ? (
@@ -21,10 +74,8 @@ export function SnapshotCard({ snap }: { snap: KoshSnapshot }) {
             </span>
           ) : null}
         </div>
-      ) : (
-        <p className="mt-2 text-[12px] text-muted">No skill read yet.</p>
-      )}
-      <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">
+      ) : null}
+      <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-4">
         {snap.lines.map((l) => (
           <div key={l.label} className="flex items-baseline justify-between gap-2 border-b border-border/50 py-1.5">
             <dt className="text-[12px] text-muted">
@@ -40,59 +91,65 @@ export function SnapshotCard({ snap }: { snap: KoshSnapshot }) {
           </div>
         ))}
       </dl>
-      <p className="mt-3 text-[13px] leading-relaxed text-fg">{snap.read}</p>
+      {simple ? (
+        <div className="mt-3 rounded-sm bg-bg px-3 py-3 shadow-[var(--shadow-border)]">
+          <div className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">{simple.figure}</div>
+          <p className="mt-1 text-[13px] leading-relaxed text-fg">{simple.body}</p>
+        </div>
+      ) : null}
+      {snap.missing.length ? (
+        <p className="mt-3 text-[12px] text-muted">Still unavailable: {snap.missing.join(", ")}.</p>
+      ) : null}
     </section>
   );
 }
 
-export function ValuationCard({ val }: { val: Valuation }) {
+function ModelBlock({ model }: { model: ValModel }) {
+  return (
+    <div className="rounded-sm bg-bg px-3 py-3 shadow-[var(--shadow-border)]">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-[13px] font-semibold">{model.title}</h3>
+        <WordChip word={model.word} />
+      </div>
+      <p className="mt-1 font-mono text-[13px] tabular text-muted">{model.figure}</p>
+      {model.rows.length ? (
+        <dl className="mt-2 grid gap-1">
+          {model.rows.map((r) => (
+            <div key={r.label} className="flex items-baseline justify-between gap-3 text-[12px]">
+              <dt className="text-muted">{r.label}</dt>
+              <dd className="font-mono tabular">{r.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      <p className="mt-2 text-[13px] leading-relaxed text-fg">{model.body}</p>
+      <p className="mt-2 text-[11px] text-subtle">{model.note}</p>
+    </div>
+  );
+}
+
+export function ValuationModels({ pack }: { pack: ValuationModelsPack }) {
   return (
     <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
-      <div className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Valuation cases</div>
+      <div className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Valuation models</div>
       <p className="mt-1 text-[12px] text-subtle">
-        5-year exit multiple, discounted at {val.discount.toFixed(0)}%. Not a price target. Change the growth and the number
-        moves.
+        One word is a comparison of the prints we have — Cheaper, About right, Expensive, or Not enough data. Not a buy
+        call.
       </p>
-      {val.cases.length ? (
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[480px] text-left text-[13px]">
-            <thead>
-              <tr className="border-b border-border text-[11px] tracking-[0.06em] text-subtle uppercase">
-                <th className="py-2 pr-3 font-medium">Case</th>
-                <th className="py-2 pr-3 font-medium">Growth</th>
-                <th className="py-2 pr-3 font-medium">Exit P/E</th>
-                <th className="py-2 pr-3 font-medium">Implied</th>
-                <th className="py-2 font-medium">vs last</th>
-              </tr>
-            </thead>
-            <tbody>
-              {val.cases.map((c) => (
-                <tr key={c.label} className="border-b border-border/60 last:border-0">
-                  <td className="py-2 pr-3 font-medium">{c.label}</td>
-                  <td className="py-2 pr-3 font-mono tabular">{c.growth.toFixed(0)}%</td>
-                  <td className="py-2 pr-3 font-mono tabular">{c.exitPe.toFixed(0)}×</td>
-                  <td className="py-2 pr-3 font-mono tabular">
-                    ₹{c.value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                  </td>
-                  <td
-                    className={cn(
-                      "py-2 font-mono tabular",
-                      c.vsPrice == null ? "text-muted" : c.vsPrice >= 0 ? "text-up" : "text-down",
-                    )}
-                  >
-                    {c.vsPrice == null ? "—" : `${c.vsPrice >= 0 ? "+" : ""}${c.vsPrice.toFixed(0)}%`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="mt-3 text-[13px] text-muted">
-          {val.missing.length ? `Unavailable: ${val.missing.join(", ")}.` : "Not enough published numbers."}
+      <div className="mt-3 grid gap-3 lg:grid-cols-3">
+        {pack.models.map((m) => (
+          <ModelBlock key={m.id} model={m} />
+        ))}
+      </div>
+      {pack.graham != null ? (
+        <p className="mt-3 text-[12px] text-muted">
+          Traditional Graham check (optional): ₹{pack.graham.toFixed(0)}
+          {pack.grahamGap != null
+            ? ` · last ${pack.grahamGap >= 0 ? "+" : ""}${pack.grahamGap.toFixed(0)}% versus that filter.`
+            : "."}{" "}
+          Not a buy call.
         </p>
-      )}
-      <p className="mt-3 text-[13px] leading-relaxed text-muted">{val.read}</p>
+      ) : null}
     </section>
   );
 }

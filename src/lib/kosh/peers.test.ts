@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { peerLineOf, pickPeers, sameBusinessPiles } from "./peers.ts";
+import { peerLineOf, pickPeers, sameBusinessPiles, peerInsight } from "./peers.ts";
 import type { ScreenRow } from "./types.ts";
 
 function row(symbol: string, extra: Partial<ScreenRow> = {}): ScreenRow {
@@ -182,5 +182,26 @@ describe("sameBusinessPiles", () => {
       sameBusinessPiles([{ symbol: "HDFCBANK", name: "HDFC Bank", weight: 0.2 }]),
       [],
     );
+  });
+});
+
+describe("peer insight", () => {
+  it("stays silent without PE + ROCE + growth on both sides", () => {
+    assert.equal(peerInsight({ pe: 20 }, [{ pe: 18, roce: 22, salesYoY: 12 }]), null);
+    assert.equal(peerInsight({ pe: 20, roce: 22, salesYoY: 10 }, [{ pe: 18 }]), null);
+  });
+
+  it("states the premium versus the business line when the numbers exist", () => {
+    const text = peerInsight(
+      { pe: 40, roce: 30, salesYoY: 18 },
+      [
+        { pe: 20, roce: 20, salesYoY: 10 },
+        { pe: 22, roce: 18, salesYoY: 8 },
+      ],
+    );
+    assert.ok(text);
+    assert.ok(/paying/i.test(text || ""));
+    assert.ok(/ROCE/i.test(text || ""));
+    assert.ok(!/undervalued/i.test(text || ""));
   });
 });

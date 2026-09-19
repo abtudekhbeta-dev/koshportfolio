@@ -225,6 +225,7 @@ export type CorrPack = {
   matrix: (number | null)[][];
   vsNifty: (number | null)[];
   clusters: CorrCluster[];
+  cap?: number;
 };
 
 export function buildCorrPack(
@@ -289,6 +290,7 @@ export function buildCorrPack(
     matrix,
     vsNifty,
     clusters: groups,
+    cap,
   };
 }
 

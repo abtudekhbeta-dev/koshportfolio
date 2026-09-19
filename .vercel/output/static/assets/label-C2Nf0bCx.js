@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-0vZSBttN.js";import{d as t}from"./sectors-DKOBy2cm.js";var n=e();function r({className:e,...r}){return(0,n.jsx)(`label`,{className:t(`grid gap-1.5 text-[12px] font-medium text-muted`,e),...r})}export{r as t};

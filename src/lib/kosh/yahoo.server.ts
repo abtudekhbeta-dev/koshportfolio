@@ -491,7 +491,7 @@ export async function fetchHistories(symbols: string[], range = "max"): Promise<
           first: d.first,
           last: d.last,
           sessions: d.sessions,
-          bars: d.bars.map((b) => ({ t: b.t, c: b.c })),
+          bars: d.bars.map((b) => ({ t: b.t, c: b.c, raw: b.raw })),
           missing: false,
         }
       : {

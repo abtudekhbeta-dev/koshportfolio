@@ -123,14 +123,44 @@ export function downloadBookExcel(name: string, book: Book, portfolio?: Portfoli
   );
   sheet(
     wb,
-    "Path",
+    "This mix",
     book.mix.nav.map((p) => ({
       Day: p.day,
-      Portfolio: p.port,
+      Mix: p.port,
       Benchmark: p.bench,
       Coverage: p.wAvail,
+      "Your path": p.path ?? "",
+      "Same money in index": p.sameCash ?? "",
     })),
   );
+  if (book.path?.nav?.length) {
+    sheet(
+      wb,
+      "Your path",
+      book.path.nav.map((p) => ({
+        Day: p.day,
+        Wealth: p.wealth,
+        "Same money in index": p.sameCash ?? "",
+        Names: p.names,
+      })),
+    );
+    sheet(
+      wb,
+      "Closed trades",
+      book.path.closed.map((c) => ({
+        Ticker: c.symbol,
+        Name: c.name,
+        Qty: c.qty,
+        Bought: c.buyDate,
+        "Buy price": c.buyPx,
+        Sold: c.sellDate,
+        "Sell price": c.sellPx,
+        PnL: c.pnl,
+        "PnL %": c.pnlPct,
+        Days: c.days,
+      })),
+    );
+  }
   if (portfolio) {
     sheet(
       wb,
@@ -145,6 +175,20 @@ export function downloadBookExcel(name: string, book: Book, portfolio?: Portfoli
         "Buy date": h.date || "",
       })),
     );
+    if (portfolio.trades?.length) {
+      sheet(
+        wb,
+        "Trades",
+        portfolio.trades.map((t) => ({
+          Ticker: t.symbol,
+          Name: t.name,
+          Side: t.side > 0 ? "BUY" : "SELL",
+          Qty: t.qty,
+          Price: t.price,
+          Date: t.date || "",
+        })),
+      );
+    }
   }
   XLSX.writeFile(wb, `kosh-${slug(name)}-${stamp()}.xlsx`);
 }

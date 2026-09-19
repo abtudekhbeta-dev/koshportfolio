@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { WatchBoard } from "@/components/watch-board";
+import { EnrichButton } from "@/components/enrich-button";
 import { apiScreener } from "@/lib/kosh/api";
 import { fmtPx } from "@/lib/kosh/engine";
 import { useKosh } from "@/lib/store";
@@ -89,6 +90,7 @@ function WatchPage() {
                 Delete list
               </Button>
             ) : null}
+            <EnrichButton symbols={active.symbols} />
           </div>
         ) : null}
         <WatchBoard symbols={active?.symbols || []} rows={screen.data?.rows || []} loading={screen.isPending} />

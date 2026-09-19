@@ -2,7 +2,7 @@
 
 import type { Fundamentals, ScreenRow } from "./types.ts";
 import type { SkillRead } from "./screens.ts";
-import { buildValuation, earningsQualityRead } from "./valuation.ts";
+import { buildValuationModels, earningsQualityRead } from "./valuation.ts";
 import { stakeDelta } from "./shareholding.ts";
 
 export type SnapshotLine = {
@@ -24,6 +24,10 @@ export type KoshSnapshot = {
   missing: string[];
 };
 
+function cr(n: number) {
+  return "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 }) + " Cr";
+}
+
 export function buildSnapshot(input: {
   symbol: string;
   name?: string;
@@ -31,47 +35,55 @@ export function buildSnapshot(input: {
   fund?: Fundamentals | null;
   row?: ScreenRow | null;
   skill?: SkillRead | null;
+  bars?: { t: number; c: number }[] | null;
 }): KoshSnapshot {
   const f = input.fund || null;
   const row = input.row || null;
   const skill = input.skill || null;
   const price = input.price ?? row?.price ?? null;
-  const val = buildValuation({ price, fund: f });
+  const models = buildValuationModels({ price, fund: f, bars: input.bars });
   const eq = earningsQualityRead(f);
   const sh = stakeDelta(f?.shareholding);
   const missing: string[] = [];
 
   const lines: SnapshotLine[] = [];
-  const pe = f?.pe ?? row?.pe ?? val.pe;
+  const pe = f?.pe ?? row?.pe ?? null;
   const ind = f?.industryPe ?? null;
   if (pe != null) {
     lines.push({
       label: "P/E",
-      value: ind != null ? `${pe.toFixed(1)} vs ind ${ind.toFixed(0)}` : pe.toFixed(1),
+      value: ind != null ? `${pe.toFixed(1)} vs ${ind.toFixed(0)}` : pe.toFixed(1),
       tone: ind != null ? (pe <= ind ? "up" : pe > ind * 1.25 ? "down" : undefined) : undefined,
-      hint: "Trailing P/E versus the reported industry multiple. Blank industry means we do not invent a peer set.",
+      hint: "Trailing P/E versus the reported industry multiple.",
     });
   } else missing.push("P/E");
 
-  if (val.graham != null) {
-    const gap = val.grahamGap;
+  const pb = f?.pb ?? row?.pb ?? null;
+  if (pb != null) {
     lines.push({
-      label: "Graham",
-      value: gap != null ? `₹${val.graham.toFixed(0)} · ${gap >= 0 ? "+" : ""}${gap.toFixed(0)}%` : `₹${val.graham.toFixed(0)}`,
-      tone: gap != null ? (gap < -10 ? "up" : gap > 25 ? "down" : undefined) : undefined,
-      hint: "√(22.5 × EPS × book). A textbook ceiling, not a target.",
+      label: "P/B",
+      value: pb.toFixed(2),
+      hint: "Price ÷ book value per share on the company card.",
     });
-  } else missing.push("Graham (needs EPS and book)");
+  } else missing.push("P/B");
 
+  const roe = f?.roe ?? row?.roe ?? null;
   const roce = f?.roce ?? row?.roce ?? null;
-  if (roce != null) {
+  if (roe != null) {
+    lines.push({
+      label: "ROE",
+      value: `${roe.toFixed(1)}%`,
+      tone: roe >= 15 ? "up" : roe < 8 ? "down" : undefined,
+      hint: "Return on equity from the company card.",
+    });
+  } else if (roce != null) {
     lines.push({
       label: "ROCE",
       value: `${roce.toFixed(1)}%`,
       tone: roce >= 20 ? "up" : roce < 10 ? "down" : undefined,
       hint: "Return on capital employed from the company card.",
     });
-  } else missing.push("ROCE");
+  } else missing.push("ROE");
 
   const de = f?.de ?? row?.de ?? null;
   if (de != null) {
@@ -79,18 +91,33 @@ export function buildSnapshot(input: {
       label: "D/E",
       value: de.toFixed(2),
       tone: de <= 0.5 ? "up" : de > 1.5 ? "down" : undefined,
-      hint: "Debt ÷ equity. Banks often skip this print.",
+      hint: "Total debt ÷ equity. Banks often skip this print.",
     });
   } else missing.push("Debt/equity");
 
-  if (eq.cfoPat != null) {
+  const sales = f?.salesYoY ?? row?.salesYoY ?? null;
+  if (sales != null) {
     lines.push({
-      label: "Cash / profit",
-      value: `${eq.cfoPat.toFixed(2)}× · ${eq.tag}`,
-      tone: eq.cfoPat >= 0.8 ? "up" : eq.cfoPat < 0.5 ? "down" : undefined,
-      hint: "Latest operating cash ÷ latest reported profit. Missing cash flow stays blank.",
+      label: "Sales 1Y",
+      value: `${sales.toFixed(0)}%`,
+      tone: sales >= 12 ? "up" : sales < 0 ? "down" : undefined,
+      hint: "Latest yearly sales growth on the company card.",
     });
-  } else missing.push("operating cash flow");
+  } else missing.push("sales growth");
+
+  const pat1 = f?.profitYoY ?? row?.profitYoY ?? null;
+  const pat3 = f?.profitCagr3 ?? row?.profitCagr3 ?? null;
+  if (pat1 != null || pat3 != null) {
+    const bits = [];
+    if (pat1 != null) bits.push(`1Y ${pat1.toFixed(0)}%`);
+    if (pat3 != null) bits.push(`3Y ${pat3.toFixed(0)}%`);
+    lines.push({
+      label: "Profit",
+      value: bits.join(" · "),
+      tone: (pat3 ?? pat1 ?? 0) >= 12 ? "up" : (pat3 ?? pat1 ?? 0) < 0 ? "down" : undefined,
+      hint: "Recorded profit growth from the company card.",
+    });
+  } else missing.push("profit growth");
 
   const prom = f?.promoters ?? row?.promoters ?? null;
   if (prom != null) {
@@ -103,23 +130,34 @@ export function buildSnapshot(input: {
     });
   } else missing.push("promoter holding");
 
+  const mcap = f?.mcapCr ?? row?.mcapCr ?? null;
+  if (mcap != null && mcap > 0) {
+    lines.push({
+      label: "Mcap",
+      value: cr(mcap),
+      hint: "Shares outstanding × last price, in ₹ crore.",
+    });
+  }
+
+  if (eq.cfoPat != null) {
+    lines.push({
+      label: "Cash / profit",
+      value: `${eq.cfoPat.toFixed(2)}×`,
+      tone: eq.cfoPat >= 0.8 ? "up" : eq.cfoPat < 0.5 ? "down" : undefined,
+      hint: "Latest operating cash ÷ latest reported profit. Missing cash flow stays blank.",
+    });
+  }
+
   const fundTag = skill?.fundTag || null;
   const qualTag = skill?.qualTag || null;
   const fundPass = skill?.fundRating ? skill.fundRating === "pass" : null;
   const qualYes = skill?.qualPotential ? skill.qualPotential === "yes" : null;
 
   const bits: string[] = [];
-  if (fundTag && qualTag) {
-    bits.push(`Skills: ${fundTag} · ${qualTag}.`);
-  } else if (fundTag) {
-    bits.push(`Fundamental skill: ${fundTag}. Qualitative not run.`);
-  } else if (qualTag) {
-    bits.push(`Qualitative skill: ${qualTag}. Fundamental not run.`);
-  } else {
-    bits.push("No skill read yet — tags stay blank rather than guessed.");
-  }
-  bits.push(val.read);
-  bits.push(eq.body);
+  if (fundTag && qualTag) bits.push(`Skills: ${fundTag} · ${qualTag}.`);
+  else if (fundTag) bits.push(`Fundamental skill: ${fundTag}.`);
+  else if (qualTag) bits.push(`Qualitative skill: ${qualTag}.`);
+  bits.push(`${models.simple.word}. ${models.simple.figure}.`);
 
   return {
     symbol: input.symbol,

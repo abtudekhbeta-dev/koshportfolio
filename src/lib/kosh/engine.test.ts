@@ -70,6 +70,17 @@ describe("current-mix path", () => {
     assert.match(mix.coverage, /1\/2 stocks/);
   });
 
+  it("fixedWeights replay uses the trial mix, not today's quantities", () => {
+    const h: Holding[] = [
+      { symbol: "A", name: "A", qty: 1, avg: 100, date: null },
+      { symbol: "B", name: "B", qty: 9, avg: 100, date: null },
+    ];
+    const hx = { A: bars(0, 80, 100, 0.001), B: bars(0, 80, 100, 0.001) };
+    const mix = buildMixPath(h, hx, [], { A: 80, B: 20 });
+    assert.ok(Math.abs((mix.weights.A || 0) - 0.8) < 0.02);
+    assert.ok(Math.abs((mix.weights.B || 0) - 0.2) < 0.02);
+  });
+
   it("first listing of a name does not jump NAV", () => {
     const h: Holding[] = [
       { symbol: "A", name: "A", qty: 1, avg: null, date: null },

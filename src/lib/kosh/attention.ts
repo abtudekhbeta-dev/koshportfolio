@@ -1,8 +1,9 @@
-/** Next-7-days attention: results, moving headlines, stake-change news, deals. */
+/** Near-term triggers: results, moving headlines, stake-change news, deals. */
 
-import type { DealEvent, NewsItem, ResultEvent } from "./types";
-import { newsBucket, newsTone } from "./news";
-import { bareSym } from "./portfolio-stats";
+import type { DealEvent, NewsItem, ResultEvent } from "./types.ts";
+import { newsBucket, newsTone } from "./news.ts";
+import { bareSym } from "./portfolio-stats.ts";
+import { parseIstDate, istDateMs } from "./dates.ts";
 
 const DAY = 86400000;
 
@@ -24,8 +25,9 @@ export function isMovingNews(item: NewsItem): boolean {
 }
 
 export function withinDays(iso: string, days: number, asOf = Date.now()): boolean {
-  const t = Date.parse(iso.length <= 10 ? iso + "T00:00:00+05:30" : iso);
-  if (!Number.isFinite(t)) return false;
+  const day = parseIstDate(iso);
+  const t = day ? istDateMs(day) : Date.parse(iso.length <= 10 ? iso + "T00:00:00+05:30" : iso);
+  if (t == null || !Number.isFinite(t)) return false;
   const diff = t - asOf;
   return diff >= -DAY && diff <= days * DAY;
 }
@@ -48,6 +50,7 @@ export type AttentionItem = {
   weight?: number;
   href?: string;
   note?: string;
+  expected?: boolean;
 };
 
 function kindRank(k: AttentionKind) {
@@ -72,26 +75,29 @@ export function buildAttention(input: {
     if (ev.kind === "macro") continue;
     const row = want.get(bareSym(ev.symbol));
     if (!row) continue;
-    if (!withinDays(ev.date, days)) continue;
+    const date = parseIstDate(ev.date) || ev.date;
+    if (!withinDays(date, days)) continue;
     out.push({
-      id: "r:" + ev.symbol + ev.date,
+      id: "r:" + ev.symbol + date,
       kind: "results",
-      date: ev.date,
+      date,
       title: ev.purpose || "Results",
       symbol: row.symbol,
       name: row.name,
       weight: row.weight,
+      expected: ev.expected || undefined,
     });
   }
 
   for (const d of input.deals || []) {
     const row = want.get(bareSym(d.symbol));
     if (!row) continue;
-    if (!withinDays(d.date, days)) continue;
+    const date = parseIstDate(d.date) || d.date;
+    if (!withinDays(date, days)) continue;
     out.push({
-      id: "d:" + d.kind + d.symbol + d.date + d.note.slice(0, 24),
+      id: "d:" + d.kind + d.symbol + date + d.note.slice(0, 24),
       kind: d.kind === "insider" ? "insider" : "deal",
-      date: d.date,
+      date,
       title: d.note,
       symbol: row.symbol,
       name: row.name,
@@ -109,7 +115,7 @@ export function buildAttention(input: {
       out.push({
         id: "n:" + (n.link || n.title).slice(0, 80),
         kind: stake ? "stake" : "news",
-        date: n.ts ? new Date((n.ts > 1e12 ? n.ts : n.ts * 1000)).toISOString().slice(0, 10) : "",
+        date: n.ts ? new Date(n.ts > 1e12 ? n.ts : n.ts * 1000).toISOString().slice(0, 10) : "",
         title: n.title,
         symbol: row.symbol,
         name: row.name,

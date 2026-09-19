@@ -13,7 +13,7 @@ import { apiCloseOn, apiQuotes, apiSearch } from "@/lib/kosh/api";
 import { deriveMetal, formatGrams, METALS, type MetalId } from "@/lib/kosh/commodities";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import type { Holding } from "@/lib/kosh/types";
+import type { Holding, TradeLine } from "@/lib/kosh/types";
 
 type Tab = "file" | "manual" | "metals" | "voice";
 
@@ -47,13 +47,14 @@ function AddForm({ portfolioId, onDone }: { portfolioId?: string; onDone: () => 
   const addHoldings = useKosh((s) => s.addHoldings);
   const fillHoldingsStore = useKosh((s) => s.fillHoldings);
   const upsertHoldingsStore = useKosh((s) => s.upsertHoldings);
+  const mergeTradesStore = useKosh((s) => s.mergeTrades);
   const held = useKosh((s) =>
     portfolioId ? s.portfolios.find((p) => p.id === portfolioId)?.holdings : undefined,
   );
   const existing = held ?? NONE;
   const navigate = useNavigate();
 
-  function commit(incoming: Holding[], pname?: string, mode: "add" | "fill" | "upsert" = "add", opts?: FillOpts) {
+  function commit(incoming: Holding[], pname?: string, mode: "add" | "fill" | "upsert" = "add", opts?: FillOpts, trades?: TradeLine[]) {
     if (!incoming.length) {
       toast.error("No holdings found");
       return;
@@ -77,8 +78,12 @@ function AddForm({ portfolioId, onDone }: { portfolioId?: string; onDone: () => 
         addHoldings(portfolioId, incoming);
         toast.success(`Added ${incoming.length} line${incoming.length === 1 ? "" : "s"}`);
       }
+      if (trades?.length) {
+        mergeTradesStore(portfolioId, trades);
+        toast.message(`Kept ${trades.length} buy/sell line${trades.length === 1 ? "" : "s"} for your path`);
+      }
     } else {
-      const id = addPortfolio(pname || name || "Main", incoming);
+      const id = addPortfolio(pname || name || "Main", incoming, "nifty", trades);
       toast.success("Portfolio created");
       void navigate({ to: "/p/$id", params: { id } });
     }
@@ -111,9 +116,9 @@ function AddForm({ portfolioId, onDone }: { portfolioId?: string; onDone: () => 
       {tab === "file" ? (
         <FilePane
           existing={portfolioId ? existing : undefined}
-          onCommit={(h) => commit(h, "Imported")}
-          onFill={portfolioId ? (h, opts) => commit(h, undefined, "fill", opts) : undefined}
-          onUpsert={portfolioId ? (h) => commit(h, undefined, "upsert") : undefined}
+          onCommit={(h, trades) => commit(h, "Imported", "add", undefined, trades)}
+          onFill={portfolioId ? (h, opts, trades) => commit(h, undefined, "fill", opts, trades) : undefined}
+          onUpsert={portfolioId ? (h, trades) => commit(h, undefined, "upsert", undefined, trades) : undefined}
         />
       ) : null}
       {tab === "manual" ? <ManualPane onCommit={(h) => commit(h)} /> : null}
@@ -129,14 +134,15 @@ function FilePane({
   onUpsert,
   existing,
 }: {
-  onCommit: (h: Holding[]) => void;
-  onFill?: (h: Holding[], opts: FillOpts) => void;
-  onUpsert?: (h: Holding[]) => void;
+  onCommit: (h: Holding[], trades?: TradeLine[]) => void;
+  onFill?: (h: Holding[], opts: FillOpts, trades?: TradeLine[]) => void;
+  onUpsert?: (h: Holding[], trades?: TradeLine[]) => void;
   existing?: Holding[];
 }) {
   const [msg, setMsg] = useState("CSV or Excel from your broker — holdings snapshot or a buy/sell trade book.");
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<Holding[] | null>(null);
+  const [previewTrades, setPreviewTrades] = useState<TradeLine[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
 
   async function ingest(files: FileList | File[]) {
@@ -146,10 +152,11 @@ function FilePane({
     setMsg("Reading " + list.length + " file(s)…");
     setErrors([]);
     try {
-      const { holdings: all, errors: fails } = await parseHoldingsFiles(list);
+      const { holdings: all, trades, errors: fails } = await parseHoldingsFiles(list);
       setErrors(fails);
       if (!all.length) {
         setPreview(null);
+        setPreviewTrades([]);
         setMsg("No holdings found. Need a ticker (or company name) and a quantity column. Title rows are fine.");
         return;
       }
@@ -161,9 +168,11 @@ function FilePane({
         resolved = all.map((h) => ({ ...h, name: displayName(h) }));
       }
       setPreview(resolved);
+      setPreviewTrades(trades || []);
       const isins = resolved.filter((h) => isIsin(h.symbol)).length;
       setMsg(
         `Ready · ${resolved.length} stock${resolved.length === 1 ? "" : "s"}` +
+          (trades?.length ? ` · ${trades.length} buy/sell line${trades.length === 1 ? "" : "s"} for your path` : "") +
           (isins ? ` · ${isins} still need a name match` : ""),
       );
     } finally {
@@ -195,9 +204,10 @@ function FilePane({
         />
         Drop a holdings export or a buy/sell trade book
         <div className="mt-1 text-[12px] text-subtle">
-          Click to pick · CSV or Excel. Trade books are netted (partial exits kept, sold names dropped). A workbook with
-          both a holdings sheet and a trade book keeps snapshot quantities and fills dates from the trades. Fill never
-          adds extras. Update from file sets quantity on matches without doubling.
+          Click to pick · CSV or Excel. Trade books are netted (partial exits kept, sold names dropped) and every dated
+          buy/sell is kept for your path on the same chart as Mix. A workbook with both a holdings sheet and a trade
+          book keeps snapshot quantities and fills dates from the trades. Fill never adds extras. Update from file sets
+          quantity on matches without doubling.
         </div>
       </label>
       <p className="mt-2 text-[12px] text-subtle">{busy ? "Reading…" : msg}</p>
@@ -235,6 +245,11 @@ function FilePane({
           {preview.some((h) => !h.avg) ? (
             <p className="mt-2 text-[12px] text-warn">Some rows have no buy price — unrealised P&L for those will stay blank until you edit them.</p>
           ) : null}
+          {previewTrades.length ? (
+            <p className="mt-2 text-[12px] text-muted">
+              {previewTrades.length} buy/sell line{previewTrades.length === 1 ? "" : "s"} in this file — they draw Your path on the same chart as This mix.
+            </p>
+          ) : null}
           {existing?.length ? (
             <p className="mt-2 text-[12px] text-muted">
               {classifyIncoming(existing, preview).matched.length} match this portfolio
@@ -250,37 +265,37 @@ function FilePane({
                 <Button
                   className="flex-1 min-w-[9rem]"
                   variant="secondary"
-                  onClick={() => onFill(preview, { dates: true, prices: false, addNew: false })}
+                  onClick={() => onFill(preview, { dates: true, prices: false, addNew: false }, previewTrades)}
                 >
                   Fill dates
                 </Button>
                 <Button
                   className="flex-1 min-w-[9rem]"
                   variant="secondary"
-                  onClick={() => onFill(preview, { dates: false, prices: true, addNew: false })}
+                  onClick={() => onFill(preview, { dates: false, prices: true, addNew: false }, previewTrades)}
                 >
                   Fill prices
                 </Button>
-                <Button className="flex-1 min-w-[9rem]" onClick={() => onFill(preview, { dates: true, prices: true, addNew: false })}>
+                <Button className="flex-1 min-w-[9rem]" onClick={() => onFill(preview, { dates: true, prices: true, addNew: false }, previewTrades)}>
                   Fill dates & prices
                 </Button>
                 {classifyIncoming(existing, preview).fresh.length ? (
                   <Button
                     variant="secondary"
                     className="flex-1 min-w-[9rem]"
-                    onClick={() => onFill(preview, { dates: false, prices: false, addNew: true })}
+                    onClick={() => onFill(preview, { dates: false, prices: false, addNew: true }, previewTrades)}
                   >
                     Add {classifyIncoming(existing, preview).fresh.length} new
                   </Button>
                 ) : null}
               </>
             ) : (
-              <Button className="flex-1" onClick={() => onCommit(preview)}>
+              <Button className="flex-1" onClick={() => onCommit(preview, previewTrades)}>
                 Add {preview.length} stock{preview.length === 1 ? "" : "s"}
               </Button>
             )}
             {!onFill ? null : existing?.length ? (
-              <Button variant="ghost" className="flex-1 min-w-[9rem]" onClick={() => (onUpsert ? onUpsert(preview) : onCommit(preview))}>
+              <Button variant="ghost" className="flex-1 min-w-[9rem]" onClick={() => (onUpsert ? onUpsert(preview, previewTrades) : onCommit(preview, previewTrades))}>
                 Update from file
               </Button>
             ) : null}
@@ -305,6 +320,9 @@ function FilePane({
         </a>
         <a href="/sample-holdings.xlsx" download className="text-muted underline-offset-2 hover:text-fg hover:underline">
           Sample Excel
+        </a>
+        <a href="/sample-trades.csv" download className="text-muted underline-offset-2 hover:text-fg hover:underline">
+          Sample buy/sell file
         </a>
       </div>
     </div>

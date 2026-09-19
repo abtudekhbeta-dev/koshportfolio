@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { NewsItem } from "@/lib/kosh/types";
-import { NEWS_BUCKETS, filterNews, newsTone, newsToneLabel, newsMaterial, type NewsBucket } from "@/lib/kosh/news";
+import { NEWS_BUCKETS, filterNews, newsTone, newsToneLabel, newsMaterial, newsWhy, type NewsBucket } from "@/lib/kosh/news";
 import { NewsAlertSetup, NewsShare } from "@/components/news-share";
 import { cn } from "@/lib/utils";
 
@@ -86,6 +86,7 @@ export function NewsBoard({
                   {n.publisher}
                   {n.ts ? ` · ${new Date(n.ts * 1000).toISOString().slice(0, 10)}` : ""}
                 </div>
+                <p className="mt-0.5 text-[11px] text-muted">{newsWhy(n.title)}</p>
               </li>
             );
             })}

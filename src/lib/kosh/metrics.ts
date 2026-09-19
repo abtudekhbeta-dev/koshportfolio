@@ -17,7 +17,7 @@ export const METRICS: Record<string, MetricDef> = {
     label: "Current value",
     short: "What these holdings are worth at the last live price.",
     hover: "Quantity × last price, added up. Updates with the market.",
-    deep: "This is a snapshot, not a ledger. It uses the last Yahoo price for each stock. It does not subtract cash, loans, or pending orders. If a ticker cannot be priced, that line is skipped.",
+    deep: "This is a snapshot, not a ledger. It uses the last market print for each stock. It does not subtract cash, loans, or pending orders. If a ticker cannot be priced, that line is skipped.",
     better: 1,
   },
   invested: {
@@ -25,7 +25,7 @@ export const METRICS: Record<string, MetricDef> = {
     label: "Invested",
     short: "What you paid, if average price is filled in.",
     hover: "Average buy price × quantity. If average price is blank, we use today’s value so the line is not zero.",
-    deep: "Unrealised profit only works when the broker file has an average cost. Buy dates are optional and do not change this number. Corporate actions can make broker average cost differ from Yahoo’s adjusted series — that is expected.",
+    deep: "Unrealised profit only works when the broker file has an average cost. Buy dates are optional and do not change this number. Corporate actions can make broker average cost differ from the adjusted price series — that is expected.",
     better: 0,
   },
   day: {
@@ -33,7 +33,7 @@ export const METRICS: Record<string, MetricDef> = {
     label: "Today",
     short: "Move since the previous close, in rupees and percent.",
     hover: "A single-stock jump above 25% is ignored so a split or bad tick does not fake a huge day.",
-    deep: "Day P&L is last price versus previous close, times quantity. Splits, bonus issues, and bad Yahoo ticks can print a 30–100% gap for one session. Kosh drops any one-name move above 25% so the day figure stays usable.",
+    deep: "Day P&L is last price versus previous close, times quantity. Splits, bonus issues, and bad ticks can print a 30–100% gap for one session. Kosh drops any one-name move above 25% so the day figure stays usable.",
     better: 1,
   },
   unreal: {
@@ -200,8 +200,8 @@ export const METRICS: Record<string, MetricDef> = {
     id: "coverage",
     label: "Coverage",
     short: "How many names and days actually made the chart.",
-    hover: "Names Yahoo could price, and days where at least 60% of the portfolio had a price.",
-    deep: "A late listing does not delete earlier days. Missing names are skipped, not fatal. If coverage is thin, the path is still drawn from whatever Yahoo has — check skipped tickers on Performance.",
+    hover: "Names that could be priced, and days where at least 60% of the portfolio had a price.",
+    deep: "A late listing does not delete earlier days. Missing names are skipped, not fatal. If coverage is thin, the path is still drawn from whatever prints are on file — check skipped tickers on Performance.",
     better: 0,
   },
 };

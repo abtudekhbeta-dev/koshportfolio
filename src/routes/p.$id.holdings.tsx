@@ -60,15 +60,15 @@ function Holdings() {
       </div>
       <p className="text-[13px] text-muted">
         Edit quantity, average cost and buy date in place. Upload a buy/sell file and remaining lots stay on the line (still
-        one row per name) so Your XIRR is money-weighted from those dates. Editing the line replaces those lots. Sold names
+        one row per name) so Your XIRR is money-weighted from those remaining lots. Sold lines and dividends are not in that figure. Editing the line replaces those lots. Sold names
         are not added. Returns from buy date need both a date and an average cost — otherwise the cell stays blank, not
         zero.
       </p>
 
       <div className="hidden overflow-x-auto rounded-lg bg-surface shadow-[var(--shadow-border)] md:block">
-        <table className="w-full min-w-[1480px] text-[13px]">
+        <table className="kosh-table w-full text-[13px]">
           <thead>
-            <tr className="border-b border-border text-left">
+            <tr className="text-left">
               <th className="px-3 py-2">Name</th>
               <th className="px-3 py-2 text-right">Qty</th>
               <th className="px-3 py-2 text-right">Avg cost</th>
@@ -79,14 +79,14 @@ function Holdings() {
                 </button>
               </th>
               <th className="px-3 py-2 text-right">1D</th>
-              <th className="px-3 py-2 text-right">1Y</th>
               <HeadTip label="P&L ₹" tip="Rupees up or down versus average cost. Needs buy date and average. Use this for how much money is on the line." onClick={() => setSort("unrealPct")} />
               <HeadTip label="Simple %" tip="Same P&L as a percent of what you paid. A quick look — not annualised." onClick={() => setSort("unrealPct")} />
               <HeadTip label="XIRR" tip="Annualised return from dated buys to today. Remaining lots from a trade-file import are used when present. Use this when names were bought on different dates." onClick={() => setSort("xirr")} />
-              <HeadTip label="Days" tip="Calendar days since the buy date. Use this to see how long the position has been on." onClick={() => setSort("daysHeld")} />
-              <HeadTip label="vs Nifty" tip="Your simple % minus Nifty over the same dates. Did you beat the index since you bought?" />
-              <HeadTip label="vs sector" tip="Your simple % minus the sector index over the same dates. Did you beat the industry since you bought?" />
-              <HeadTip label="Contrib" tip="Share of the portfolio’s total unrealised rupees. A small name with a huge % can still be a small rupee contribution." onClick={() => setSort("contrib")} />
+              <th className="hidden px-3 py-2 text-right xl:table-cell">1Y</th>
+              <HeadTip className="hidden xl:table-cell" label="Days" tip="Calendar days since the buy date. Use this to see how long the position has been on." onClick={() => setSort("daysHeld")} />
+              <HeadTip className="hidden xl:table-cell" label="vs Nifty" tip="Your simple % minus Nifty over the same dates. Did you beat the index since you bought?" />
+              <HeadTip className="hidden xl:table-cell" label="vs sector" tip="Your simple % minus the sector index over the same dates. Did you beat the industry since you bought?" />
+              <HeadTip className="hidden xl:table-cell" label="Contrib" tip="Share of the portfolio’s total unrealised rupees. A small name with a huge % can still be a small rupee contribution." onClick={() => setSort("contrib")} />
               <th className="px-3 py-2" />
             </tr>
           </thead>
@@ -94,7 +94,7 @@ function Holdings() {
             {rows.map((r) => {
               const h = portfolio.holdings.find((x) => x.symbol === r.symbol);
               return (
-                <tr key={r.symbol + String(h?.date) + String(r.qty) + String(r.avg)} className="border-b border-border/60">
+                <tr key={r.symbol + String(h?.date) + String(r.qty) + String(r.avg)}>
                   <td className="px-3 py-2">
                     <StockLink symbol={r.symbol} name={r.name} className="font-medium" />
                     <div className="text-[11px] text-subtle">
@@ -140,21 +140,21 @@ function Holdings() {
                   <td className="px-3 py-2 text-right">
                     <Pct n={r.changePct} />
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    <Pct n={r.periods.y1} />
-                  </td>
                   <td className="px-3 py-2 text-right font-mono tabular">
                     {haveRet(r) ? fmtInr(r.unreal) : "—"}
                   </td>
                   <td className="px-3 py-2 text-right">{haveRet(r) ? <Pct n={r.unrealPct} /> : "—"}</td>
                   <td className="px-3 py-2 text-right">{r.xirr == null ? "—" : <Pct n={r.xirr} />}</td>
-                  <td className="px-3 py-2 text-right font-mono tabular">{r.daysHeld == null ? "—" : `${r.daysHeld}d`}</td>
-                  <td className="px-3 py-2 text-right">{r.vsNiftyHold == null ? "—" : <Pct n={r.vsNiftyHold} />}</td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="hidden px-3 py-2 text-right xl:table-cell">
+                    <Pct n={r.periods.y1} />
+                  </td>
+                  <td className="hidden px-3 py-2 text-right font-mono tabular xl:table-cell">{r.daysHeld == null ? "—" : `${r.daysHeld}d`}</td>
+                  <td className="hidden px-3 py-2 text-right xl:table-cell">{r.vsNiftyHold == null ? "—" : <Pct n={r.vsNiftyHold} />}</td>
+                  <td className="hidden px-3 py-2 text-right xl:table-cell">
                     {r.vsSectorHold == null ? "—" : <Pct n={r.vsSectorHold} />}
                     {r.sectorIndexName ? <div className="text-[11px] text-subtle">{r.sectorIndexName}</div> : null}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono tabular">
+                  <td className="hidden px-3 py-2 text-right font-mono tabular xl:table-cell">
                     {r.contrib == null ? "—" : fmtPct(r.contrib, 0)}
                   </td>
                   <td className="px-3 py-2 text-right">
@@ -267,13 +267,15 @@ function HeadTip({
   label,
   tip,
   onClick,
+  className,
 }: {
   label: string;
   tip: string;
   onClick?: () => void;
+  className?: string;
 }) {
   return (
-    <th className="px-3 py-2 text-right">
+    <th className={cn("px-3 py-2 text-right", className)}>
       <Tooltip content={<span className="block max-w-[16rem] text-left leading-snug">{tip}</span>}>
         <button
           type="button"

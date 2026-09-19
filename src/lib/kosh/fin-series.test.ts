@@ -16,6 +16,8 @@ describe("formatFinPeriod", () => {
     assert.equal(formatFinPeriod("Jun '25", "quarter"), "Q1 FY26");
     assert.equal(formatFinPeriod("Dec '25", "quarter"), "Q3 FY26");
     assert.equal(formatFinPeriod("Mar '26", "quarter"), "Q4 FY26");
+    assert.equal(formatFinPeriod("30-JUN-2026", "quarter"), "Q1 FY27");
+    assert.equal(formatFinPeriod("31-Mar-2026", "year"), "FY26");
   });
 });
 

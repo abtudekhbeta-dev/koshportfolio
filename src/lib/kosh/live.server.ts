@@ -4,6 +4,7 @@ import { lastBbPos, lastMacdHist, lastRsi, retFrom, sma, volAvg, ema, isNr7, det
 import { DEEP_UNIVERSE, SCREEN_UNIVERSE, universeName } from "./universe.ts";
 import { TICKER_NAMES } from "./names.ts";
 import { fetchFundamentals } from "./fundamentals.server.ts";
+import { listedEquities } from "./master.server.ts";
 import { newsAboutCompany, newsMaterial } from "./news.ts";
 import { stakeDelta } from "./shareholding.ts";
 import { detectVcp } from "./vcp.ts";
@@ -329,22 +330,30 @@ export async function fetchScreener(): Promise<ScreenRow[]> {
 }
 
 export async function fetchScreenerUniverse(): Promise<ScreenRow[]> {
-  const hit = screenCache.get("uni-v9");
+  const hit = screenCache.get("uni-v10");
   if (hit && Date.now() - hit.at < 15 * 60 * 1000) return hit.data;
   if (uniInflight) return uniInflight;
   uniInflight = (async () => {
-    const snaps = await fetchQuoteSnaps(SCREEN_UNIVERSE.map((u) => u.symbol));
+    const listed = await listedEquities().catch(() => [] as Awaited<ReturnType<typeof listedEquities>>);
+    const universe =
+      listed.length >= 1000
+        ? listed.map((u) => ({ symbol: u.symbol, name: u.name, isin: u.isin, series: u.series, listedOn: u.listedOn, gsm: u.gsm }))
+        : SCREEN_UNIVERSE.map((u) => ({ symbol: u.symbol, name: u.name, isin: null as string | null, series: "EQ", listedOn: null as string | null, gsm: false }));
+    const meta = new Map(universe.map((u) => [u.symbol, u]));
+    const snaps = await fetchQuoteSnaps(universe.map((u) => u.symbol));
     const bySnap = new Map(snaps.map((s) => [s.symbol, s]));
     const deep = screenCache.get("deep-v9")?.data || screenCache.get("deep-v8")?.data || [];
     const byDeep = new Map(deep.map((r) => [r.symbol, r]));
-    const rows: ScreenRow[] = SCREEN_UNIVERSE.map((u) => {
+    const rows: ScreenRow[] = universe.map((u) => {
       const full = byDeep.get(u.symbol);
-      if (full && full.price > 0) return full;
+      const m = meta.get(u.symbol);
+      const extra = { isin: m?.isin ?? null, series: m?.series ?? null, listedOn: m?.listedOn ?? null, gsm: m?.gsm ?? null };
+      if (full && full.price > 0) return { ...full, ...extra };
       const s = bySnap.get(u.symbol);
-      if (!s) return { ...emptyRow(u), name: u.name };
+      if (!s) return { ...emptyRow(u), name: u.name, ...extra };
       const px = s.price;
       const volRatio = s.volAvg > 0 ? s.vol / s.volAvg : null;
-      const thin = (s.mcapCr != null && s.mcapCr < 500) || (s.volAvg > 0 && s.volAvg < 50_000);
+      const thin = (s.mcapCr != null && s.mcapCr < 500) || (s.volAvg > 0 && s.volAvg < 50_000) || extra.gsm === true;
       return {
         ...emptyRow(u),
         name: s.name || u.name,
@@ -364,12 +373,13 @@ export async function fetchScreenerUniverse(): Promise<ScreenRow[]> {
         mcapCr: s.mcapCr,
         above50: s.ma50 != null && px > 0 ? px >= s.ma50 : null,
         above200: s.ma200 != null && px > 0 ? px >= s.ma200 : null,
-        depth: "quote",
+        depth: "quote" as const,
         thin,
+        ...extra,
       };
     });
     const nPriced = rows.filter((r) => r.price > 0).length;
-    if (nPriced > 0) screenCache.set("uni-v9", { at: Date.now(), data: rows });
+    if (nPriced > 0) screenCache.set("uni-v10", { at: Date.now(), data: rows });
     return rows;
   })().finally(() => {
     uniInflight = null;

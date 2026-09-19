@@ -9,8 +9,12 @@ import { fmtVol } from "@/lib/kosh/ohlc";
 import {
   applyFilter,
   applyScreen,
+  candidateMultibagger,
   filterSector,
+  matchLabel,
   mergeScreenRows,
+  rulesForScreen,
+  scoreMultibagger,
   SCREEN_PRESETS,
   sortRows,
   type ScreenFilter,
@@ -52,6 +56,18 @@ function ScreenPage() {
   const preset = id === "custom" ? custom : SCREEN_PRESETS.find((p) => p.id === id);
   const nFull = rows.filter((r) => r.depth === "full").length;
   const nPriced = rows.filter((r) => r.price > 0).length;
+  const mbRules = id === "custom" ? null : rulesForScreen(id);
+  const mbScored = useMemo(
+    () => (mbRules ? scoreMultibagger(searched, mbRules) : []),
+    [mbRules, searched],
+  );
+  const candidates = useMemo(
+    () => (mbRules ? candidateMultibagger(searched, mbRules, sort.key) : []),
+    [mbRules, searched, sort.key],
+  );
+  const nStrict = mbScored.filter((x) => x.kind === "strict").length;
+  const nFail = mbScored.filter((x) => x.kind === "fail").length;
+  const nUnk = mbScored.filter((x) => x.kind === "unknown").length;
 
   function head(key: SortKey, label: string) {
     const on = sort.key === key;
@@ -175,10 +191,16 @@ function ScreenPage() {
           ) : null}
         </div>
 
-        {id === "soundmb" || id === "turnmb" ? (
+        {id === "soundmb" || id === "turnmb" || id === "qgrowth" ? (
           <div className="mt-4 rounded-lg border-l-[4px] border-l-chart bg-surface p-4 text-[13px] leading-relaxed text-muted shadow-[var(--shadow-border)]">
-            <span className="font-medium text-fg">Every check must be present and pass.</span> A blank field drops the
-            name — it is not treated as a pass. Open a stock if you want to see which numbers are still missing.
+            <span className="font-medium text-fg">Strict match first — every check must be present and pass.</span> A
+            blank field is not a pass. Names with no known fail but missing fields sit under Candidates, labelled
+            “8/9 passed · 1 unavailable”. They are not hidden, and they are not ranked as a match.
+            {mbScored.length ? (
+              <span className="mt-1 block font-mono text-[12px] tabular text-subtle">
+                {nStrict} strict · {candidates.length} candidates · {nFail} failed a known check · {nUnk} insufficient
+              </span>
+            ) : null}
           </div>
         ) : null}
 
@@ -189,9 +211,9 @@ function ScreenPage() {
         ) : (
           <>
           <div className="mt-4 hidden overflow-x-auto rounded-lg bg-surface shadow-[var(--shadow-border)] md:block">
-            <table className="w-full min-w-[1280px] text-left text-[13px]">
+            <table className="kosh-table w-full text-left text-[13px]">
               <thead>
-                <tr className="border-b border-border">
+                <tr>
                   {head("name", "Name")}
                   {head("price", "Price")}
                   {head("changePct", "Today")}
@@ -239,7 +261,7 @@ function ScreenPage() {
                 {shown.map((r) => {
                   const read = reads[r.symbol];
                   return (
-                    <tr key={r.symbol} className="border-b border-border/60 last:border-0">
+                    <tr key={r.symbol}>
                       <td className="px-3 py-2">
                         <Link to="/s/$symbol" params={{ symbol: r.symbol }} className="hover:text-chart">
                           <div className="font-medium">{r.name}</div>
@@ -247,7 +269,9 @@ function ScreenPage() {
                             {r.symbol} · {r.sector}
                             {r.above200 ? " · >200" : ""}
                             {r.thin ? " · thin print" : ""}
+                            {r.gsm ? " · GSM" : ""}
                             {r.depth === "quote" ? " · price only" : r.depth === "name" ? " · no print yet" : ""}
+                            {r.passCount != null ? ` · ${matchLabel(r)}` : ""}
                           </div>
                         </Link>
                       </td>
@@ -316,7 +340,9 @@ function ScreenPage() {
                     <div className="text-[11px] text-subtle">
                       {r.symbol} · {r.sector}
                       {r.thin ? " · thin print" : ""}
+                      {r.gsm ? " · GSM" : ""}
                       {r.depth === "quote" ? " · price only" : r.depth === "name" ? " · no print yet" : ""}
+                      {r.passCount != null ? ` · ${matchLabel(r)}` : ""}
                     </div>
                   </Link>
                   <div className="mt-2 grid grid-cols-3 gap-2 text-[12px]">
@@ -397,6 +423,33 @@ function ScreenPage() {
             >
               Show more · {shown.length} of {shownAll.length}
             </button>
+          ) : null}
+          {candidates.length ? (
+            <section className="mt-8">
+              <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">
+                Candidates · needs verification
+              </h2>
+              <p className="mt-1 max-w-2xl text-[13px] text-muted">
+                Enough checks are on file and none of those fail. One or more required fields are still blank — so these
+                are not a strict match. Missing data is never a pass.
+              </p>
+              <ul className="mt-3 grid gap-2">
+                {candidates.slice(0, 40).map((r) => (
+                  <li key={r.symbol} className="rounded-lg bg-surface px-3 py-2.5 shadow-[var(--shadow-border)]">
+                    <Link to="/s/$symbol" params={{ symbol: r.symbol }} className="hover:text-chart">
+                      <span className="font-medium">{r.name}</span>
+                      <span className="ml-2 text-[12px] text-muted">
+                        {r.symbol} · {matchLabel(r)}
+                        {r.unchecked?.length ? ` · missing ${r.unchecked.join(", ")}` : ""}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              {candidates.length > 40 ? (
+                <p className="mt-2 text-[12px] text-muted">{candidates.length - 40} more candidates not shown.</p>
+              ) : null}
+            </section>
           ) : null}
           </>
         )}

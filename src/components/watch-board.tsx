@@ -39,9 +39,9 @@ export function WatchBoard({
   return (
     <>
     <div className="hidden overflow-x-auto rounded-lg bg-surface shadow-[var(--shadow-border)] md:block">
-      <table className="w-full min-w-[720px] text-left text-[13px]">
+      <table className="kosh-table w-full text-left text-[13px]">
         <thead className="text-[11px] tracking-[0.06em] text-subtle uppercase">
-          <tr className="border-b border-border">
+          <tr>
             {["Name", "Last", "Day", "RSI 14", "Vol vs 20d avg", "vs 52w high", "Flags"].map((h) => (
               <th key={h} className="px-3 py-2 font-medium">
                 {h}
@@ -53,7 +53,7 @@ export function WatchBoard({
           {list.map(({ symbol, row }) => {
             const flags = row ? flag(row) : [];
             return (
-              <tr key={symbol} className="border-b border-border/60 last:border-0">
+              <tr key={symbol}>
                 <td className="px-3 py-2">
                   <Link to="/s/$symbol" params={{ symbol }} className="hover:text-chart">
                     <div className="font-medium">{row?.name || universeName(symbol)}</div>

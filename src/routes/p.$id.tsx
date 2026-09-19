@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { AddHoldings } from "@/components/add-holdings";
+import { EnrichButton } from "@/components/enrich-button";
 import { BenchPicker } from "@/components/bench-picker";
 import { BookProvider } from "@/components/book-context";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ export const Route = createFileRoute("/p/$id")({ ssr: false, component: Portfoli
 
 const TABS = [
   { to: "/p/$id" as const, label: "Overview", exact: true },
+  { to: "/p/$id/path" as const, label: "Path" },
   { to: "/p/$id/performance" as const, label: "Performance" },
   { to: "/p/$id/holdings" as const, label: "Holdings" },
   { to: "/p/$id/improve" as const, label: "Improve Portfolio" },
@@ -96,6 +98,12 @@ function PortfolioLayout() {
             <BenchPicker value={portfolio.bench} onChange={(v) => setBench(id, v)} />
           </label>
           <AddHoldings portfolioId={id} trigger={<Button size="sm" variant="secondary">Add holdings</Button>} />
+          <EnrichButton
+            symbols={[
+              ...portfolio.holdings.map((h) => h.symbol),
+              ...(portfolio.trades || []).map((t) => t.symbol),
+            ]}
+          />
           <Button
             size="sm"
             variant="secondary"
