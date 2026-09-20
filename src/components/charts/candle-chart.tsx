@@ -19,7 +19,7 @@ import {
   priorDayRange,
   sessionOpeningRange,
 } from "@/lib/kosh/ohlc";
-import { detectPatterns, type PatternHit } from "@/lib/kosh/patterns";
+import { detectPatterns, patternStatusLabel, type PatternHit } from "@/lib/kosh/patterns";
 import { applyDrag, hitTest, magnetPrice, type HitMode } from "@/lib/kosh/draw-hit";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { apiOhlc } from "@/lib/kosh/api";
@@ -58,7 +58,7 @@ const CMP = "var(--color-warn)";
 const INK = "var(--color-fg)";
 const ACCENT = "var(--color-accent)";
 const VW = 900;
-const PAD = { l: 58, r: 52, t: 12, b: 22 };
+const PAD = { l: 12, r: 58, t: 12, b: 22 };
 const VOL_H = 64;
 /** Visible bars by timeframe — pan/zoom for more, like TradingView. */
 const TF_VIEW: Record<string, number> = {
@@ -312,12 +312,12 @@ function PlotSvg({
         <g key={v}>
           <line x1={PAD.l} y1={yOf(v)} x2={VW - PAD.r} y2={yOf(v)} stroke={GRID} strokeWidth="1" />
           <text
-            x={PAD.l - 6}
+            x={VW - PAD.r + 6}
             y={yOf(v)}
             fill={TICK}
             fontSize="10"
             fontFamily="IBM Plex Mono, ui-monospace, monospace"
-            textAnchor="end"
+            textAnchor="start"
             dominantBaseline="middle"
           >
             {rel ? (yVal(v) >= 0 ? "+" : "") + yVal(v).toFixed(1) + "%" : nice(v)}
@@ -443,7 +443,31 @@ function PlotSvg({
       {showSto ? <path d={oscPath(sto.k, stoTop, 0, 100)} fill="none" stroke={MA20} strokeWidth="1.3" /> : null}
       {showSto ? <path d={oscPath(sto.d, stoTop, 0, 100)} fill="none" stroke={MA50} strokeWidth="1.2" /> : null}
 
-      {last ? <circle cx={xOf(n - 1)} cy={yOf(last.c)} r="3.2" fill={upLast ? UP : DOWN} stroke="var(--color-bg)" strokeWidth="1.2" /> : null}
+      {last ? (
+        <g>
+          <circle cx={xOf(n - 1)} cy={yOf(last.c)} r="3.2" fill={upLast ? UP : DOWN} stroke="var(--color-bg)" strokeWidth="1.2" />
+          {!rel ? (
+            <>
+              <rect
+                x={VW - PAD.r}
+                y={yOf(last.c) - 8}
+                width="52"
+                height="16"
+                fill={upLast ? UP : DOWN}
+              />
+              <text
+                x={VW - PAD.r + 4}
+                y={yOf(last.c) + 3}
+                fill="var(--color-accent-fg)"
+                fontSize="10"
+                fontFamily="IBM Plex Mono, ui-monospace, monospace"
+              >
+                {nice(last.c)}
+              </text>
+            </>
+          ) : null}
+        </g>
+      ) : null}
 
       {!rel && showLevels
         ? (
@@ -857,7 +881,7 @@ function PatternSvg({
               fontSize="10"
               fontFamily="IBM Plex Sans, system-ui, sans-serif"
             >
-              {h.label}
+              {h.label} · {patternStatusLabel(h.status)}
             </text>
           </g>
         );
@@ -1465,6 +1489,18 @@ export function CandleChart({
               </div>
             ) : null}
           </div>
+          <button
+            type="button"
+            aria-pressed={logScale}
+            aria-label={logScale ? "Log scale on" : "Switch to log scale"}
+            onClick={() => patchChartPrefs({ logScale: !logScale })}
+            className={cn(
+              "h-8 rounded-sm px-2.5 text-[11px] font-semibold shadow-[var(--shadow-border)]",
+              logScale ? "bg-surface-2 text-fg" : "bg-bg text-muted",
+            )}
+          >
+            Log
+          </button>
           <div className="relative">
             <button
               type="button"

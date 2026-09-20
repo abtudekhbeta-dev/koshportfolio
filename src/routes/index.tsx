@@ -36,8 +36,8 @@ const FEATURES = [
   },
   {
     k: "Markets",
-    t: "The daily stop",
-    d: "Live Indian prices, winners, losers, sector heat, Pulse. No upload. No sign-in. Come back in the morning.",
+    t: "Terminal and Overview",
+    d: "Watch a chart, or read what the cash market is doing today. One click between them.",
     to: "/markets" as const,
   },
   {
@@ -118,11 +118,11 @@ function HeroBoard() {
     <div className="overflow-hidden rounded-[28px] bg-surface p-5 shadow-[var(--shadow-border)] sm:p-6">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <div className="text-[11px] font-medium tracking-[0.08em] text-subtle uppercase">Live now</div>
-          <div className="mt-1 text-[13px] text-muted">Markets is the daily stop — movers, Pulse, headlines</div>
+          <div className="text-[11px] font-medium tracking-[0.08em] text-subtle uppercase">Markets Terminal</div>
+          <div className="mt-1 text-[13px] text-muted">Charts, watchlists, and Kosh numbers — one workspace</div>
         </div>
-        <Link to="/markets" className="text-[12px] text-chart hover:underline">
-          Open markets
+        <Link to="/markets" search={{ view: "terminal" }} className="text-[12px] text-chart hover:underline">
+          Open Terminal →
         </Link>
       </div>
       <div className="grid grid-cols-2 gap-2">
@@ -165,7 +165,7 @@ function Morning() {
             What moved. Then open any name.
           </h2>
           <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-muted">
-            Markets for live prices, movers, and Pulse. A stock page for the chart, the write-up, and multibagger analysis — no sign-in.
+            Overview for breadth, movers, and Pulse. Terminal to watch a chart. A stock page for the full write-up.
           </p>
         </Reveal>
 
@@ -195,15 +195,19 @@ function Morning() {
 
         <div className="mt-8 flex flex-wrap gap-3">
           <Button asChild>
-            <Link to="/markets">Open markets</Link>
+            <Link to="/markets" search={{ view: "terminal" }}>
+              Open Markets Terminal →
+            </Link>
           </Button>
           <Button asChild variant="secondary">
-            <Link to="/s/$symbol" params={{ symbol: "RELIANCE" }}>
-              Sample: Reliance
+            <Link to="/markets" search={{ view: "overview" }}>
+              View market overview
             </Link>
           </Button>
           <Button asChild variant="ghost">
-            <Link to="/screen">Screener</Link>
+            <Link to="/s/$symbol" params={{ symbol: "RELIANCE" }}>
+              Sample: Reliance
+            </Link>
           </Button>
         </div>
       </div>
@@ -260,27 +264,29 @@ function Landing() {
         <section className="mx-auto grid max-w-6xl items-start gap-10 px-4 py-12 lg:grid-cols-2 lg:py-16">
           <div className="pt-2">
             <p className="kosh-rise text-[12px] font-medium tracking-[0.16em] text-chart uppercase">
-              Indian stocks · multibagger analysis · Improve Portfolio
+              Indian stocks · Markets Terminal · Improve Portfolio
             </p>
             <h1
               className="kosh-rise mt-3 max-w-[18ch] text-[clamp(2.15rem,1.2rem+3vw,3.5rem)] font-semibold leading-[1.08] tracking-[-0.035em]"
               style={{ animationDelay: "70ms" }}
             >
-              Read any stock. <span className="text-chart">Improve the portfolio</span> you already hold.
+              Watch the market. <span className="text-chart">Understand the stock.</span>
             </h1>
             <p className="kosh-rise mt-4 max-w-md text-[16px] leading-relaxed text-muted" style={{ animationDelay: "140ms" }}>
-              Live prices, full fundamental and qualitative analysis, and a page that tells you what to change in the portfolio you already own.
+              A charting workspace, a morning overview, and a full read of any name you hold — without pretending a pattern is a forecast.
             </p>
             <div className="kosh-rise mt-7 flex flex-wrap items-center gap-3" style={{ animationDelay: "210ms" }}>
               <Button asChild>
-                <Link to="/markets">Open markets</Link>
-              </Button>
-              <Button asChild variant="secondary">
-                <Link to="/s/$symbol" params={{ symbol: "RELIANCE" }}>
-                  Run a multibagger read
+                <Link to="/markets" search={{ view: "terminal" }}>
+                  Open Markets Terminal →
                 </Link>
               </Button>
               <Button asChild variant="secondary">
+                <Link to="/markets" search={{ view: "overview" }}>
+                  View market overview
+                </Link>
+              </Button>
+              <Button asChild variant="ghost">
                 <Link to="/app">Improve Portfolio</Link>
               </Button>
             </div>

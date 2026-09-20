@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kosh — Final Markets Architecture & Pattern Recognition Mockup</title>
+<style>
+:root{--bg:#0b0d10;--panel:#11151b;--panel2:#151a21;--line:#262c35;--text:#edf1f5;--muted:#8993a1;--soft:#aeb6c1;--green:#2bc58b;--red:#ef6868;--blue:#6ea8ff;--gold:#d8b56a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:13px Inter,Arial,sans-serif}button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.shell{max-width:1500px;margin:auto;min-height:100vh}.top{height:58px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 20px;gap:24px;background:#0d1014;position:sticky;top:0;z-index:5}.logo{font-weight:850;font-size:20px}.logo i{color:var(--gold);font-style:normal}.nav{display:flex;gap:6px}.nav button{padding:9px 12px;border-radius:6px;color:var(--muted)}.nav .active{background:#1b2028;color:#fff}.search{margin-left:auto;width:250px;padding:9px 11px;border:1px solid var(--line);border-radius:6px;background:#151920;color:var(--muted)}
+.screen{display:none;padding:22px}.screen.active{display:block}.subnav{display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:18px}.mode{padding:10px 18px;border-radius:7px;color:var(--muted);border:1px solid var(--line);font-weight:700}.mode.active{background:#1d2735;border-color:#3c5877;color:#fff}.subnav .hint{margin-left:auto;color:var(--muted);font-size:11px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}.eyebrow{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}h1{font-size:29px;line-height:1.1;margin:0 0 9px}.desc{color:var(--soft);line-height:1.55;max-width:650px}.cta{display:inline-flex;margin-top:15px;padding:10px 15px;border-radius:7px;background:var(--blue);color:#08101b;font-weight:750}
+.marketstrip{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:18px}.metric{background:#151a21;border:1px solid #202631;border-radius:7px;padding:10px}.metric small{display:block;color:var(--muted);font-size:10px;margin-bottom:4px}.metric b{font-size:15px}.up{color:var(--green)}.down{color:var(--red)}
+.hero{display:grid;grid-template-columns:1.15fr .85fr;gap:18px}.mini{display:grid;grid-template-columns:1fr 150px;gap:12px;height:255px}.chart{background:#0d1116;border:1px solid var(--line);border-radius:7px;position:relative;overflow:hidden}.chart svg{width:100%;height:100%}.chartlabel{position:absolute;top:11px;left:12px;color:var(--muted);font-size:11px}.watch{background:#10141a;border:1px solid var(--line);border-radius:7px;overflow:hidden}.wh{padding:11px;border-bottom:1px solid var(--line);font-weight:700}.wr{display:flex;justify-content:space-between;padding:9px 11px;border-bottom:1px solid #20252d}.wr small{display:block;color:var(--muted);margin-top:2px}.right{text-align:right}
+.sectiontitle{display:flex;align-items:center;justify-content:space-between;margin:22px 0 10px}.sectiontitle h2{font-size:16px;margin:0}.link{color:var(--blue);font-size:12px}.overviewgrid{display:grid;grid-template-columns:1.1fr .9fr;gap:16px}.indices{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.index{padding:12px;background:#151a21;border:1px solid #202631;border-radius:7px}.index b{display:block;font-size:15px;margin-top:5px}.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}.tile{padding:12px;background:#151a21;border:1px solid #202631;border-radius:7px}.tile strong{display:block;margin-bottom:4px}.tile span{color:var(--muted);font-size:11px}.heat{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}.heat div{padding:14px 7px;text-align:center;border-radius:5px;background:#173226}.heat .neg{background:#321b20}.heat small{display:block;color:#cbd2da;margin-top:3px}
+.terminal{display:grid;grid-template-columns:38px 1fr 290px;min-height:610px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}.tools{background:#0f1318;border-right:1px solid var(--line);padding-top:13px;text-align:center;color:var(--muted)}.tools div{margin-bottom:18px;font-size:17px}.tools .sel{color:#fff}.tmain{min-width:0;display:flex;flex-direction:column}.quote{height:65px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 15px;gap:14px}.sym{font-weight:800}.company{font-size:10px;color:var(--muted);margin-top:3px}.price{font-size:16px;font-weight:750}.live{font-size:10px;border:1px solid #245b46;background:#11231c;color:#69d2a8;border-radius:4px;padding:3px 6px}.tf{margin-left:auto;display:flex;gap:2px}.tf span{padding:6px 7px;color:var(--muted)}.tf .on{background:#222934;color:#fff;border-radius:4px}.chartbig{flex:1;min-height:390px;padding:8px;display:grid;grid-template-columns:1fr 70px;gap:0}.plot{min-width:0;background:#0d1116;border:1px solid #1e242c;border-right:0}.axis{background:#0d1116;border:1px solid #1e242c;border-left:0;display:flex;flex-direction:column;justify-content:space-between;padding:11px 8px;text-align:right;font:10px monospace;color:#9aa5b2}.koshbar{border-top:1px solid var(--line);padding:14px;background:#10141a}.koshhead{display:flex;align-items:center;justify-content:space-between}.tabs{display:flex;gap:17px;color:var(--muted);font-size:11px;margin-top:10px}.tabs .on{color:#fff}.analysis{margin-top:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.analysis .box{background:#151a21;border:1px solid #202631;border-radius:7px;padding:10px}.analysis b{display:block;margin-bottom:4px}.analysis small{color:var(--muted);line-height:1.4}.full{padding:8px 11px;border:1px solid #35577e;background:#162436;color:#8fc0ff;border-radius:6px;font-weight:700}.pattern{border:1px solid #3b4654;background:#151b23;border-radius:7px;padding:9px}.pattern b{font-size:11px}.pattern small{display:block;color:var(--muted);margin-top:3px;line-height:1.4}.watchpanel{border-left:1px solid var(--line);background:#10141a}.watchhead{padding:13px;border-bottom:1px solid var(--line);font-weight:750}.wrow{padding:10px 12px;border-bottom:1px solid #20252d;display:flex;justify-content:space-between}.wrow.selected{background:#191f27}.owned{font-size:9px;color:#91a0af;background:#1d252e;padding:2px 4px;border-radius:3px}.subtools{display:flex;gap:5px;align-items:center;border-bottom:1px solid var(--line);padding:7px 10px}.toolpill{font-size:10px;padding:5px 7px;border:1px solid var(--line);border-radius:4px;color:var(--muted)}.toolpill.active{color:#fff;background:#1d2735}
+.mobile{max-width:430px;margin:22px auto;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#0d1014}.mtop{height:50px;padding:0 13px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}.mcontent{padding:12px}.mchart{height:270px;margin-top:10px}.mwatch{margin-top:10px;border:1px solid var(--line);border-radius:8px;overflow:hidden}.mbottom{padding:11px;border-top:1px solid var(--line);display:flex;justify-content:space-around;color:var(--muted);font-size:10px}
+@media(max-width:900px){.hero,.overviewgrid{grid-template-columns:1fr}.terminal{grid-template-columns:1fr}.tools{display:none}.watchpanel{display:none}.mini{grid-template-columns:1fr}.marketstrip,.indices{grid-template-columns:repeat(2,1fr)}.subnav .hint{display:none}.mode{flex:1;text-align:center}}
+</style>
+</head>
+<body>
+<div class="shell">
+<header class="top">
+  <div class="logo">K<i>O</i>SH</div>
+  <nav class="nav"><button>Dashboard</button><button class="active" onclick="show('terminal')">Markets</button><button>Screen</button><button>Portfolios</button></nav>
+  <div class="search">⌕ Search stock, symbol or ISIN</div>
+</header>
+
+<section id="landing" class="screen active">
+  <div class="hero">
+    <div class="card">
+      <div class="eyebrow">Live Markets</div>
+      <h1>Watch the market.<br>Understand the stock.</h1>
+      <p class="desc">Kosh Market Terminal combines charts, watchlists and technical tools with Kosh's fundamental and valuation intelligence.</p>
+      <button class="cta" onclick="show('terminal')">Open Markets Terminal →</button>
+      <div class="marketstrip">
+        <div class="metric"><small>NIFTY 50</small><b class="up">+0.54%</b></div><div class="metric"><small>SENSEX</small><b class="down">-0.06%</b></div><div class="metric"><small>BANK NIFTY</small><b class="up">+0.92%</b></div><div class="metric"><small>MIDCAP</small><b class="up">+0.87%</b></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">Terminal Preview · Log Scale · Right Price Axis</div>
+      <div class="mini">
+        <div class="chart">
+          <div class="chartlabel">TECHNOE · 5m · ₹1,030.50 <span class="up">+4.65%</span></div>
+          <svg viewBox="0 0 600 240" preserveAspectRatio="none"><g stroke="#20262e"><path d="M0 50H600M0 110H600M0 170H600M120 0V240M300 0V240M480 0V240"/></g><polyline fill="none" stroke="#6ea8ff" stroke-width="2" points="0,190 60,175 110,188 160,145 215,160 270,105 320,122 370,78 420,95 470,58 520,73 600,38"/></svg>
+          <div style="position:absolute;right:4px;top:18px;bottom:10px;width:48px;display:flex;flex-direction:column;justify-content:space-between;text-align:right;font:9px monospace;color:#9aa5b2"><span>1,180</span><span>1,130</span><span>1,080</span><span>1,030</span><span>980</span></div>
+        </div>
+        <div class="watch"><div class="wh">Watchlist</div><div class="wr"><div>TECHNOE<small>Owned · 7.2%</small></div><div class="right">₹1,030.5<br><span class="up">+4.65%</span></div></div><div class="wr"><div>RELIANCE</div><div class="right">₹1,432.2<br><span class="up">+1.82%</span></div></div><div class="wr"><div>TCS</div><div class="right">₹2,105<br><span class="down">-3.88%</span></div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="sectiontitle"><h2>Market Snapshot</h2><span class="link" onclick="show('overview')">Open full market overview →</span></div>
+  <div class="overviewgrid">
+    <div class="card"><div class="eyebrow">Market Breadth & Movers</div><div class="tiles"><div class="tile"><strong>Winners</strong><span>1,142 stocks advancing</span></div><div class="tile"><strong>Losers</strong><span>782 stocks declining</span></div><div class="tile"><strong>Advance / Decline</strong><span>1.46×</span></div><div class="tile"><strong>Market Pulse</strong><span>Positive breadth with IT mixed</span></div></div></div>
+    <div class="card"><div class="eyebrow">Pattern Recognition</div><div class="pattern"><b>Optional · not a signal</b><small>Kosh can highlight conservative detected formations such as VCP, flag, double top/bottom, triangle and range when enough evidence exists.</small></div></div>
+  </div>
+</section>
+
+<section id="terminal" class="screen">
+  <div class="subnav">
+    <button class="mode active" onclick="show('terminal')">★ TERMINAL</button>
+    <button class="mode" onclick="show('overview')">OVERVIEW</button>
+    <span class="hint">Terminal is the default · Overview remains one click away</span>
+  </div>
+  <div class="terminal">
+    <div class="tools"><div class="sel">⌁</div><div>＋</div><div>╱</div><div>▭</div><div>⌖</div><div>∿</div><div>⚙</div></div>
+    <div class="tmain">
+      <div class="quote">
+        <div><div class="sym">TECHNOE · NSE</div><div class="company">Techno Electric & Engineering</div></div>
+        <div class="price">₹1,030.50</div><div class="up">+4.65%</div><div class="live">● LIVE</div>
+        <div class="tf"><span>1m</span><span>3m</span><span class="on">5m</span><span>15m</span><span>30m</span><span>1H</span><span>D</span></div>
+      </div>
+      <div class="subtools"><span class="toolpill">Candle</span><span class="toolpill active">Log</span><span class="toolpill">Indicators</span><span class="toolpill active">Patterns</span><span class="toolpill">Draw</span></div>
+      <div class="chartbig">
+        <div class="plot"><svg viewBox="0 0 1000 430" preserveAspectRatio="none" style="width:100%;height:100%"><g stroke="#1d2229"><path d="M0 80H1000M0 160H1000M0 240H1000M0 320H1000M125 0V430M375 0V430M625 0V430M875 0V430"/></g><polyline fill="none" stroke="#6ea8ff" stroke-width="2.2" points="0,340 70,315 135,330 200,275 270,292 340,220 405,242 475,170 545,190 620,125 685,150 750,95 820,122 890,65 1000,82"/><polyline fill="none" stroke="#d8b56a" stroke-width="1.3" points="0,365 120,330 240,295 360,255 480,215 600,175 720,135 840,105 1000,80"/></svg>
+          <div style="position:absolute;right:8px;top:12px;border:1px dashed #6ea8ff;border-radius:5px;padding:6px 8px;color:#9fc7ff;font-size:10px">Triangle detected</div>
+        </div>
+        <div class="axis"><span>1,180</span><span>1,150</span><span>1,120</span><span>1,090</span><span>1,060</span><span>1,030</span><span>1,000</span></div>
+      </div>
+      <div class="koshbar">
+        <div class="koshhead"><div><strong>TECHNOE</strong> <span style="color:#8a95a3">Kosh intelligence</span></div><button class="full">Open Full Analysis →</button></div>
+        <div class="tabs"><span class="on">Overview</span><span>Fundamentals</span><span>Valuation</span><span>Growth</span><span>Ownership</span><span>News</span><span>Kosh View</span></div>
+        <div class="analysis">
+          <div class="box"><b>Pattern</b><small>Triangle · forming. Not a signal or prediction. Review manually.</small></div>
+          <div class="box"><b>Valuation</b><small>10.2× P/E vs 17.4× 5Y median.</small></div>
+          <div class="box"><b>News</b><small>Moneycontrol · 19 Sep 2026 · Business · Medium.</small></div>
+        </div>
+      </div>
+    </div>
+    <div class="watchpanel">
+      <div class="watchhead">Watchlists <span style="float:right;color:#7d8794">＋</span></div>
+      <div class="wr" style="background:#171d25"><div><b>TECHNOE</b><small>Owned · 7.2%</small></div><div class="right">₹1,030.5<br><span class="up">+4.65%</span></div></div>
+      <div class="wr"><div>RELIANCE</div><div class="right">₹1,432.2<br><span class="up">+1.82%</span></div></div>
+      <div class="wr"><div>TCS</div><div class="right">₹2,105<br><span class="down">-3.88%</span></div></div>
+      <div class="wh" style="margin-top:8px">Portfolios</div>
+      <div class="wr"><div>Core Portfolio</div><div class="up">+0.84%</div></div>
+      <div class="wr"><div>Growth Portfolio</div><div class="up">+1.21%</div></div>
+      <div class="wr"><div>Trading Portfolio</div><div class="down">-0.18%</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="overview" class="screen">
+  <div class="subnav"><button class="mode" onclick="show('terminal')">TERMINAL</button><button class="mode active" onclick="show('overview')">OVERVIEW</button><span class="hint">Market command center · one click back to Terminal</span></div>
+  <div class="sectiontitle"><h2>Indian Market Overview</h2><span class="link" onclick="show('terminal')">Open Terminal →</span></div>
+  <div class="indices"><div class="index"><small>NIFTY 50</small><b class="up">+0.54%</b></div><div class="index"><small>SENSEX</small><b class="down">-0.06%</b></div><div class="index"><small>BANK NIFTY</small><b class="up">+0.92%</b></div><div class="index"><small>MIDCAP</small><b class="up">+0.87%</b></div></div>
+  <div class="sectiontitle"><h2>Your Portfolios & Market Breadth</h2></div>
+  <div class="overviewgrid"><div class="card"><div class="eyebrow">Portfolios Today</div><div class="tiles"><div class="tile"><strong>Core Portfolio <span class="up">+0.84%</span></strong><span>₹12,430</span></div><div class="tile"><strong>Growth Portfolio <span class="up">+1.21%</span></strong><span>₹8,240</span></div></div></div><div class="card"><div class="eyebrow">Market Breadth</div><div class="tiles"><div class="tile"><strong>1,142 Winners</strong><span>Stocks advancing</span></div><div class="tile"><strong>782 Losers</strong><span>Stocks declining</span></div></div></div></div>
+  <div class="sectiontitle"><h2>Sector Heatmap</h2></div><div class="card"><div class="heat"><div>Banking<small class="up">+1.2%</small></div><div>Auto<small class="up">+0.8%</small></div><div>Power<small class="up">+1.7%</small></div><div class="neg">IT<small class="down">-0.4%</small></div><div>FMCG<small class="up">+0.3%</small></div><div>Pharma<small class="up">+0.6%</small></div></div></div>
+  <div class="sectiontitle"><h2>Winners · Losers · Headlines · Pulse</h2></div><div class="overviewgrid"><div class="card"><div class="tiles"><div class="tile"><strong>Top Winner</strong><span>TECHNOE +4.65%</span></div><div class="tile"><strong>Top Loser</strong><span>TCS -3.88%</span></div></div></div><div class="card"><div class="eyebrow">Market Pulse</div><p class="desc">Breadth is positive, with financials and power leading while IT is mixed.</p></div></div>
+</section>
+
+<div class="mobile">
+  <div class="mtop"><b>KOSH</b><span>⌕ &nbsp; + &nbsp; ☰</span></div>
+  <div class="mcontent">
+    <div style="display:flex;gap:5px"><button class="mode active" style="font-size:11px">TERMINAL</button><button class="mode" style="font-size:11px">OVERVIEW</button></div>
+    <div class="eyebrow" style="margin-top:14px">Markets · Terminal</div>
+    <b style="font-size:16px">TECHNOE</b><span class="up"> &nbsp; ₹1,030.50 +4.65%</span>
+    <div class="mchart chart"><div class="chartlabel">5m · LOG · ● LIVE</div><svg viewBox="0 0 400 270" preserveAspectRatio="none"><g stroke="#20262e"><path d="M0 70H400M0 140H400M0 210H400"/></g><polyline fill="none" stroke="#6ea8ff" stroke-width="2" points="0,220 45,195 90,210 135,150 180,175 225,110 270,130 315,70 360,95 400,45"/></svg><div style="position:absolute;right:4px;top:18px;bottom:8px;width:42px;display:flex;flex-direction:column;justify-content:space-between;text-align:right;font:8px monospace;color:#9aa5b2"><span>1,180</span><span>1,120</span><span>1,060</span><span>1,030</span><span>1,000</span></div></div>
+    <button class="full" style="width:100%;margin-top:10px">Open Full Analysis →</button>
+    <div class="mwatch"><div class="wh">Watchlist</div><div class="wr"><div>TECHNOE<small>Owned · 7.2%</small></div><div class="right">₹1,030.5<br><span class="up">+4.65%</span></div></div><div class="wr"><div>TCS</div><div class="right">₹2,105<br><span class="down">-3.88%</span></div></div></div>
+    <div class="card" style="margin-top:10px"><div class="eyebrow">Pattern Recognition · optional</div><b>Triangle detected</b><p class="desc" style="font-size:11px">Pattern is a technical observation, not a prediction. Review price, volume and context.</p></div>
+  </div>
+  <div class="mbottom"><span>Markets</span><span>Screen</span><span>Portfolio</span><span>Watch</span></div>
+</div>
+</div>
+<script>
+function show(id){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0)}
+</script>
+</body>
+</html>

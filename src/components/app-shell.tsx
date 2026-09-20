@@ -147,7 +147,11 @@ export function AppShell({ children, wide, full }: { children: ReactNode; wide?:
             <AuthSlot />
           </div>
         </div>
-        {full ? null : <FirstStrip />}
+        {full ? null : (
+          <div className="hidden md:block">
+            <FirstStrip />
+          </div>
+        )}
         <AlertBanner />
       </header>
       <main

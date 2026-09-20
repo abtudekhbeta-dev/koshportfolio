@@ -1,10 +1,29 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type WheelEvent } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Maximize2, Minimize2, RotateCcw, Star } from "lucide-react";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  Columns2,
+  Crosshair,
+  Layers,
+  Maximize2,
+  Minimize2,
+  Minus,
+  MousePointer2,
+  MoveRight,
+  RotateCcw,
+  Spline,
+  Square,
+  Star,
+  Trash2,
+  Undo2,
+} from "lucide-react";
 import { apiOhlc } from "@/lib/kosh/api";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { bollinger, ema, fmtVol, macd, rsi, sma, vwap } from "@/lib/kosh/ohlc";
 import { isIstSession, istClock } from "@/lib/kosh/market-hours";
+import { applyDrag, hitTest, type HitMode } from "@/lib/kosh/draw-hit";
+import { detectPatterns, patternStatusLabel, type PatternHit } from "@/lib/kosh/patterns";
 import {
   patchLastBar,
   quoteStatus,
@@ -14,7 +33,7 @@ import {
   termFetchSpec,
 } from "@/lib/kosh/market-data";
 import type { OhlcBar, Quote } from "@/lib/kosh/types";
-import { bareSymbol, isWatched, useKosh } from "@/lib/store";
+import { bareSymbol, drawKey, isWatched, newDrawId, useKosh, type DrawKind, type DrawShape } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 const UP = "var(--color-up)";
@@ -24,9 +43,11 @@ const INK = "var(--color-fg)";
 const MUTED = "var(--color-subtle)";
 const CHART = "var(--color-chart)";
 const WARN = "var(--color-warn)";
-const PAD = { l: 52, r: 12, t: 10, b: 20 };
+const ACCENT = "var(--color-accent)";
+const PAD = { l: 10, r: 58, t: 10, b: 20 };
 const VOL_H = 36;
 const OSC_H = 44;
+const FIBS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 const TF_VIEW: Record<string, number> = {
   "1m": 180,
   "3m": 160,
@@ -53,7 +74,28 @@ function fmtWhen(tSec: number, intra: boolean) {
   return `${day} ${mon} ${hh}:${mm}`;
 }
 
+function drawIv(id: string) {
+  if (id === "D") return "1D";
+  if (id === "W") return "1W";
+  if (id === "M") return "1M";
+  return id;
+}
+
 type IndFlags = { sma20: boolean; ema21: boolean; bb: boolean; vwap: boolean; rsi: boolean; macd: boolean };
+type ToolId = "pan" | "crosshair" | DrawKind;
+
+const TOOLS: { id: ToolId; label: string; icon: typeof Minus }[] = [
+  { id: "crosshair", label: "Crosshair", icon: Crosshair },
+  { id: "pan", label: "Pan", icon: MousePointer2 },
+  { id: "trend", label: "Trend", icon: Spline },
+  { id: "hline", label: "H-line", icon: Minus },
+  { id: "ray", label: "Ray", icon: MoveRight },
+  { id: "rect", label: "Rect", icon: Square },
+  { id: "channel", label: "Channel", icon: Columns2 },
+  { id: "fib", label: "Fib", icon: Layers },
+  { id: "long", label: "Long", icon: ArrowUpRight },
+  { id: "short", label: "Short", icon: ArrowDownRight },
+];
 
 export function TermChart({
   symbol,
@@ -65,6 +107,8 @@ export function TermChart({
   owned,
   onActivate,
   onInterval,
+  onStyle,
+  onPatterns,
 }: {
   symbol: string;
   name: string;
@@ -75,6 +119,8 @@ export function TermChart({
   owned?: string | null;
   onActivate: () => void;
   onInterval: (id: string) => void;
+  onStyle?: (style: "candle" | "line") => void;
+  onPatterns?: (hits: PatternHit[]) => void;
 }) {
   const spec = termFetchSpec(interval);
   const session = isIstSession();
@@ -102,6 +148,13 @@ export function TermChart({
   const watch = useKosh((s) => s.watch);
   const toggleWatch = useKosh((s) => s.toggleWatch);
   const watched = isWatched(symbol, watch);
+  const logScale = useKosh((s) => s.chartPrefs.logScale);
+  const patternsOn = useKosh((s) => s.chartPrefs.patternsOn === true);
+  const patchChartPrefs = useKosh((s) => s.patchChartPrefs);
+  const drawings = useKosh((s) => s.drawings);
+  const setDrawings = useKosh((s) => s.setDrawings);
+  const dKey = drawKey(symbol, drawIv(interval));
+  const shapes = drawings[dKey] || [];
 
   const wrap = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 640, h: 320 });
@@ -109,7 +162,12 @@ export function TermChart({
   const [hover, setHover] = useState<number | null>(null);
   const [fs, setFs] = useState(false);
   const [inds, setInds] = useState<IndFlags>({ sma20: false, ema21: false, bb: false, vwap: false, rsi: false, macd: false });
+  const [tool, setTool] = useState<ToolId>("pan");
+  const [drawOpen, setDrawOpen] = useState(false);
+  const [draft, setDraft] = useState<DrawShape | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const drag = useRef<{ x: number; start: number } | null>(null);
+  const move = useRef<{ id: string; mode: HitMode; x: number; y: number; t: number; py: number } | null>(null);
 
   useEffect(() => {
     const el = wrap.current;
@@ -127,6 +185,7 @@ export function TermChart({
     const count = Math.min(n, TF_VIEW[interval] || 180);
     setView({ start: Math.max(0, n - count), count: count || 1 });
     setHover(null);
+    setDraft(null);
   }, [symbol, interval, bars.length]);
 
   const oscOn = inds.rsi || inds.macd;
@@ -138,10 +197,28 @@ export function TermChart({
   const lo0 = shown.reduce((m, b) => Math.min(m, b.l), Infinity);
   const hi0 = shown.reduce((m, b) => Math.max(m, b.h), -Infinity);
   const pad = (hi0 - lo0) * 0.04 || 1;
-  const lo = Number.isFinite(lo0) ? lo0 - pad : 0;
+  const lo = Number.isFinite(lo0) ? Math.max(0.0001, lo0 - pad) : 0.0001;
   const hi = Number.isFinite(hi0) ? hi0 + pad : 1;
   const span = hi - lo || 1;
-  const yPx = (p: number) => PAD.t + ((hi - p) / span) * plotH;
+  const useLog = logScale && lo > 0 && hi > 0 && hi > lo;
+  const yPx = (p: number) => {
+    const v = p > 0 ? p : lo;
+    if (useLog) {
+      const lLo = Math.log(lo);
+      const lHi = Math.log(hi);
+      return PAD.t + ((lHi - Math.log(Math.max(v, lo))) / (lHi - lLo || 1)) * plotH;
+    }
+    return PAD.t + ((hi - p) / span) * plotH;
+  };
+  const yInv = (y: number) => {
+    const t = (y - PAD.t) / (plotH || 1);
+    if (useLog) {
+      const lLo = Math.log(lo);
+      const lHi = Math.log(hi);
+      return Math.exp(lHi - t * (lHi - lLo));
+    }
+    return hi - t * span;
+  };
   const xAt = (i: number) => PAD.l + (n <= 1 ? innerW / 2 : (i + 0.5) * (innerW / n));
   const slot = n ? innerW / n : 8;
   const cw = Math.max(1, Math.min(9, slot * 0.62));
@@ -153,90 +230,114 @@ export function TermChart({
   const vw = inds.vwap && spec.intra ? vwap(shown) : null;
   const rsiArr = inds.rsi ? rsi(closes, 14) : null;
   const macdPack = inds.macd ? macd(closes) : null;
-  const maxVol = shown.reduce((m, b) => Math.max(m, b.v || 0), 0) || 1;
+  const maxVol = Math.max(...shown.map((b) => b.v || 0), 1);
 
-  const hiIdx = hover != null && shown[hover] ? hover : n - 1;
-  const cur = shown[hiIdx];
+  const patterns = useMemo(
+    () => (patternsOn && shown.length >= 24 ? detectPatterns(shown) : []),
+    [shown, patternsOn],
+  );
+  useEffect(() => {
+    if (active) onPatterns?.(patterns);
+  }, [active, patterns, onPatterns]);
+
+  const yTicks = useMemo(() => {
+    const ticks: number[] = [];
+    if (useLog) {
+      const lLo = Math.log10(lo);
+      const lHi = Math.log10(hi);
+      const step = (lHi - lLo) / 4;
+      for (let i = 0; i <= 4; i++) ticks.push(Math.pow(10, lLo + step * i));
+      return ticks;
+    }
+    for (let i = 0; i <= 4; i++) ticks.push(lo + (span * i) / 4);
+    return ticks;
+  }, [lo, hi, span, useLog]);
+
+  function idxAt(clientX: number) {
+    const r = wrap.current?.getBoundingClientRect();
+    if (!r || n < 1) return 0;
+    const x = clientX - r.left;
+    const i = Math.round((x - PAD.l) / (innerW / n) - 0.5);
+    return Math.max(0, Math.min(n - 1, i));
+  }
+  function xyAt(clientX: number, clientY: number) {
+    const r = wrap.current?.getBoundingClientRect();
+    if (!r) return { x: 0, y: 0, i: 0, t: shown[0]?.t || 0, p: lo };
+    const x = clientX - r.left;
+    const y = clientY - r.top;
+    const i = idxAt(clientX);
+    const bar = shown[i];
+    return { x, y, i, t: bar?.t || 0, p: yInv(y) };
+  }
+
+  function onWheel(e: WheelEvent<HTMLDivElement>) {
+    e.preventDefault();
+    if (bars.length < 20) return;
+    const i = idxAt(e.clientX);
+    const nextCount = Math.max(20, Math.min(bars.length, Math.round(view.count * (e.deltaY > 0 ? 1.18 : 0.82))));
+    const center = view.start + i;
+    const nextStart = Math.max(0, Math.min(bars.length - nextCount, Math.round(center - (i / Math.max(1, view.count)) * nextCount)));
+    setView({ start: nextStart, count: nextCount });
+  }
 
   function fit() {
-    setView({ start: 0, count: Math.max(2, bars.length) });
+    setView({ start: 0, count: Math.max(1, bars.length) });
   }
   function latest() {
     const count = Math.min(bars.length, TF_VIEW[interval] || 180);
     setView({ start: Math.max(0, bars.length - count), count });
   }
-
-  function onWheel(e: WheelEvent) {
-    e.preventDefault();
-    const dir = e.deltaY > 0 ? 1.18 : 0.85;
-    const nextCount = Math.max(20, Math.min(bars.length, Math.round(view.count * dir)));
-    const rect = wrap.current?.getBoundingClientRect();
-    const frac = rect ? Math.min(1, Math.max(0, (e.clientX - rect.left - PAD.l) / innerW)) : 0.5;
-    const anchor = view.start + frac * view.count;
-    const start = Math.max(0, Math.min(bars.length - nextCount, Math.round(anchor - frac * nextCount)));
-    setView({ start, count: nextCount });
+  function save(next: DrawShape[]) {
+    setDrawings(dKey, next);
   }
 
-  function idxAt(clientX: number) {
-    const rect = wrap.current?.getBoundingClientRect();
-    if (!rect || n < 1) return 0;
-    const x = clientX - rect.left - PAD.l;
-    const i = Math.floor((x / innerW) * n);
-    return Math.max(0, Math.min(n - 1, i));
-  }
+  const hoverBar = hover != null ? shown[hover] : shown[n - 1];
+  const cur = hoverBar || shown[n - 1];
+  const last = shown[n - 1];
+  const lastUp = last && last.c >= last.o;
 
   function poly(vals: (number | null)[], color: string) {
     const pts: string[] = [];
     vals.forEach((v, i) => {
-      if (v == null || !Number.isFinite(v)) return;
+      if (v == null || !(v > 0)) return;
       pts.push(`${xAt(i).toFixed(1)},${yPx(v).toFixed(1)}`);
     });
     if (pts.length < 2) return null;
-    return <polyline fill="none" stroke={color} strokeWidth="1.2" points={pts.join(" ")} vectorEffect="nonScalingStroke" />;
+    return <polyline fill="none" stroke={color} strokeWidth="1.2" points={pts.join(" ")} />;
   }
-
-  const ticks = 4;
-  const yTicks = Array.from({ length: ticks + 1 }, (_, i) => hi - (span * i) / ticks);
 
   return (
     <section
-      data-term-chart={symbol}
+      data-term-chart
+      data-active={active ? "1" : "0"}
       onClick={onActivate}
-      className={cn(
-        "flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-bg",
-        active ? "ring-1 ring-fg/25" : "ring-1 ring-border",
-      )}
+      className={cn("flex h-full min-h-0 min-w-0 flex-col bg-bg", active && "ring-1 ring-inset ring-accent/50")}
     >
-      <header className="flex shrink-0 flex-col gap-1 border-b border-border px-2 py-1.5 sm:px-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <div className="min-w-0">
-            <div className="flex items-baseline gap-1.5">
-              <h2 className="truncate text-[14px] font-semibold leading-tight">{bareSymbol(symbol)}</h2>
-              <span className="hidden text-[10px] tracking-[0.06em] text-subtle uppercase sm:inline">{exch}</span>
-            </div>
-            <p className="hidden max-w-[220px] truncate text-[11px] text-muted sm:block">{name}</p>
-          </div>
-          <div className="font-mono text-[15px] font-semibold tabular sm:text-[16px]">{fmtPx(px)}</div>
-          <div className={cn("font-mono text-[12px] tabular", chg >= 0 ? "text-up" : "text-down")}>{fmtPct(chg)}</div>
+      <header className="flex shrink-0 flex-col gap-1 border-b border-border px-2 py-1.5 sm:flex-row sm:items-center sm:gap-2">
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
+          <h2 className="truncate text-[15px] font-semibold">{bareSymbol(symbol)}</h2>
+          <span className="hidden text-[10px] text-subtle sm:inline">{exch}</span>
+          <span className="hidden min-w-0 truncate text-[11px] text-muted lg:inline">{name}</span>
+          <span className="font-mono text-[15px] tabular">{fmtPx(px)}</span>
+          <span className={cn("font-mono text-[12px] tabular", chg >= 0 ? "text-up" : "text-down")}>{fmtPct(chg)}</span>
           <span
-            data-status={status}
-            title="Latest print Kosh has. Refreshes during the cash session. Not a guaranteed live tick."
             className={cn(
               "rounded-sm px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em]",
               status === "session" ? "bg-up/15 text-up" : status === "last" ? "bg-surface-2 text-muted" : "bg-down/15 text-down",
             )}
+            title="Latest print Kosh has. Refreshes during the cash session."
           >
             {status === "session" ? `● ${quoteStatusLabel(status)} · ${istClock()}` : quoteStatusLabel(status)}
           </span>
-          {owned ? <span className="rounded-sm bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted">{owned}</span> : null}
+          {owned ? <span className="hidden rounded-sm bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted lg:inline">{owned}</span> : null}
           <button
             type="button"
             aria-label={watched ? "Remove from watch" : "Add to watch"}
-            className={cn("ml-auto grid size-7 place-items-center sm:ml-0", watched ? "text-warn" : "text-muted hover:text-fg")}
             onClick={(e) => {
               e.stopPropagation();
               toggleWatch(symbol);
             }}
+            className={cn("grid size-7 place-items-center", watched ? "text-warn" : "text-subtle hover:text-fg")}
           >
             <Star className={cn("size-3.5", watched && "fill-current")} />
           </button>
@@ -262,17 +363,148 @@ export function TermChart({
         </div>
       </header>
 
+      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-2 py-1">
+        <button
+          type="button"
+          className={cn("h-7 rounded-sm px-2 text-[11px] font-medium", style === "candle" ? "bg-surface-2 text-fg" : "text-muted hover:text-fg")}
+          onClick={(e) => {
+            e.stopPropagation();
+            onStyle?.(style === "candle" ? "line" : "candle");
+          }}
+        >
+          {style === "candle" ? "Candle" : "Line"}
+        </button>
+        <button
+          type="button"
+          aria-pressed={useLog}
+          onClick={(e) => {
+            e.stopPropagation();
+            patchChartPrefs({ logScale: !logScale });
+          }}
+          className={cn("h-7 rounded-sm px-2 text-[11px] font-semibold", logScale ? "bg-surface-2 text-fg" : "text-muted hover:text-fg")}
+        >
+          Log
+        </button>
+        <button
+          type="button"
+          aria-pressed={patternsOn}
+          aria-label="Pattern overlay"
+          onClick={(e) => {
+            e.stopPropagation();
+            patchChartPrefs({ patternsOn: !patternsOn });
+          }}
+          className={cn("h-7 rounded-sm px-2 text-[11px] font-medium", patternsOn ? "bg-surface-2 text-fg" : "text-muted hover:text-fg")}
+        >
+          Patterns
+        </button>
+        <button
+          type="button"
+          aria-expanded={drawOpen}
+          aria-label="Drawing tools"
+          onClick={(e) => {
+            e.stopPropagation();
+            setDrawOpen((v) => !v);
+          }}
+          className={cn("h-7 rounded-sm px-2 text-[11px] font-medium", drawOpen || (tool !== "pan" && tool !== "crosshair") ? "bg-surface-2 text-fg" : "text-muted hover:text-fg")}
+        >
+          Draw
+        </button>
+        {drawOpen ? (
+          <div className="flex flex-wrap items-center gap-0.5">
+            {TOOLS.map((t) => {
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  aria-label={t.label}
+                  title={t.label}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setTool(t.id);
+                    setDraft(null);
+                  }}
+                  className={cn(
+                    "grid size-7 place-items-center rounded-sm",
+                    tool === t.id ? "bg-surface text-fg shadow-[var(--shadow-border)]" : "text-muted hover:text-fg",
+                  )}
+                >
+                  <Icon className="size-3.5" />
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              aria-label="Undo drawing"
+              className="grid size-7 place-items-center text-muted hover:text-fg"
+              onClick={(e) => {
+                e.stopPropagation();
+                save(shapes.slice(0, -1));
+              }}
+            >
+              <Undo2 className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              aria-label="Clear drawings"
+              className="grid size-7 place-items-center text-muted hover:text-down"
+              onClick={(e) => {
+                e.stopPropagation();
+                save([]);
+                setDraft(null);
+              }}
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          </div>
+        ) : null}
+        <span className="ml-auto text-[10px] text-subtle">{useLog ? "Log scale" : "Linear"} · RAW OHLC</span>
+      </div>
+
       <div
         ref={wrap}
-        className="relative min-h-0 flex-1 cursor-crosshair"
+        className={cn("relative min-h-0 flex-1", tool === "pan" || tool === "crosshair" ? "cursor-crosshair" : "cursor-cell")}
         onWheel={onWheel}
         onPointerDown={(e) => {
           onActivate();
-          drag.current = { x: e.clientX, start: view.start };
+          const pt = xyAt(e.clientX, e.clientY);
           (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+          if (tool === "pan" || tool === "crosshair") {
+            const hit = hitTest(shapes, pt.x, pt.y, shown, xAt, yPx, PAD.l, size.w - PAD.r, PAD.t, PAD.t + plotH);
+            if (hit) {
+              setSelectedId(hit.id);
+              move.current = { id: hit.id, mode: hit.mode, x: pt.x, y: pt.y, t: pt.t, py: pt.p };
+              return;
+            }
+            setSelectedId(null);
+            if (tool === "pan") drag.current = { x: e.clientX, start: view.start };
+            return;
+          }
+          if (!draft) {
+            setDraft({ id: newDrawId(), kind: tool, t0: pt.t, y0: pt.p, t1: pt.t, y1: pt.p });
+            return;
+          }
+          const done: DrawShape = { ...draft, t1: pt.t, y1: pt.p };
+          save([...shapes, done]);
+          setSelectedId(done.id);
+          setDraft(null);
+          setTool("pan");
         }}
         onPointerMove={(e) => {
-          setHover(idxAt(e.clientX));
+          const pt = xyAt(e.clientX, e.clientY);
+          setHover(pt.i);
+          if (move.current) {
+            const cur = shapes.find((s) => s.id === move.current!.id);
+            if (!cur) return;
+            const next = applyDrag(cur, move.current.mode, pt.t - move.current.t, pt.p - move.current.py, pt.t, pt.p);
+            save(shapes.map((s) => (s.id === next.id ? next : s)));
+            move.current = { ...move.current, t: pt.t, py: pt.p, x: pt.x, y: pt.y };
+            return;
+          }
+          if (draft) {
+            setDraft({ ...draft, t1: pt.t, y1: pt.p });
+            return;
+          }
           if (!drag.current) return;
           const dx = e.clientX - drag.current.x;
           const shift = Math.round(-dx / Math.max(4, slot));
@@ -281,6 +513,7 @@ export function TermChart({
         }}
         onPointerUp={() => {
           drag.current = null;
+          move.current = null;
         }}
         onPointerLeave={() => setHover(null)}
       >
@@ -295,7 +528,14 @@ export function TermChart({
             {yTicks.map((p, i) => (
               <g key={i}>
                 <line x1={PAD.l} x2={size.w - PAD.r} y1={yPx(p)} y2={yPx(p)} stroke={GRID} strokeWidth="1" />
-                <text x={PAD.l - 6} y={yPx(p) + 3} textAnchor="end" fill={MUTED} fontSize="10" fontFamily="IBM Plex Mono, ui-monospace, monospace">
+                <text
+                  x={size.w - PAD.r + 6}
+                  y={yPx(p) + 3}
+                  textAnchor="start"
+                  fill={MUTED}
+                  fontSize="10"
+                  fontFamily="IBM Plex Mono, ui-monospace, monospace"
+                >
                   {p >= 100 ? p.toFixed(0) : p.toFixed(2)}
                 </text>
               </g>
@@ -343,29 +583,53 @@ export function TermChart({
               );
             })}
             {oscOn ? (
-              <Osc
-                xAt={xAt}
-                top={PAD.t + plotH + VOL_H + 10}
-                h={OSC_H}
-                rsiArr={rsiArr}
-                macdPack={macdPack}
-              />
+              <Osc xAt={xAt} top={PAD.t + plotH + VOL_H + 10} h={OSC_H} rsiArr={rsiArr} macdPack={macdPack} />
             ) : null}
+            {patternsOn
+              ? patterns.map((h, i) => (
+                  <PatternOverlay key={h.kind + i} hit={h} src={shown} xAt={xAt} yPx={yPx} right={size.w - PAD.r} />
+                ))
+              : null}
+            {shapes.map((s) => (
+              <ShapeDraw key={s.id} s={s} src={shown} xAt={xAt} yPx={yPx} right={size.w - PAD.r} selected={s.id === selectedId} />
+            ))}
+            {draft ? <ShapeDraw s={draft} src={shown} xAt={xAt} yPx={yPx} right={size.w - PAD.r} /> : null}
             {cur && hover != null ? (
               <>
                 <line x1={xAt(hover)} x2={xAt(hover)} y1={PAD.t} y2={PAD.t + plotH + VOL_H} stroke={MUTED} strokeDasharray="3 3" />
                 <line x1={PAD.l} x2={size.w - PAD.r} y1={yPx(cur.c)} y2={yPx(cur.c)} stroke={MUTED} strokeDasharray="3 3" />
               </>
             ) : null}
+            {last ? (
+              <g>
+                <circle cx={xAt(n - 1)} cy={yPx(last.c)} r="3" fill={lastUp ? UP : DOWN} stroke="var(--color-bg)" />
+                <rect
+                  x={size.w - PAD.r}
+                  y={yPx(last.c) - 8}
+                  width="52"
+                  height="16"
+                  fill={lastUp ? UP : DOWN}
+                />
+                <text
+                  x={size.w - PAD.r + 4}
+                  y={yPx(last.c) + 3}
+                  fill="var(--color-accent-fg)"
+                  fontSize="10"
+                  fontFamily="IBM Plex Mono, ui-monospace, monospace"
+                >
+                  {last.c >= 100 ? last.c.toFixed(0) : last.c.toFixed(2)}
+                </text>
+              </g>
+            ) : null}
           </svg>
         )}
         {cur ? (
-          <div className="pointer-events-none absolute left-14 top-2 font-mono text-[11px] text-muted">
+          <div className="pointer-events-none absolute left-3 top-2 font-mono text-[11px] text-muted">
             {fmtWhen(cur.t, spec.intra)} · O {fmtPx(cur.o)} H {fmtPx(cur.h)} L {fmtPx(cur.l)} C {fmtPx(cur.c)}
             {volMissing ? " · Volume unavailable" : ` · Vol ${fmtVol(cur.v)}`}
           </div>
         ) : null}
-        <div className="absolute right-2 top-2 flex gap-1">
+        <div className="absolute right-14 top-2 flex gap-1">
           <IconBtn label="Fit" onClick={fit}>
             <Minimize2 className="size-3.5" />
           </IconBtn>
@@ -391,6 +655,13 @@ export function TermChart({
         </div>
       </div>
 
+      {patternsOn && patterns.length ? (
+        <div className="shrink-0 border-t border-border px-2 py-1 text-[11px] text-muted">
+          {patterns.map((h) => `${h.label} · ${patternStatusLabel(h.status)}`).join(" · ")}
+          <span className="ml-2 text-subtle">Observed on this timeframe — not a forecast.</span>
+        </div>
+      ) : null}
+
       <div className="flex shrink-0 flex-wrap items-center gap-1 border-t border-border px-2 py-1">
         {(
           [
@@ -402,23 +673,194 @@ export function TermChart({
             { id: "macd" as const, label: "MACD" },
           ] satisfies { id: keyof IndFlags; label: string }[]
         ).map((chip) => (
-            <button
-              key={chip.id}
-              type="button"
-              onClick={() => setInds((s) => ({ ...s, [chip.id]: !s[chip.id] }))}
-              className={cn(
-                "h-6 rounded-sm px-1.5 text-[10px] font-medium tracking-[0.04em]",
-                inds[chip.id] ? "bg-surface-2 text-fg" : "text-muted hover:text-fg",
-              )}
-            >
-              {chip.label}
-            </button>
-          ))}
-        <span className="ml-auto text-[10px] text-subtle">
-          {volMissing ? "Volume unavailable" : "RAW OHLC"}
-        </span>
+          <button
+            key={chip.id}
+            type="button"
+            onClick={() => setInds((s) => ({ ...s, [chip.id]: !s[chip.id] }))}
+            className={cn(
+              "h-6 rounded-sm px-1.5 text-[10px] font-medium tracking-[0.04em]",
+              inds[chip.id] ? "bg-surface-2 text-fg" : "text-muted hover:text-fg",
+            )}
+          >
+            {chip.label}
+          </button>
+        ))}
+        <span className="ml-auto text-[10px] text-subtle">{volMissing ? "Volume unavailable" : "RAW OHLC"}</span>
       </div>
     </section>
+  );
+}
+
+function tToX(t: number, src: OhlcBar[], xAt: (i: number) => number) {
+  if (!src.length) return xAt(0);
+  if (t <= src[0].t) return xAt(0);
+  const last = src.length - 1;
+  if (t >= src[last].t) return xAt(last);
+  let lo = 0;
+  let hi = last;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (src[mid].t < t) lo = mid + 1;
+    else hi = mid;
+  }
+  const i = lo;
+  if (i <= 0) return xAt(0);
+  const a = src[i - 1];
+  const b = src[i];
+  const f = (t - a.t) / (b.t - a.t || 1);
+  return xAt(i - 1) + f * (xAt(i) - xAt(i - 1));
+}
+
+function PatternOverlay({
+  hit,
+  src,
+  xAt,
+  yPx,
+  right,
+}: {
+  hit: PatternHit;
+  src: OhlcBar[];
+  xAt: (i: number) => number;
+  yPx: (v: number) => number;
+  right: number;
+}) {
+  const c = hit.tone === "up" ? UP : hit.tone === "down" ? DOWN : ACCENT;
+  const last = hit.points[hit.points.length - 1];
+  const pts = hit.points.map((p) => `${tToX(p.t, src, xAt).toFixed(1)},${yPx(p.price).toFixed(1)}`).join(" ");
+  return (
+    <g>
+      {hit.points.length >= 2 ? (
+        <polyline points={pts} fill="none" stroke={c} strokeWidth="1.3" strokeDasharray="4 3" />
+      ) : last ? (
+        <line x1={PAD.l} x2={right} y1={yPx(last.price)} y2={yPx(last.price)} stroke={c} strokeDasharray="5 4" />
+      ) : null}
+      {last ? (
+        <text x={tToX(last.t, src, xAt) + 4} y={yPx(last.price) - 6} fill={c} fontSize="10">
+          {hit.label} · {patternStatusLabel(hit.status)}
+        </text>
+      ) : null}
+    </g>
+  );
+}
+
+function ShapeDraw({
+  s,
+  src,
+  xAt,
+  yPx,
+  right,
+  selected,
+}: {
+  s: DrawShape;
+  src: OhlcBar[];
+  xAt: (i: number) => number;
+  yPx: (v: number) => number;
+  right: number;
+  selected?: boolean;
+}) {
+  const x0 = tToX(s.t0, src, xAt);
+  const y0 = yPx(s.y0);
+  const x1 = tToX(s.t1 ?? s.t0, src, xAt);
+  const y1 = yPx(s.y1 ?? s.y0);
+  const stroke = selected ? INK : ACCENT;
+  const w = selected ? 1.8 : 1.2;
+  const handles = selected ? (
+    <g>
+      <rect x={x0 - 3} y={y0 - 3} width="6" height="6" fill="var(--color-bg)" stroke={stroke} />
+      {s.kind !== "hline" ? <rect x={x1 - 3} y={y1 - 3} width="6" height="6" fill="var(--color-bg)" stroke={stroke} /> : null}
+    </g>
+  ) : null;
+  if (s.kind === "hline") {
+    return (
+      <g>
+        <line x1={PAD.l} y1={y0} x2={right} y2={y0} stroke={stroke} strokeWidth={w} />
+        <text x={right + 4} y={y0 + 3} fill={stroke} fontSize="9">
+          {fmtPx(s.y0)}
+        </text>
+        {handles}
+      </g>
+    );
+  }
+  if (s.kind === "long" || s.kind === "short") {
+    const color = s.kind === "long" ? UP : DOWN;
+    const entry = s.y0;
+    const other = s.y1 ?? s.y0;
+    const pct = entry > 0 ? ((other / entry - 1) * 100) : 0;
+    return (
+      <g>
+        <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={color} strokeWidth={w} />
+        <text x={x1 + 4} y={y1 - 4} fill={color} fontSize="10">
+          {s.kind === "long" ? "Long" : "Short"} {fmtPx(entry)} → {fmtPx(other)} {pct >= 0 ? "+" : ""}
+          {pct.toFixed(1)}% · measurement
+        </text>
+        {handles}
+      </g>
+    );
+  }
+  if (s.kind === "channel") {
+    const off = s.off ?? Math.abs(s.y0) * 0.012;
+    return (
+      <g>
+        <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={stroke} strokeWidth={w} />
+        <line x1={x0} y1={yPx(s.y0 + off)} x2={x1} y2={yPx((s.y1 ?? s.y0) + off)} stroke={stroke} strokeWidth={w} />
+        {handles}
+      </g>
+    );
+  }
+  if (s.kind === "ray") {
+    const dx = x1 - x0 || 0.001;
+    const m = (y1 - y0) / dx;
+    const xEnd = dx >= 0 ? right : PAD.l;
+    return (
+      <g>
+        <line x1={x0} y1={y0} x2={xEnd} y2={y0 + m * (xEnd - x0)} stroke={stroke} strokeWidth={w} />
+        {handles}
+      </g>
+    );
+  }
+  if (s.kind === "rect") {
+    return (
+      <g>
+        <rect
+          x={Math.min(x0, x1)}
+          y={Math.min(y0, y1)}
+          width={Math.max(2, Math.abs(x1 - x0))}
+          height={Math.max(2, Math.abs(y1 - y0))}
+          fill={ACCENT}
+          fillOpacity="0.08"
+          stroke={stroke}
+          strokeWidth={w}
+        />
+        {handles}
+      </g>
+    );
+  }
+  if (s.kind === "fib") {
+    const hiP = Math.max(s.y0, s.y1 ?? s.y0);
+    const loP = Math.min(s.y0, s.y1 ?? s.y0);
+    const sp = hiP - loP || 1;
+    return (
+      <g>
+        {FIBS.map((f) => {
+          const px = hiP - sp * f;
+          return (
+            <g key={f}>
+              <line x1={PAD.l} x2={right} y1={yPx(px)} y2={yPx(px)} stroke={stroke} strokeOpacity={f === 0 || f === 1 ? 0.95 : 0.5} />
+              <text x={PAD.l + 4} y={yPx(px) - 2} fill={stroke} fontSize="9">
+                {(f * 100).toFixed(1)}
+              </text>
+            </g>
+          );
+        })}
+        {handles}
+      </g>
+    );
+  }
+  return (
+    <g>
+      <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={stroke} strokeWidth={w} />
+      {handles}
+    </g>
   );
 }
 

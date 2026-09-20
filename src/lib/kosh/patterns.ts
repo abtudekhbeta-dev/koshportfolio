@@ -5,6 +5,7 @@ import { nameSwings, swings } from "./ohlc.ts";
 import type { OhlcBar } from "./types.ts";
 
 export type PatternKind = "vcp" | "vcp-break" | "flag" | "double-top" | "double-bottom" | "triangle" | "range";
+export type PatternStatus = "forming" | "reached";
 
 export type PatternHit = {
   kind: PatternKind;
@@ -12,6 +13,8 @@ export type PatternHit = {
   note: string;
   points: { t: number; price: number }[];
   tone: "up" | "down" | "chart";
+  /** Forming = structure still in play. Reached = last print has left the structure. Not a forecast. */
+  status: PatternStatus;
 };
 
 const MAX = 3;
@@ -20,7 +23,12 @@ function kOf(n: number) {
   return n > 180 ? 5 : n > 80 ? 3 : 2;
 }
 
-function flag(bars: OhlcBar[]): PatternHit | null {
+function inside(c: number, lo: number, hi: number) {
+  if (!(c > 0) || !(lo > 0) || !(hi > 0) || hi < lo) return false;
+  return c >= lo * 0.99 && c <= hi * 1.01;
+}
+
+export function detectFlag(bars: OhlcBar[]): PatternHit | null {
   if (bars.length < 30) return null;
   const last = bars[bars.length - 1];
   for (const pole of [8, 10, 12, 15]) {
@@ -48,21 +56,24 @@ function flag(bars: OhlcBar[]): PatternHit | null {
         { t: last.t, price: lo },
       ],
       tone: up ? "up" : "down",
+      status: "forming",
     };
   }
   return null;
 }
 
-function doubleTurn(bars: OhlcBar[]): PatternHit | null {
+export function detectDouble(bars: OhlcBar[]): PatternHit | null {
   const named = nameSwings(swings(bars, kOf(bars.length)));
   const highs = named.filter((s) => s.kind === "H").slice(-5);
   const lows = named.filter((s) => s.kind === "L").slice(-5);
+  const last = bars[bars.length - 1];
   if (highs.length >= 2) {
     const a = highs[highs.length - 2];
     const b = highs[highs.length - 1];
     if (b.i - a.i >= 8 && Math.abs(b.price / a.price - 1) <= 0.015) {
       const trough = lows.find((l) => l.i > a.i && l.i < b.i);
       if (trough && (a.price - trough.price) / a.price >= 0.04) {
+        const broken = last.c < trough.price * 0.995;
         return {
           kind: "double-top",
           label: "Double top",
@@ -73,6 +84,7 @@ function doubleTurn(bars: OhlcBar[]): PatternHit | null {
             { t: b.t, price: b.price },
           ],
           tone: "down",
+          status: broken ? "reached" : "forming",
         };
       }
     }
@@ -83,6 +95,7 @@ function doubleTurn(bars: OhlcBar[]): PatternHit | null {
     if (b.i - a.i >= 8 && Math.abs(b.price / a.price - 1) <= 0.015) {
       const peak = highs.find((h) => h.i > a.i && h.i < b.i);
       if (peak && (peak.price - a.price) / a.price >= 0.04) {
+        const broken = last.c > peak.price * 1.005;
         return {
           kind: "double-bottom",
           label: "Double bottom",
@@ -93,6 +106,7 @@ function doubleTurn(bars: OhlcBar[]): PatternHit | null {
             { t: b.t, price: b.price },
           ],
           tone: "up",
+          status: broken ? "reached" : "forming",
         };
       }
     }
@@ -100,7 +114,7 @@ function doubleTurn(bars: OhlcBar[]): PatternHit | null {
   return null;
 }
 
-function triangle(bars: OhlcBar[]): PatternHit | null {
+export function detectTriangle(bars: OhlcBar[]): PatternHit | null {
   const named = nameSwings(swings(bars, kOf(bars.length))).slice(-8);
   const hs = named.filter((s) => s.kind === "H");
   const ls = named.filter((s) => s.kind === "L");
@@ -117,6 +131,9 @@ function triangle(bars: OhlcBar[]): PatternHit | null {
   const lowsDown = l1 > l2 && l2 > l3;
   if (!(highsDown && lowsUp) && !(highsDown && lowsDown) && !(highsUp && lowsUp)) return null;
   const label = highsDown && lowsUp ? "Triangle" : highsDown && lowsDown ? "Descending triangle" : "Ascending triangle";
+  const last = bars[bars.length - 1];
+  const bandLo = Math.min(l1, l2, l3);
+  const bandHi = Math.max(h1, h2, h3);
   return {
     kind: "triangle",
     label,
@@ -128,10 +145,11 @@ function triangle(bars: OhlcBar[]): PatternHit | null {
       { t: ls[ls.length - 1].t, price: l3 },
     ],
     tone: "chart",
+    status: inside(last.c, bandLo, bandHi) ? "forming" : "reached",
   };
 }
 
-function rangeHit(bars: OhlcBar[]): PatternHit | null {
+export function detectRange(bars: OhlcBar[]): PatternHit | null {
   const named = nameSwings(swings(bars, kOf(bars.length))).slice(-8);
   const hs = named.filter((s) => s.kind === "H").slice(-3);
   const ls = named.filter((s) => s.kind === "L").slice(-3);
@@ -143,6 +161,7 @@ function rangeHit(bars: OhlcBar[]): PatternHit | null {
   const lTight = ls.every((l) => Math.abs(l.price / lAvg - 1) <= 0.012);
   const span = ((hAvg - lAvg) / hAvg) * 100;
   if (!hTight || !lTight || span < 5 || span > 18) return null;
+  const last = bars[bars.length - 1];
   return {
     kind: "range",
     label: "Range",
@@ -152,6 +171,7 @@ function rangeHit(bars: OhlcBar[]): PatternHit | null {
       { t: ls[0].t, price: lAvg },
     ],
     tone: "chart",
+    status: inside(last.c, lAvg, hAvg) ? "forming" : "reached",
   };
 }
 
@@ -159,35 +179,39 @@ export function detectPatterns(bars: OhlcBar[] | null | undefined): PatternHit[]
   const src = (bars || []).filter((b) => b && b.c > 0);
   if (src.length < 24) return [];
   const out: PatternHit[] = [];
+  const seen = new Set<PatternKind>();
+  const push = (hit: PatternHit | null) => {
+    if (!hit || out.length >= MAX || seen.has(hit.kind)) return;
+    seen.add(hit.kind);
+    out.push(hit);
+  };
   const vcp = detectVcp(src);
   if (vcp?.breakout) {
-    out.push({
+    push({
       kind: "vcp-break",
       label: "VCP breakout",
-      note: `${vcp.n} contractions, pivot ${vcp.pivot.toFixed(0)}.`,
+      note: `${vcp.n} contractions, pivot ${vcp.pivot.toFixed(0)}. Last print is through the pivot — observed, not a forecast.`,
       points: [{ t: src[src.length - 1].t, price: vcp.pivot }],
       tone: "up",
+      status: "reached",
     });
   } else if (vcp?.forming) {
-    out.push({
+    push({
       kind: "vcp",
       label: "VCP",
       note: `${vcp.n} contractions, last ${vcp.lastPct.toFixed(1)}%, pivot ${vcp.pivot.toFixed(0)}.`,
       points: [{ t: src[src.length - 1].t, price: vcp.pivot }],
       tone: "chart",
+      status: "forming",
     });
   }
-  const f = flag(src);
-  if (f) out.push(f);
-  const d = doubleTurn(src);
-  if (d) out.push(d);
-  if (out.length < MAX) {
-    const t = triangle(src);
-    if (t) out.push(t);
-  }
-  if (out.length < MAX) {
-    const r = rangeHit(src);
-    if (r) out.push(r);
-  }
+  push(detectFlag(src));
+  push(detectDouble(src));
+  if (out.length < MAX) push(detectTriangle(src));
+  if (out.length < MAX) push(detectRange(src));
   return out.slice(0, MAX);
+}
+
+export function patternStatusLabel(s: PatternStatus) {
+  return s === "reached" ? "Reached" : "Forming";
 }

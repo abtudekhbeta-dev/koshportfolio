@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Columns2, LayoutGrid, Square, List } from "lucide-react";
+import { Columns2, LayoutGrid, Square } from "lucide-react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { apiQuotes } from "@/lib/kosh/api";
 import { isIstSession, istClock } from "@/lib/kosh/market-hours";
 import { quoteMap, quoteStatus, quoteStatusLabel } from "@/lib/kosh/market-data";
+import type { PatternHit } from "@/lib/kosh/patterns";
 import type { Quote } from "@/lib/kosh/types";
 import { bareSymbol, useKosh, type DeskLayout } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -52,7 +53,7 @@ export function MarketsDesk() {
   const watch = useKosh((s) => s.watch);
   const ports = useKosh((s) => s.portfolios);
   const [wide, setWide] = useState(true);
-  const [watchOpen, setWatchOpen] = useState(false);
+  const [hits, setHits] = useState<PatternHit[]>([]);
 
   useEffect(() => {
     const m = window.matchMedia("(min-width: 1024px)");
@@ -68,8 +69,11 @@ export function MarketsDesk() {
     const s = new Set<string>();
     for (const p of visible) s.add(bareSymbol(p.symbol));
     for (const w of watch) s.add(bareSymbol(w));
+    for (const p of ports) {
+      for (const h of p.holdings) s.add(bareSymbol(h.symbol));
+    }
     return [...s].filter(Boolean).slice(0, 48);
-  }, [visible.map((p) => p.symbol).join(","), watch.join(",")]);
+  }, [visible.map((p) => p.symbol).join(","), watch.join(","), ports.map((p) => p.holdings.map((h) => h.symbol).join(",")).join("|")]);
 
   const session = isIstSession();
   const quotesQ = useQuery({
@@ -109,6 +113,8 @@ export function MarketsDesk() {
             owned={notes[bareSymbol(pane.symbol)]?.badge || null}
             onActivate={() => patchDesk({ activePane: i as 0 | 1 | 2 | 3 })}
             onInterval={(id) => setDeskPane(i, { interval: id })}
+            onStyle={(next) => patchDesk({ style: next })}
+            onPatterns={desk.activePane === i ? setHits : undefined}
           />
         ))}
       </div>
@@ -122,15 +128,25 @@ export function MarketsDesk() {
       owned={Object.fromEntries(Object.entries(notes).map(([k, v]) => [k, v.badge]))}
       onPick={(symbol, name) => {
         setDeskSymbol(symbol, name);
-        setWatchOpen(false);
       }}
+    />
+  );
+
+  const intel = (
+    <IntelPanel
+      symbol={active.symbol}
+      name={active.name}
+      quote={activeQ}
+      owned={notes[bareSymbol(active.symbol)]?.line || null}
+      tab={desk.intelTab}
+      onTab={(id) => patchDesk({ intelTab: id })}
+      patterns={hits}
     />
   );
 
   return (
     <div data-markets-desk className="flex min-h-0 flex-1 flex-col bg-bg">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-2 py-1.5 sm:px-3">
-        <div className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Markets</div>
         <div className="flex items-center gap-0.5 rounded-sm bg-bg-elevated p-0.5">
           {(
             [
@@ -186,16 +202,6 @@ export function MarketsDesk() {
             ? `● ${quoteStatusLabel(tapeStatus)} · ${istClock()}`
             : quoteStatusLabel(tapeStatus)}
         </span>
-        {!wide ? (
-          <button
-            type="button"
-            className="ml-auto inline-flex h-8 items-center gap-1 rounded-sm bg-surface px-2 text-[12px]"
-            onClick={() => setWatchOpen((v) => !v)}
-          >
-            <List className="size-3.5" />
-            Watch
-          </button>
-        ) : null}
       </div>
 
       {wide ? (
@@ -213,34 +219,14 @@ export function MarketsDesk() {
           </Panel>
           <Separator className="h-px bg-border hover:bg-fg/30" />
           <Panel id="intel" minSize="16%" className="min-h-0">
-            <IntelPanel
-              symbol={active.symbol}
-              name={active.name}
-              quote={activeQ}
-              owned={notes[bareSymbol(active.symbol)]?.line || null}
-              tab={desk.intelTab}
-              onTab={(id) => patchDesk({ intelTab: id })}
-            />
+            {intel}
           </Panel>
         </Group>
       ) : (
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1">{workspace}</div>
-          <div className="h-[210px] shrink-0 border-t border-border">
-            <IntelPanel
-              symbol={active.symbol}
-              name={active.name}
-              quote={activeQ}
-              owned={notes[bareSymbol(active.symbol)]?.line || null}
-              tab={desk.intelTab}
-              onTab={(id) => patchDesk({ intelTab: id })}
-            />
-          </div>
-          {watchOpen ? (
-            <div className="absolute inset-y-0 right-0 z-20 w-[min(100%,280px)] border-l border-border bg-bg-elevated shadow-[var(--shadow-border)]">
-              {watchEl}
-            </div>
-          ) : null}
+        <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+          <div className="h-[min(42vh,320px)] min-h-[220px] shrink-0">{workspace}</div>
+          <div className="h-[200px] shrink-0 border-t border-border">{watchEl}</div>
+          <div className="min-h-[280px] flex-1 border-t border-border">{intel}</div>
         </div>
       )}
     </div>

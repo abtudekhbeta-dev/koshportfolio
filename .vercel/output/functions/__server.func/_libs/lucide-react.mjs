@@ -346,38 +346,6 @@ var LayoutGrid = createLucideIcon("layout-grid", [
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
-var List = createLucideIcon("list", [
-	["path", {
-		d: "M3 12h.01",
-		key: "nlz23k"
-	}],
-	["path", {
-		d: "M3 18h.01",
-		key: "1tta3j"
-	}],
-	["path", {
-		d: "M3 6h.01",
-		key: "1rqtza"
-	}],
-	["path", {
-		d: "M8 12h13",
-		key: "1za7za"
-	}],
-	["path", {
-		d: "M8 18h13",
-		key: "1lx6n3"
-	}],
-	["path", {
-		d: "M8 6h13",
-		key: "ik3vkj"
-	}]
-]);
-/**
-* @license lucide-react v0.510.0 - ISC
-*
-* This source code is licensed under the ISC license.
-* See the LICENSE file in the root directory of this source tree.
-*/
 var Magnet = createLucideIcon("magnet", [
 	["path", {
 		d: "m6 15-4-4 6.75-6.77a7.79 7.79 0 0 1 11 11L13 22l-4-4 6.39-6.36a2.14 2.14 0 0 0-3-3L6 15",
@@ -782,4 +750,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { Columns2 as A, Magnet as C, Download as D, Layers as E, Bell as F, ArrowUpRight as I, ArrowRight as L, ChevronUp as M, ChevronRight as N, Crosshair as O, ChevronDown as P, ArrowDownRight as R, Mail as S, LayoutGrid as T, Moon as _, Sun as a, MessageCircle as b, Spline as c, RotateCcw as d, Plus as f, MousePointer2 as g, MoveRight as h, Trash2 as i, CircleHelp as j, Copy as k, Send as l, Pause as m, Undo2 as n, Star as o, Play as p, TriangleAlert as r, Square as s, X as t, Search as u, Minus as v, List as w, Maximize2 as x, Minimize2 as y };
+export { CircleHelp as A, Magnet as C, Crosshair as D, Download as E, ArrowUpRight as F, ArrowRight as I, ArrowDownRight as L, ChevronRight as M, ChevronDown as N, Copy as O, Bell as P, Mail as S, Layers as T, Moon as _, Sun as a, MessageCircle as b, Spline as c, RotateCcw as d, Plus as f, MousePointer2 as g, MoveRight as h, Trash2 as i, ChevronUp as j, Columns2 as k, Send as l, Pause as m, Undo2 as n, Star as o, Play as p, TriangleAlert as r, Square as s, X as t, Search as u, Minus as v, LayoutGrid as w, Maximize2 as x, Minimize2 as y };

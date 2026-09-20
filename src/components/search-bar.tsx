@@ -58,6 +58,7 @@ export function SearchBar() {
     setQ("");
     if (pathname === "/markets" || pathname.startsWith("/markets/")) {
       setDeskSymbol(s, name || s);
+      void nav({ to: "/markets", search: { view: "terminal" } });
       return;
     }
     void nav({ to: "/s/$symbol", params: { symbol: s } });

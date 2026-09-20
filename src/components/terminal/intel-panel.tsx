@@ -2,8 +2,11 @@ import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { apiFundamentals, apiNews, apiOhlc, apiScreener } from "@/lib/kosh/api";
-import { fmtPct } from "@/lib/kosh/engine";
-import { NEWS_BUCKETS, filterNews, newsMaterial, type NewsBucket } from "@/lib/kosh/news";
+import { fmtPct, fmtPx } from "@/lib/kosh/engine";
+import { isIstSession } from "@/lib/kosh/market-hours";
+import { quoteStatus, quoteStatusLabel } from "@/lib/kosh/market-data";
+import { NEWS_BUCKETS, filterNews, newsBucket, newsMaterial, type NewsBucket } from "@/lib/kosh/news";
+import { patternStatusLabel, type PatternHit } from "@/lib/kosh/patterns";
 import { buildSnapshot } from "@/lib/kosh/snapshot";
 import { pickScreenRow } from "@/lib/kosh/screens";
 import { stakeDelta, formatShPeriod } from "@/lib/kosh/shareholding";
@@ -35,6 +38,7 @@ export function IntelPanel({
   owned,
   tab,
   onTab,
+  patterns,
 }: {
   symbol: string;
   name: string;
@@ -42,8 +46,10 @@ export function IntelPanel({
   owned?: string | null;
   tab: string;
   onTab: (id: string) => void;
+  patterns?: PatternHit[];
 }) {
   const skillReads = useKosh((s) => s.skillReads);
+  const patternsOn = useKosh((s) => s.chartPrefs.patternsOn === true);
   const fundQ = useQuery({
     queryKey: ["fundamentals", symbol],
     queryFn: () => apiFundamentals(symbol),
@@ -66,6 +72,7 @@ export function IntelPanel({
   const row = pickScreenRow(screen.data?.rows || [], symbol) || null;
   const skill = skillReads[bareSymbol(symbol)] || null;
   const px = quote?.price && quote.price > 0 ? quote.price : daily.data?.price || null;
+  const chg = quote?.changePct ?? daily.data?.changePct ?? 0;
   const bars = daily.data?.bars?.map((b) => ({ t: b.t, c: b.c })) || [];
   const snap = useMemo(
     () => buildSnapshot({ symbol, name, price: px, fund, row, skill, bars }),
@@ -75,9 +82,81 @@ export function IntelPanel({
   const eq = earningsQualityRead(fund);
   const sh = stakeDelta(fund?.shareholding);
   const active = TABS.some((t) => t.id === tab) ? tab : "overview";
+  const status = quoteStatus({ session: isIstSession(), price: px });
+  const hits = patternsOn ? patterns || [] : [];
+
+  const facts = [
+    ["P/E", n(fund?.pe, (x) => x.toFixed(1) + "x")],
+    ["Industry P/E", n(fund?.industryPe, (x) => x.toFixed(1) + "x")],
+    ["ROCE", n(fund?.roce, (x) => x.toFixed(1) + "%")],
+    ["D/E", n(fund?.de, (x) => x.toFixed(2) + "x")],
+    ["Profit 1Y", n(fund?.profitYoY, (x) => fmtPct(x))],
+    ["Market cap", n(fund?.mcapCr, (x) => `₹${x.toLocaleString("en-IN")} Cr`)],
+  ] as const;
 
   return (
     <section data-intel-panel className="flex h-full min-h-0 flex-col bg-bg">
+      <div className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <h2 className="text-[15px] font-semibold">{bareSymbol(symbol)}</h2>
+            <span className="truncate text-[12px] text-muted">{name}</span>
+            <span className="font-mono text-[15px] tabular">{px ? fmtPx(px) : "—"}</span>
+            <span className={cn("font-mono text-[12px] tabular", chg >= 0 ? "text-up" : "text-down")}>{fmtPct(chg)}</span>
+            <span
+              className={cn(
+                "rounded-sm px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em]",
+                status === "session" ? "bg-up/15 text-up" : status === "last" ? "bg-surface-2 text-muted" : "bg-down/15 text-down",
+              )}
+            >
+              {quoteStatusLabel(status)}
+            </span>
+          </div>
+          <p className="mt-0.5 text-[11px] text-subtle">Kosh intelligence — numbers on file, not a forecast.</p>
+        </div>
+        <Link
+          to="/s/$symbol"
+          params={{ symbol }}
+          data-open-full-analysis
+          className="inline-flex h-11 w-full shrink-0 items-center justify-center rounded-sm bg-chart/15 px-3 text-[13px] font-semibold text-chart sm:h-10 sm:w-auto"
+        >
+          Open Full Analysis →
+        </Link>
+      </div>
+
+      <div className="grid shrink-0 grid-cols-3 gap-1.5 border-b border-border px-3 py-2 sm:grid-cols-6">
+        {facts.map(([k, v]) => (
+          <div key={k}>
+            <div className="text-[10px] tracking-[0.06em] text-subtle uppercase">{k}</div>
+            <div className="font-mono text-[13px] font-semibold tabular">{v}</div>
+          </div>
+        ))}
+      </div>
+
+      {snap.read ? (
+        <p className="shrink-0 border-b border-border px-3 py-2 text-[12px] leading-snug text-muted">
+          <span className="mr-1.5 text-[10px] font-semibold tracking-[0.08em] text-subtle uppercase">Kosh observation</span>
+          {snap.read}
+        </p>
+      ) : null}
+
+      {hits.length ? (
+        <div data-pattern-box className="shrink-0 border-b border-border px-3 py-2">
+          <div className="text-[10px] font-semibold tracking-[0.08em] text-subtle uppercase">Technical</div>
+          <ul className="mt-1 space-y-1">
+            {hits.map((h) => (
+              <li key={h.kind} className="text-[12px] leading-snug text-muted">
+                <span className="font-semibold text-fg">
+                  {h.label} · {patternStatusLabel(h.status)}
+                </span>
+                <span className="mx-1 text-subtle">·</span>
+                {h.note} Observed on this timeframe — not a signal or prediction.
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-2">
         {TABS.map((t) => (
           <button
@@ -93,13 +172,6 @@ export function IntelPanel({
             {t.label}
           </button>
         ))}
-        <Link
-          to="/s/$symbol"
-          params={{ symbol }}
-          className="ml-auto h-10 shrink-0 px-3 text-[12px] font-medium text-chart hover:text-fg"
-        >
-          Open full analysis →
-        </Link>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {active === "overview" ? <Overview fund={fund} snap={snap} owned={owned} /> : null}
@@ -307,15 +379,29 @@ function NewsTab({ items, loading }: { items: NewsItem[] | undefined; loading?: 
       {!shown.length ? (
         <p className="text-[13px] text-muted">No headlines in this bucket.</p>
       ) : (
-        <ul className="space-y-1.5">
-          {shown.map((it, i) => (
-            <li key={i}>
-              <a href={it.link} target="_blank" rel="noreferrer" className="block text-[13px] leading-snug hover:text-chart">
-                {it.title}
-                {newsMaterial(it.title) === "high" ? <span className="ml-1 text-[10px] text-warn">Material</span> : null}
-              </a>
-            </li>
-          ))}
+        <ul className="space-y-2">
+          {shown.map((it, i) => {
+            const mat = it.material || newsMaterial(it.title);
+            const cat = NEWS_BUCKETS.find((b) => b.id === newsBucket(it.title))?.label || "Market";
+            const when = it.ts
+              ? new Date(it.ts < 2e10 ? it.ts * 1000 : it.ts).toISOString().slice(0, 10)
+              : "";
+            return (
+              <li key={i}>
+                <a href={it.link} target="_blank" rel="noreferrer" className="block text-[13px] leading-snug hover:text-chart">
+                  {it.title}
+                </a>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-subtle">
+                  <span>{it.publisher || "Headline"}</span>
+                  {when ? <span>· {when}</span> : null}
+                  <span className="uppercase">{cat}</span>
+                  <span>
+                    {mat === "high" ? "High materiality" : mat === "medium" ? "Medium materiality" : "Background"}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
