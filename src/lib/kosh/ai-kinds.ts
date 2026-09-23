@@ -22,6 +22,10 @@ export type BookName = {
   qualTag?: string;
   qualPotential?: string;
   qualVerdict?: string;
+  fundApproved?: string;
+  qualApproved?: string;
+  fundStatus?: string;
+  qualStatus?: string;
 };
 
 export type BookBrief = {

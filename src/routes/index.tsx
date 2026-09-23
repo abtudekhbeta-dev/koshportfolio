@@ -114,30 +114,96 @@ function Tape() {
 function HeroBoard() {
   const tape = useQuery({ queryKey: ["tape"], queryFn: apiTape, staleTime: 60_000 });
   const rows = tape.data || [];
+  const focus = rows[0];
+  const last = focus?.price || 0;
+  const pct = focus?.changePct ?? 0;
+  const prev = last && Number.isFinite(pct) ? last / (1 + pct / 100) : 0;
+  const abs = last && prev ? last - prev : null;
+  const up = pct >= 0;
+  const mini = rows.slice(0, 4);
   return (
-    <div className="overflow-hidden rounded-[28px] bg-surface p-5 shadow-[var(--shadow-border)] sm:p-6">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div className="overflow-hidden rounded-[28px] bg-surface p-4 shadow-[var(--shadow-border)] sm:p-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-[11px] font-medium tracking-[0.08em] text-subtle uppercase">Markets Terminal</div>
-          <div className="mt-1 text-[13px] text-muted">Charts, watchlists, and Kosh numbers — one workspace</div>
+          <div className="mt-0.5 text-[13px] font-semibold">{focus?.label || "Nifty 50"}</div>
         </div>
-        <Link to="/markets" search={{ view: "terminal" }} className="text-[12px] text-chart hover:underline">
+        <div className="flex items-center gap-1.5">
+          <span className="rounded-sm bg-surface-2 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em] text-fg">LOG</span>
+          <span className="rounded-sm px-1.5 py-0.5 text-[10px] text-muted">1D</span>
+          <span className="rounded-sm px-1.5 py-0.5 text-[10px] text-muted">W</span>
+          <span className="rounded-sm px-1.5 py-0.5 text-[10px] text-muted">M</span>
+        </div>
+      </div>
+      <div className="relative h-[200px] overflow-hidden rounded-lg bg-bg sm:h-[220px]">
+        {[18, 38, 58, 78].map((top) => (
+          <div
+            key={top}
+            className="absolute right-14 left-3 border-t"
+            style={{ top: `${top}%`, borderColor: "var(--color-chart-grid)" }}
+          />
+        ))}
+        <div className="absolute top-3 right-2 bottom-3 flex w-11 flex-col justify-between font-mono text-[9px] text-subtle tabular">
+          <span>{last ? fmtTapePx(last * 1.04) : "—"}</span>
+          <span>{last ? fmtTapePx(last) : "—"}</span>
+          <span>{last ? fmtTapePx(last * 0.96) : "—"}</span>
+        </div>
+        <div className="absolute top-6 right-16 bottom-8 left-6 flex items-stretch gap-2">
+          {[0.22, 0.38, 0.18, 0.42, 0.3, 0.26, 0.34, 0.2].map((h, i) => (
+            <span key={i} className="relative flex-1">
+              <i
+                className="absolute top-[8%] bottom-[10%] left-1/2 w-px -translate-x-1/2"
+                style={{ background: i % 3 === 1 ? "var(--color-down)" : "var(--color-up)" }}
+              />
+              <b
+                className="absolute left-[28%] right-[28%] rounded-[1px]"
+                style={{
+                  top: `${18 + (i % 4) * 8}%`,
+                  height: `${h * 100}%`,
+                  background: i % 3 === 1 ? "var(--color-down)" : "var(--color-up)",
+                }}
+              />
+            </span>
+          ))}
+        </div>
+        <div className="absolute top-2 left-2 flex gap-1">
+          <span className="rounded-sm bg-surface px-1.5 py-0.5 text-[9px] text-muted shadow-[var(--shadow-border)]">Draw</span>
+          <span className="rounded-sm bg-surface px-1.5 py-0.5 text-[9px] text-muted shadow-[var(--shadow-border)]">Pattern</span>
+        </div>
+        {last ? (
+          <span
+            className="absolute right-12 rounded-sm px-1 py-0.5 font-mono text-[9px] tabular"
+            style={{ top: "42%", background: up ? "var(--color-up)" : "var(--color-down)", color: "var(--color-bg)" }}
+          >
+            {fmtTapePx(last)}
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-3 flex flex-wrap items-baseline justify-between gap-2">
+        <div className="font-mono text-[13px] tabular">
+          <span className="font-semibold">{last ? fmtTapePx(last) : "—"}</span>
+          {abs != null ? (
+            <span className={cn("ml-2", up ? "text-up" : "text-down")}>
+              {abs >= 0 ? "+" : ""}
+              {fmtTapePx(Math.abs(abs))} · {fmtPct(pct)}
+            </span>
+          ) : pct ? (
+            <span className={cn("ml-2", up ? "text-up" : "text-down")}>{fmtPct(pct)}</span>
+          ) : null}
+        </div>
+        <Link to="/markets" search={{ view: "terminal" }} className="text-[12px] font-semibold text-chart hover:underline">
           Open Terminal →
         </Link>
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        {(rows.length ? rows.slice(0, 8) : Array.from({ length: 8 }, () => null)).map((t, i) =>
+      <div className="mt-3 grid grid-cols-2 gap-1.5">
+        {(mini.length ? mini : Array.from({ length: 4 }, () => null)).map((t, i) =>
           t ? (
-            <div key={t.id} className="rounded-lg bg-bg-elevated px-3 py-2.5">
-              <div className="text-[11px] tracking-[0.08em] text-subtle uppercase">{t.label}</div>
-              <div className="mt-0.5 font-mono text-[17px] tabular">{t.price ? fmtTapePx(t.price) : "—"}</div>
-              <div className={cn("font-mono text-[12px] tabular", t.changePct >= 0 ? "text-up" : "text-down")}>
-                {t.unit ? <span className="mr-1 text-subtle">{t.unit}</span> : null}
-                {t.changePct ? fmtPct(t.changePct) : "—"}
-              </div>
+            <div key={t.id} className="flex items-center justify-between rounded-md bg-bg-elevated px-2 py-1.5 font-mono text-[11px] tabular">
+              <span className="font-sans text-[11px] font-semibold">{t.label}</span>
+              <span className={t.changePct >= 0 ? "text-up" : "text-down"}>{t.changePct ? fmtPct(t.changePct) : "—"}</span>
             </div>
           ) : (
-            <div key={i} className="h-[68px] animate-pulse rounded-lg bg-bg-elevated" />
+            <div key={i} className="h-8 animate-pulse rounded-md bg-bg-elevated" />
           ),
         )}
       </div>

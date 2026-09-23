@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from "lucide-react";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
+import { cycleSort, sortEntities, sortGlyph, type SortDir } from "@/lib/kosh/kosh-table";
 import { universeName } from "@/lib/kosh/universe";
 import type { Quote } from "@/lib/kosh/types";
 import { quoteMap } from "@/lib/kosh/market-data";
@@ -8,6 +9,12 @@ import { bareSymbol, useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 type Source = { kind: "watch"; id: string } | { kind: "port"; id: string };
+type SortKey = "last" | "chg" | "chgPct";
+
+function absChange(q: Quote | undefined) {
+  if (!q || !(q.price > 0) || !(q.previousClose > 0)) return null;
+  return q.price - q.previousClose;
+}
 
 export function WatchPane({
   quotes,
@@ -34,13 +41,37 @@ export function WatchPane({
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [source, setSource] = useState<Source>({ kind: "watch", id: activeId });
+  const [qtext, setQtext] = useState("");
+  const [sort, setSort] = useState<{ key: SortKey | null; dir: SortDir }>({ key: null, dir: null });
+  const dragFrom = useRef<number | null>(null);
+  const dragging = useRef(false);
   const qmap = useMemo(() => quoteMap(quotes), [quotes]);
 
   const port = source.kind === "port" ? ports.find((p) => p.id === source.id) : null;
-  const rows =
+  const rawRows =
     source.kind === "port"
       ? (port?.holdings || []).map((h) => bareSymbol(h.symbol)).filter(Boolean)
       : watch;
+
+  const decorated = rawRows.map((s, i) => {
+    const k = bareSymbol(s);
+    const q = qmap.get(k);
+    return {
+      i,
+      k,
+      name: q?.name || universeName(k) || k,
+      last: q && q.price > 0 ? q.price : null,
+      chg: absChange(q),
+      chgPct: q && Number.isFinite(q.changePct) ? q.changePct : null,
+      q,
+    };
+  });
+
+  const searched = qtext.trim()
+    ? decorated.filter((r) => (r.k + " " + r.name).toLowerCase().includes(qtext.trim().toLowerCase()))
+    : decorated;
+  const rows = sort.key && sort.dir ? sortEntities(searched, sort.key, sort.dir) : searched;
+  const customOrder = !sort.key;
 
   function create() {
     const n = newName.trim();
@@ -51,90 +82,60 @@ export function WatchPane({
     setSource({ kind: "watch", id });
   }
 
-  function portDay(id: string) {
-    const p = ports.find((x) => x.id === id);
-    if (!p) return null;
-    let total = 0;
-    let weighted = 0;
-    let n = 0;
-    for (const h of p.holdings) {
-      const q = qmap.get(bareSymbol(h.symbol));
-      if (!q || !(q.price > 0)) continue;
-      const v = (h.qty || 0) * q.price;
-      total += v;
-      weighted += v * (q.changePct || 0);
-      n += 1;
+  function onSelectList(v: string) {
+    if (v.startsWith("p:")) {
+      setSource({ kind: "port", id: v.slice(2) });
+      return;
     }
-    if (!n || !(total > 0)) return null;
-    return { pct: weighted / total, value: total };
+    setActiveWatchId(v);
+    setSource({ kind: "watch", id: v });
+    setSort({ key: null, dir: null });
   }
 
+  function toggleCol(key: SortKey) {
+    setSort((s) => cycleSort(s, key));
+  }
+
+  const selectValue = source.kind === "port" ? "p:" + source.id : source.id;
+
   return (
-    <aside data-watch-pane className="flex h-full min-h-0 min-w-0 flex-col bg-bg-elevated">
+    <aside data-watch-pane className="kosh-watch flex h-full min-h-0 min-w-0 flex-col bg-bg-elevated">
       <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
-        <div className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Watchlists</div>
+        <div className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">List</div>
+        <select
+          aria-label="List"
+          value={selectValue}
+          onChange={(e) => onSelectList(e.target.value)}
+          className="ml-auto h-7 max-w-[58%] rounded-sm border border-border bg-surface-2 px-1.5 text-[11px]"
+        >
+          <optgroup label="WATCHLISTS">
+            {lists.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </optgroup>
+          {ports.some((p) => p.holdings.length) ? (
+            <optgroup label="PORTFOLIOS">
+              {ports
+                .filter((p) => p.holdings.length)
+                .map((p) => (
+                  <option key={p.id} value={"p:" + p.id}>
+                    {p.name}
+                  </option>
+                ))}
+            </optgroup>
+          ) : null}
+        </select>
         <button
           type="button"
           aria-label="New list"
-          className="ml-auto grid size-7 place-items-center text-muted hover:text-fg"
+          className="grid size-7 place-items-center text-muted hover:text-fg"
           onClick={() => setCreating(true)}
         >
           <Plus className="size-3.5" />
         </button>
       </div>
-      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-2 py-1.5">
-        {lists.map((l) => (
-          <button
-            key={l.id}
-            type="button"
-            onClick={() => {
-              setActiveWatchId(l.id);
-              setSource({ kind: "watch", id: l.id });
-            }}
-            onDoubleClick={() => {
-              const n = window.prompt("Rename list", l.name);
-              if (n?.trim()) renameWatchList(l.id, n.trim());
-            }}
-            className={cn(
-              "h-7 shrink-0 rounded-sm px-2 text-[12px] font-medium",
-              source.kind === "watch" && l.id === source.id ? "bg-surface text-fg" : "text-muted hover:text-fg",
-            )}
-          >
-            {l.name}
-          </button>
-        ))}
-      </div>
-      {ports.some((p) => p.holdings.length) ? (
-        <div className="shrink-0 border-b border-border px-2 py-1.5">
-          <div className="px-1 text-[10px] font-semibold tracking-[0.08em] text-subtle uppercase">Portfolios</div>
-          <div className="mt-1 flex flex-col gap-0.5">
-            {ports
-              .filter((p) => p.holdings.length)
-              .map((p) => {
-                const day = portDay(p.id);
-                const on = source.kind === "port" && source.id === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setSource({ kind: "port", id: p.id })}
-                    className={cn(
-                      "flex h-8 items-center justify-between rounded-sm px-2 text-left text-[12px]",
-                      on ? "bg-surface text-fg" : "text-muted hover:text-fg",
-                    )}
-                  >
-                    <span className="truncate">{p.name}</span>
-                    {day ? (
-                      <span className={cn("ml-2 font-mono tabular", day.pct >= 0 ? "text-up" : "text-down")}>
-                        {fmtPct(day.pct)}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-          </div>
-        </div>
-      ) : null}
       {creating ? (
         <div className="flex gap-1 border-b border-border px-2 py-1.5">
           <input
@@ -153,26 +154,70 @@ export function WatchPane({
           </button>
         </div>
       ) : null}
-      {source.kind === "watch" && lists.length > 1 ? (
-        <div className="flex items-center justify-end px-2 pt-1">
+      <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1">
+        <input
+          value={qtext}
+          onChange={(e) => setQtext(e.target.value)}
+          placeholder="Search"
+          aria-label="Search list"
+          className="h-7 min-w-0 flex-1 rounded-sm bg-bg px-2 text-[11px] outline-none"
+        />
+        <button
+          type="button"
+          className={cn("h-7 shrink-0 px-1.5 text-[10px] tracking-[0.06em] uppercase", customOrder ? "text-fg" : "text-muted hover:text-fg")}
+          onClick={() => setSort({ key: null, dir: null })}
+        >
+          Custom order
+        </button>
+        {source.kind === "watch" && lists.length > 1 ? (
           <button
             type="button"
-            className="inline-flex h-7 items-center gap-1 px-1.5 text-[11px] text-muted hover:text-down"
+            className="grid size-7 place-items-center text-muted hover:text-down"
+            aria-label="Delete list"
             onClick={() => {
               const active = lists.find((l) => l.id === source.id);
               if (active && window.confirm(`Delete ${active.name}?`)) deleteWatchList(active.id);
             }}
           >
             <Trash2 className="size-3" />
-            Delete list
+          </button>
+        ) : null}
+        {source.kind === "watch" ? (
+          <button
+            type="button"
+            className="hidden text-[10px] text-muted hover:text-fg sm:inline"
+            onClick={() => {
+              const active = lists.find((l) => l.id === source.id);
+              if (!active) return;
+              const n = window.prompt("Rename list", active.name);
+              if (n?.trim()) renameWatchList(active.id, n.trim());
+            }}
+          >
+            Rename
+          </button>
+        ) : null}
+      </div>
+      <div className="kosh-watch-head shrink-0 border-b border-border px-2 py-1 text-[9px] font-semibold tracking-[0.08em] text-subtle uppercase">
+        <span />
+        <div className="kosh-watch-main !py-0">
+          <span>Name</span>
+          <button type="button" className="text-right" onClick={() => toggleCol("last")}>
+            Last {sortGlyph(sort.key === "last", sort.dir)}
+          </button>
+          <button type="button" className="kosh-watch-wide text-right" onClick={() => toggleCol("chg")}>
+            Chg {sortGlyph(sort.key === "chg", sort.dir)}
+          </button>
+          <button type="button" className="kosh-watch-wide text-right" onClick={() => toggleCol("chgPct")}>
+            Chg % {sortGlyph(sort.key === "chgPct", sort.dir)}
           </button>
         </div>
-      ) : null}
-      <ul className="min-h-0 flex-1 overflow-y-auto">
+        <span />
+      </div>
+      <ul className="kosh-watch-rows min-h-0 flex-1 overflow-y-auto">
         {!rows.length ? (
           <li className="px-3 py-6 text-center text-[12px] text-muted">
             {source.kind === "port"
-              ? "This mix has no names yet."
+              ? "This list has no names yet."
               : "Search a name and pin it, or open a stock and add it to this list."}
             {source.kind === "watch" && recents.length ? (
               <ul className="mt-3 space-y-1 text-left">
@@ -192,73 +237,115 @@ export function WatchPane({
             ) : null}
           </li>
         ) : (
-          rows.map((s, i) => {
-            const k = bareSymbol(s);
-            const q = qmap.get(k);
-            const name = q?.name || universeName(k) || k;
-            const on = bareSymbol(activeSymbol) === k;
-            const chg = q?.changePct ?? 0;
-            const badge = owned[k];
+          rows.map((r) => {
+            const on = bareSymbol(activeSymbol) === r.k;
+            const badge = owned[r.k];
+            const chg = r.chgPct ?? 0;
+            const tone = r.chgPct == null ? "text-muted" : r.chgPct >= 0 ? "text-up" : "text-down";
+            const lastTxt = r.last != null ? fmtPx(r.last) : "—";
+            const absTxt = r.chg != null ? `${r.chg >= 0 ? "+" : ""}${fmtPx(Math.abs(r.chg))}` : "—";
+            const pctTxt = r.chgPct != null ? fmtPct(r.chgPct) : "";
+            const canDrag = source.kind === "watch" && customOrder && !qtext.trim();
             return (
-              <li key={k + i} className={cn("border-b border-border/70", on && "bg-surface")}>
-                <div className="flex items-stretch">
-                  <button
-                    type="button"
-                    data-watch-row={k}
-                    onClick={() => onPick(k, name)}
-                    className="grid min-w-0 flex-1 grid-cols-[1fr_auto] items-center gap-2 px-3 py-2 text-left"
-                  >
-                    <span className="min-w-0">
-                      <span className="flex items-center gap-1.5">
-                        <span className="text-[13px] font-semibold">{k}</span>
-                        {badge ? (
-                          <span className="rounded-sm bg-surface-2 px-1 py-px text-[9px] tracking-[0.04em] text-muted uppercase">
-                            {badge}
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className="block truncate text-[10px] text-subtle">{name}</span>
+              <li
+                key={r.k + r.i}
+                className={cn("kosh-watch-row border-b border-border/70", on && "bg-surface")}
+                draggable={canDrag}
+                onDragStart={() => {
+                  dragFrom.current = r.i;
+                  dragging.current = true;
+                }}
+                onDragOver={(e) => {
+                  if (!canDrag) return;
+                  e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const from = dragFrom.current;
+                  dragFrom.current = null;
+                  dragging.current = false;
+                  if (from == null || from === r.i) return;
+                  moveWatch(from, r.i);
+                }}
+                onDragEnd={() => {
+                  dragFrom.current = null;
+                  window.setTimeout(() => {
+                    dragging.current = false;
+                  }, 0);
+                }}
+              >
+                <span
+                  className={cn("kosh-watch-handle text-subtle", canDrag ? "cursor-grab" : "opacity-30")}
+                  aria-hidden
+                >
+                  <GripVertical className="size-3.5" />
+                </span>
+                <button
+                  type="button"
+                  data-watch-row={r.k}
+                  onClick={() => {
+                    if (dragging.current) return;
+                    onPick(r.k, r.name);
+                  }}
+                  className="kosh-watch-main min-w-0 text-left"
+                >
+                  <span className="kosh-watch-name min-w-0">
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-[13px] font-semibold">{r.k}</span>
+                      {badge ? (
+                        <span className="rounded-sm bg-surface-2 px-1 py-px text-[9px] tracking-[0.04em] text-muted uppercase">
+                          {badge}
+                        </span>
+                      ) : null}
                     </span>
-                    <span className="text-right">
-                      <span className="block font-mono text-[13px] tabular">{q ? fmtPx(q.price) : "—"}</span>
-                      <span className={cn("block font-mono text-[11px] tabular", chg >= 0 ? "text-up" : "text-down")}>
-                        {q ? fmtPct(chg) : ""}
-                      </span>
+                    <span className="block truncate text-[10px] text-subtle">{r.name}</span>
+                  </span>
+                  <span className="kosh-watch-last text-right">
+                    <span className="block font-mono text-[13px] font-semibold tabular">{lastTxt}</span>
+                    <span className={cn("kosh-watch-stack font-mono text-[11px] tabular", tone)}>
+                      {absTxt}
+                      {pctTxt ? ` · ${pctTxt}` : ""}
                     </span>
-                  </button>
-                  {source.kind === "watch" ? (
-                    <>
-                      <div className="flex flex-col justify-center pr-1">
-                        <button
-                          type="button"
-                          aria-label="Move up"
-                          className="grid size-6 place-items-center text-subtle hover:text-fg disabled:opacity-30"
-                          disabled={i === 0}
-                          onClick={() => moveWatch(i, i - 1)}
-                        >
-                          <ChevronUp className="size-3" />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Move down"
-                          className="grid size-6 place-items-center text-subtle hover:text-fg disabled:opacity-30"
-                          disabled={i === rows.length - 1}
-                          onClick={() => moveWatch(i, i + 1)}
-                        >
-                          <ChevronDown className="size-3" />
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        aria-label={`Remove ${k}`}
-                        className="grid w-7 place-items-center text-subtle hover:text-down"
-                        onClick={() => toggleWatch(k)}
-                      >
-                        ×
-                      </button>
-                    </>
-                  ) : null}
-                </div>
+                  </span>
+                  <span className={cn("kosh-watch-wide kosh-watch-chg text-right font-mono text-[11px] tabular", tone)}>
+                    {absTxt}
+                  </span>
+                  <span className={cn("kosh-watch-wide kosh-watch-pct text-right font-mono text-[11px] tabular", chg >= 0 ? "text-up" : "text-down")}>
+                    {pctTxt || "—"}
+                  </span>
+                </button>
+                {source.kind === "watch" ? (
+                  <span className="kosh-watch-ops flex items-center">
+                    <button
+                      type="button"
+                      aria-label="Move up"
+                      className="grid size-6 place-items-center text-subtle hover:text-fg disabled:opacity-30"
+                      disabled={r.i === 0 || !customOrder}
+                      onClick={() => moveWatch(r.i, r.i - 1)}
+                    >
+                      <ChevronUp className="size-3" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Move down"
+                      className="grid size-6 place-items-center text-subtle hover:text-fg disabled:opacity-30"
+                      disabled={r.i === rawRows.length - 1 || !customOrder}
+                      onClick={() => moveWatch(r.i, r.i + 1)}
+                    >
+                      <ChevronDown className="size-3" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${r.k}`}
+                      className="grid w-6 place-items-center text-subtle hover:text-down"
+                      onClick={() => toggleWatch(r.k)}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ) : (
+                  <span />
+                )}
               </li>
             );
           })

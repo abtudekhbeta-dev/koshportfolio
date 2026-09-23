@@ -1,6 +1,8 @@
 import { Link } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
 import type { ScreenRow } from "@/lib/kosh/types";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
+import { cycleSort, sortEntities, sortGlyph, type SortDir } from "@/lib/kosh/kosh-table";
 import { universeName } from "@/lib/kosh/universe";
 import { cn } from "@/lib/utils";
 
@@ -25,10 +27,26 @@ export function WatchBoard({
   loading?: boolean;
 }) {
   const map = new Map(rows.map((r) => [r.symbol.toUpperCase(), r]));
-  const list = symbols.map((s) => {
-    const k = s.toUpperCase().replace(/\.(NS|BO)$/i, "");
-    return { symbol: k, row: map.get(k) };
+  const [sort, setSort] = useState<{ key: "last" | "day" | "rsi" | "vol" | "off" | null; dir: SortDir }>({
+    key: null,
+    dir: null,
   });
+  const list = useMemo(() => {
+    const raw = symbols.map((s) => {
+      const k = s.toUpperCase().replace(/\.(NS|BO)$/i, "");
+      const row = map.get(k);
+      return {
+        symbol: k,
+        row,
+        last: row && row.price > 0 ? row.price : null,
+        day: row && Number.isFinite(row.changePct) ? row.changePct : null,
+        rsi: row?.rsi ?? null,
+        vol: row?.volRatio ?? null,
+        off: row?.offHigh ?? null,
+      };
+    });
+    return sort.key && sort.dir ? sortEntities(raw, sort.key, sort.dir) : raw;
+  }, [symbols, rows, sort]);
   if (!symbols.length) {
     return (
       <div className="rounded-lg bg-surface px-4 py-8 text-center text-sm text-muted shadow-[var(--shadow-border)]">
@@ -42,11 +60,20 @@ export function WatchBoard({
       <table className="kosh-table w-full text-left text-[13px]">
         <thead className="text-[11px] tracking-[0.06em] text-subtle uppercase">
           <tr>
-            {["Name", "Last", "Day", "RSI 14", "Vol vs 20d avg", "vs 52w high", "Flags"].map((h) => (
-              <th key={h} className="px-3 py-2 font-medium">
-                {h}
-              </th>
-            ))}
+            {(["Name", "Last", "Day", "RSI 14", "Vol vs 20d avg", "vs 52w high", "Flags"] as const).map((h) => {
+              const key = h === "Last" ? "last" : h === "Day" ? "day" : h === "RSI 14" ? "rsi" : h === "Vol vs 20d avg" ? "vol" : h === "vs 52w high" ? "off" : null;
+              return (
+                <th key={h} className="px-3 py-2 font-medium">
+                  {key ? (
+                    <button type="button" className="uppercase" onClick={() => setSort((s) => cycleSort(s, key))}>
+                      {h} {sortGlyph(sort.key === key, sort.dir)}
+                    </button>
+                  ) : (
+                    h
+                  )}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>

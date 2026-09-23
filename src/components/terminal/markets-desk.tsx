@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Columns2, LayoutGrid, Square } from "lucide-react";
 import { Group, Panel, Separator } from "react-resizable-panels";
@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 import { TermChart } from "./term-chart";
 import { WatchPane } from "./watch-pane";
 import { IntelPanel } from "./intel-panel";
+
+const DESK_SPLIT = { main: 74, watch: 26 };
 
 function ownedNotes(
   ports: { holdings: { symbol: string; qty: number }[] }[],
@@ -54,6 +56,25 @@ export function MarketsDesk() {
   const ports = useKosh((s) => s.portfolios);
   const [wide, setWide] = useState(true);
   const [hits, setHits] = useState<PatternHit[]>([]);
+  const onHits = useCallback((next: PatternHit[]) => {
+    setHits((prev) => {
+      if (prev === next) return prev;
+      if (prev.length === 0 && next.length === 0) return prev;
+      if (
+        prev.length === next.length &&
+        prev.every(
+          (h, i) =>
+            h.kind === next[i]?.kind &&
+            h.label === next[i]?.label &&
+            h.status === next[i]?.status &&
+            h.note === next[i]?.note,
+        )
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const m = window.matchMedia("(min-width: 1024px)");
@@ -114,7 +135,7 @@ export function MarketsDesk() {
             onActivate={() => patchDesk({ activePane: i as 0 | 1 | 2 | 3 })}
             onInterval={(id) => setDeskPane(i, { interval: id })}
             onStyle={(next) => patchDesk({ style: next })}
-            onPatterns={desk.activePane === i ? setHits : undefined}
+            onPatterns={desk.activePane === i ? onHits : undefined}
           />
         ))}
       </div>
@@ -205,28 +226,23 @@ export function MarketsDesk() {
       </div>
 
       {wide ? (
-        <Group orientation="vertical" className="min-h-0 flex-1" defaultLayout={{ work: 70, intel: 30 }}>
-          <Panel id="work" minSize="28%" className="min-h-0">
-            <Group orientation="horizontal" className="h-full min-h-0" defaultLayout={{ chart: 76, watch: 24 }}>
-              <Panel id="chart" minSize="40%" className="min-h-0">
-                {workspace}
-              </Panel>
-              <Separator className="w-px bg-border hover:bg-fg/30" />
-              <Panel id="watch" minSize="16%" className="min-h-0">
-                {watchEl}
-              </Panel>
-            </Group>
+        <Group orientation="horizontal" className="min-h-0 flex-1" defaultLayout={DESK_SPLIT}>
+          <Panel id="main" minSize="42%" className="min-h-0 overflow-y-auto">
+            <div className="flex min-h-full flex-col">
+              <div className="h-[min(52vh,440px)] min-h-[280px] shrink-0">{workspace}</div>
+              <div className="border-t border-border">{intel}</div>
+            </div>
           </Panel>
-          <Separator className="h-px bg-border hover:bg-fg/30" />
-          <Panel id="intel" minSize="16%" className="min-h-0">
-            {intel}
+          <Separator className="w-px bg-border hover:bg-fg/30" />
+          <Panel id="watch" minSize="18%" className="min-h-0">
+            {watchEl}
           </Panel>
         </Group>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
           <div className="h-[min(42vh,320px)] min-h-[220px] shrink-0">{workspace}</div>
-          <div className="h-[200px] shrink-0 border-t border-border">{watchEl}</div>
-          <div className="min-h-[280px] flex-1 border-t border-border">{intel}</div>
+          <div className="min-h-[280px] border-t border-border">{watchEl}</div>
+          <div className="border-t border-border">{intel}</div>
         </div>
       )}
     </div>

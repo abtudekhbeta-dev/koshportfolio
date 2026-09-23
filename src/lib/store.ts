@@ -28,6 +28,7 @@ export type DrawShape = {
   y0: number;
   t1?: number;
   y1?: number;
+  y2?: number;
   off?: number;
   label?: string;
 };
@@ -67,6 +68,7 @@ export type ChartPrefs = {
   magnet: boolean;
   structOn: boolean;
   patternsOn: boolean;
+  drawOpen: boolean;
   rev: number;
 };
 
@@ -82,7 +84,8 @@ export const DEFAULT_CHART_PREFS: ChartPrefs = {
   magnet: false,
   structOn: false,
   patternsOn: false,
-  rev: 3,
+  drawOpen: true,
+  rev: 4,
 };
 
 export type NavStyle = "area" | "line" | "step" | "bar" | "columns";
@@ -570,7 +573,8 @@ export const useKosh = create<KoshState>()(
               magnet: old.magnet === true,
               structOn: old.structOn === true,
               patternsOn: old.patternsOn === true,
-              rev: 3,
+              drawOpen: old.drawOpen !== false,
+              rev: 4,
             };
           })(),
           navPrefs: { ...DEFAULT_NAV_PREFS, ...(p.navPrefs || {}) },

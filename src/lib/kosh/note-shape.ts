@@ -1,5 +1,14 @@
 /** Structured Quality / Spark / Pulse / mix blocks. Client-safe. */
 
+import {
+  extractFundFields,
+  extractQualFields,
+  fundRatingOf,
+  qualPotentialOf,
+  validateFund,
+  validateQual,
+} from "./skill-engine";
+
 export type QualityBlock = {
   headline: string;
   business: string;
@@ -61,6 +70,13 @@ export type FundBlock = {
   changeMind: string[];
   verdict: string;
   prose: string;
+  approvedVerdict?: string;
+  score?: number | null;
+  stars?: string;
+  thesis?: string;
+  keyConstraint?: string;
+  finalCase?: string;
+  finalWeakness?: string;
 };
 
 export type QualFactor = {
@@ -82,6 +98,11 @@ export type QualBlock = {
   noise: string;
   verdict: string;
   prose: string;
+  approvedVerdict?: string;
+  financialClassification?: string;
+  factorStatuses?: QualFactor[];
+  style?: string;
+  rationale?: string;
 };
 
 export type LevelRow = { price: number; note: string };
@@ -365,33 +386,51 @@ export function asFund(v: unknown): FundBlock | null {
     const t = stripTrailingJson(v);
     if (!t) return null;
     const bits = paras(t);
-    const verdict = headingBlock(t, ["Final verdict", "Verdict", "Investment verdict"]) || bits.at(-1) || bits[0] || "";
+    const extracted = extractFundFields(t);
+    const approved = extracted.approvedVerdict;
+    const verdict =
+      headingBlock(t, ["Final verdict", "Verdict", "Investment verdict", "SCORECARD + FINAL VERDICT"]) ||
+      approved ||
+      bits.at(-1) ||
+      "";
+    const tag = approved || "Open question";
     return {
-      tag: twoWords(bits[0] || "Open question") || "Open question",
-      rating: ratingOf(verdict),
-      snapshot: headingBlock(t, ["Company", "Snapshot"]) || bits[0] || "",
-      business: headingBlock(t, ["Business"]) || bits[1] || bits[0] || "",
+      tag,
+      rating: approved ? fundRatingOf(approved) : ratingOf(verdict),
+      snapshot: headingBlock(t, ["Company", "Snapshot", "THESIS + KEY FUNDAMENTALS"]) || bits[0] || "",
+      business: headingBlock(t, ["Business", "BUSINESS + COMPOUNDING ENGINE"]) || bits[1] || bits[0] || "",
       industry: headingBlock(t, ["Industry position", "Industry"]) || bits[2] || "",
       position: headingBlock(t, ["Industry position", "Position", "Moat"]) || bits[3] || "",
       profitability: headingBlock(t, ["Profitability"]) || bits[4] || "",
       balanceSheet: headingBlock(t, ["Balance sheet"]) || bits[5] || "",
-      valuation: headingBlock(t, ["Valuation"]) || bits[6] || "",
+      valuation: headingBlock(t, ["Valuation", "WHAT CHANGES THE STORY + VALUATION"]) || bits[6] || "",
       growth: headingBlock(t, ["Growth"]) || bits[7] || "",
-      risks: list(headingBlock(t, ["Risks"]).split(/\n+/).filter(Boolean), 4).length
-        ? list(headingBlock(t, ["Risks"]).split(/\n+/), 4)
+      risks: list(headingBlock(t, ["Risks", "GOVERNANCE + RISKS"]).split(/\n+/).filter(Boolean), 4).length
+        ? list(headingBlock(t, ["Risks", "GOVERNANCE + RISKS"]).split(/\n+/), 4)
         : bits.slice(8, 11),
-      changeMind: list(headingBlock(t, ["What would change this read", "What would change this"]).split(/\n+/), 3),
-      verdict,
+      changeMind: extracted.changeMind
+        ? [extracted.changeMind]
+        : list(headingBlock(t, ["What would change this read", "What would change this", "What would change my view"]).split(/\n+/), 3),
+      verdict: approved || verdict,
       prose: t,
+      approvedVerdict: approved,
+      score: extracted.score,
+      stars: extracted.stars,
+      thesis: extracted.thesis,
+      keyConstraint: extracted.keyConstraint,
+      finalCase: extracted.finalCase,
+      finalWeakness: extracted.finalWeakness,
     };
   }
   if (typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
-  const verdict = str(o.verdict) || str(o.headline);
   const prose = str(o.prose) || "";
+  const extracted = prose ? extractFundFields(prose) : null;
+  const approved = str(o.approvedVerdict) || extracted?.approvedVerdict || "";
+  const verdict = approved || str(o.verdict) || str(o.headline);
   const block: FundBlock = {
-    tag: twoWords(str(o.tag) || str(o.verdict) || str(o.headline) || "Open question") || "Open question",
-    rating: o.rating != null ? ratingOf(o.rating ?? o.call ?? o.pass) : ratingOf(verdict),
+    tag: approved || twoWords(str(o.tag) || str(o.verdict) || str(o.headline) || "Open question") || "Open question",
+    rating: approved ? fundRatingOf(approved) : o.rating != null ? ratingOf(o.rating ?? o.call ?? o.pass) : ratingOf(verdict),
     snapshot: str(o.snapshot) || str(o.company),
     business: str(o.business),
     industry: str(o.industry),
@@ -404,6 +443,13 @@ export function asFund(v: unknown): FundBlock | null {
     changeMind: (list(o.changeMind).length ? list(o.changeMind) : list(o.change_mind)).slice(0, 3),
     verdict,
     prose,
+    approvedVerdict: approved,
+    score: typeof o.score === "number" ? o.score : extracted?.score ?? null,
+    stars: str(o.stars) || extracted?.stars || "",
+    thesis: str(o.thesis) || extracted?.thesis || "",
+    keyConstraint: str(o.keyConstraint) || extracted?.keyConstraint || "",
+    finalCase: str(o.finalCase) || extracted?.finalCase || "",
+    finalWeakness: str(o.finalWeakness) || extracted?.finalWeakness || "",
   };
   if (!block.snapshot && !block.business && !block.verdict && !block.valuation && !block.prose) return null;
   return block;
@@ -415,14 +461,22 @@ export function asQual(v: unknown): QualBlock | null {
     const t = stripTrailingJson(v);
     if (!t) return null;
     const bits = paras(t);
-    const label = potentialLabelOf(t);
-    const verdict = headingBlock(t, ["Final verdict", "Verdict"]) || bits.at(-1) || "";
+    const extracted = extractQualFields(t);
+    const label = extracted.potentialLabel || potentialLabelOf(t);
+    const verdict = extracted.approvedVerdict || headingBlock(t, ["Final verdict", "Verdict"]) || bits.at(-1) || "";
+    const allFactors: QualFactor[] = extracted.factorStatuses
+      .filter((f) => f.status)
+      .map((f) => ({
+        name: f.name,
+        status: statusOf(f.status),
+        note: f.note,
+      }));
     return {
-      tag: twoWords(bits[0] || "Open story"),
-      potential: potentialOf(t, label),
-      potentialLabel: label,
+      tag: extracted.approvedVerdict || "Open story",
+      potential: extracted.approvedVerdict ? qualPotentialOf(extracted.approvedVerdict) : potentialOf(t, label),
+      potentialLabel: extracted.approvedVerdict || label,
       headline: bits[0]?.slice(0, 220) || "Qualitative",
-      allFactors: [],
+      allFactors,
       positive: bits.slice(1, 4),
       combinations: bits.slice(4, 6),
       catalysts: bits.slice(6, 8),
@@ -430,6 +484,11 @@ export function asQual(v: unknown): QualBlock | null {
       noise: headingBlock(t, ["Noise"]) || bits[9] || "",
       verdict,
       prose: t,
+      approvedVerdict: extracted.approvedVerdict,
+      financialClassification: extracted.financialClassification,
+      factorStatuses: allFactors,
+      style: extracted.style,
+      rationale: extracted.rationale,
     };
   }
   if (typeof v !== "object") return null;
@@ -447,20 +506,31 @@ export function asQual(v: unknown): QualBlock | null {
     .filter((x): x is QualFactor => Boolean(x))
     .slice(0, 16);
   const prose = str(o.prose);
-  const label = str(o.potentialLabel) || potentialLabelOf(prose || str(o.verdict) || str(o.headline) || str(o.potential));
+  const extracted = prose ? extractQualFields(prose) : null;
+  const approved = str(o.approvedVerdict) || extracted?.potentialLabel || "";
+  const label = approved || str(o.potentialLabel) || potentialLabelOf(prose || str(o.verdict) || str(o.headline) || str(o.potential));
   const block: QualBlock = {
-    tag: twoWords(str(o.tag) || str(o.headline) || str(o.verdict) || "Open story"),
-    potential: potentialOf(o.potential ?? o.multibagger ?? o.multiBagger ?? prose, label),
-    potentialLabel: label,
+    tag: approved || twoWords(str(o.tag) || str(o.headline) || str(o.verdict) || "Open story"),
+    potential: approved ? qualPotentialOf(approved) : potentialOf(o.potential ?? o.multibagger ?? o.multiBagger ?? prose, label),
+    potentialLabel: approved || label,
     headline: str(o.headline).slice(0, 220),
-    allFactors,
+    allFactors: allFactors.length
+      ? allFactors
+      : extracted?.factorStatuses
+          ?.filter((f) => f.status)
+          .map((f) => ({ name: f.name, status: statusOf(f.status), note: f.note })) || [],
     positive: (list(o.positive, 4).length ? list(o.positive, 4) : list(o.positiveFactors, 4)).slice(0, 4),
     combinations: list(o.combinations, 3),
     catalysts: list(o.catalysts, 3),
     pricedIn: str(o.pricedIn) || str(o.priced_in),
     noise: str(o.noise),
-    verdict: str(o.verdict),
+    verdict: approved || str(o.verdict),
     prose,
+    approvedVerdict: approved,
+    financialClassification: str(o.financialClassification) || extracted?.financialClassification || "",
+    factorStatuses: allFactors.length ? allFactors : undefined,
+    style: str(o.style) || extracted?.style || "",
+    rationale: str(o.rationale) || extracted?.rationale || "",
   };
   if (
     !block.headline &&
@@ -478,14 +548,9 @@ export function asQual(v: unknown): QualBlock | null {
 export function skillOutputReady(kind: "fund" | "qual", text: string): boolean {
   const t = String(text || "").trim();
   if (!t) return false;
-  const compact = t.replace(/\s+/g, " ");
-  if (compact.length < 400) return false;
-  if (/^(researching|looking up|searching|i am researching|let me research)\b/i.test(compact)) return false;
-  if (/\bfor the catalyst framework\.?\s*$/i.test(compact) && compact.length < 900) return false;
-  if (!/final verdict|investment verdict|\*\*verdict\*\*|^#{1,3}\s*verdict\b|\*\*Verdict:\*\*/im.test(t)) return false;
-  const lines = t.split(/\n/).filter((x) => x.trim()).length;
-  if (lines < 6) return false;
-  return true;
+  if (kind === "fund") return validateFund(t).ok;
+  if (kind === "qual") return validateQual(t).ok;
+  return false;
 }
 
 export function fundText(b: FundBlock) {

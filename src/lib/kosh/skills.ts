@@ -106,4 +106,13 @@ Fundamental and Qualitative copy the skill labels from FACTS (approved verdict l
 3 material, weight-aware moves. Each line: action · name · why. Prefer size-up quality / size-down weakness over generic diversification.
 
 Final verdict heading must appear. Prefer silence to invention.
+
+The Portfolio verdict must answer these seven questions with evidence from FACTS — not generic advice:
+1. What kind of portfolio is this?
+2. Which large positions justify their current weight based on evidence?
+3. Which large positions deserve the most scrutiny?
+4. Where are sector/business overlaps?
+5. Where are the strongest hidden correlations?
+6. What are the three most material portfolio-level changes?
+7. What should the investor monitor?
 `;

@@ -122,7 +122,18 @@ export function MarketOverview() {
 
       {ports.some((p) => p.holdings.length) ? (
         <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
-          <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Your holdings today</h2>
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Your holdings today</h2>
+            {ports.find((p) => p.holdings.length) ? (
+              <Link
+                to="/p/$id/holdings"
+                params={{ id: ports.find((p) => p.holdings.length)!.id }}
+                className="text-[12px] text-chart hover:underline"
+              >
+                View all holdings →
+              </Link>
+            ) : null}
+          </div>
           {portRows.length ? (
             <ul className="mt-2 grid gap-1 sm:grid-cols-2">
               {portRows.slice(0, 8).map((r) => (

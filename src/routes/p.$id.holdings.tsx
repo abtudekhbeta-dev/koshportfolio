@@ -9,6 +9,7 @@ import { StockLink } from "@/components/stock-link";
 import { Tooltip } from "@/components/ui/tooltip";
 import { fmtInr, fmtPct } from "@/lib/kosh/engine";
 import { taxClock } from "@/lib/kosh/portfolio-stats";
+import { sortEntities } from "@/lib/kosh/kosh-table";
 import { METALS, type MetalId } from "@/lib/kosh/commodities";
 import { apiSearch } from "@/lib/kosh/api";
 import { useKosh } from "@/lib/store";
@@ -31,16 +32,13 @@ function Holdings() {
   const rows = useMemo(() => {
     const qq = q.trim().toUpperCase();
     const list = book.rows.filter((r) => !qq || r.symbol.includes(qq) || r.name.toUpperCase().includes(qq));
-    return [...list].sort((a, b) => {
-      const pick = (r: (typeof list)[0]) => {
-        if (sort === "m1") return r.periods.m1;
-        if (sort === "y1") return r.periods.y1;
-        if (sort === "xirr") return r.xirr;
-        if (sort === "contrib") return r.contrib;
-        if (sort === "daysHeld") return r.daysHeld;
-        return r[sort] as number;
-      };
-      return (pick(b) ?? -Infinity) - (pick(a) ?? -Infinity);
+    return sortEntities(list, sort, "desc", (r, k) => {
+      if (k === "m1") return r.periods.m1;
+      if (k === "y1") return r.periods.y1;
+      if (k === "xirr") return r.xirr;
+      if (k === "contrib") return r.contrib;
+      if (k === "daysHeld") return r.daysHeld;
+      return (r as Record<string, unknown>)[k];
     });
   }, [book.rows, q, sort]);
 
@@ -78,7 +76,11 @@ function Holdings() {
                   Value
                 </button>
               </th>
-              <th className="px-3 py-2 text-right">1D</th>
+              <th className="px-3 py-2 text-right">
+                <button type="button" className="text-[11px] font-medium tracking-[0.06em] text-subtle uppercase" onClick={() => setSort("changePct")}>
+                  1D
+                </button>
+              </th>
               <HeadTip label="P&L ₹" tip="Rupees up or down versus average cost. Needs buy date and average. Use this for how much money is on the line." onClick={() => setSort("unrealPct")} />
               <HeadTip label="Simple %" tip="Same P&L as a percent of what you paid. A quick look — not annualised." onClick={() => setSort("unrealPct")} />
               <HeadTip label="XIRR" tip="Annualised return from dated buys to today. Remaining lots from a trade-file import are used when present. Use this when names were bought on different dates." onClick={() => setSort("xirr")} />

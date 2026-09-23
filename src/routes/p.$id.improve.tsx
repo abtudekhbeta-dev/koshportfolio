@@ -54,7 +54,7 @@ function Improve() {
 
   const top = [...rows].sort((a, b) => b.weight - a.weight);
   const heavy = top.filter((r) => r.weight >= 0.18);
-  const targets = top.filter((r) => r.kind !== "commodity").slice(0, 20);
+  const targets = top.filter((r) => r.kind !== "commodity");
   const sectorHits = Object.entries(book.sectors)
     .map(([k, v]) => ({ k, w: v.value / (book.value || 1) }))
     .filter((s) => s.w >= 0.35)
@@ -397,9 +397,37 @@ function Improve() {
             <tbody>
               {targets.map((r) => {
                 const s = skillPeek(reads, r.symbol);
-                const running = Boolean(mine && mine.stage === "scan" && mine.name === r.name);
-                const fundTone = s?.fundTag ? (s.fundRating === "pass" ? "text-up" : "text-down") : "text-muted";
-                const qualTone = s?.qualTag ? (s.qualPotential === "yes" ? "text-up" : "text-down") : "text-muted";
+                const running = Boolean(mine && mine.stage === "scan" && mine.name.includes(r.name));
+                const fundLabel = s?.fundApproved || s?.fundTag;
+                const qualLabel = s?.qualApproved || s?.qualTag;
+                const fundCell =
+                  fundLabel ||
+                  (s?.fundStatus && s.fundStatus !== "Not started" && s.fundStatus !== "Done"
+                    ? s.fundStatus
+                    : running
+                      ? "Scanning…"
+                      : "Not started");
+                const qualCell =
+                  qualLabel ||
+                  (s?.qualStatus && s.qualStatus !== "Not started" && s.qualStatus !== "Done"
+                    ? s.qualStatus
+                    : running
+                      ? "Scanning…"
+                      : "Not started");
+                const fundTone = fundLabel
+                  ? s?.fundRating === "pass"
+                    ? "text-up"
+                    : "text-down"
+                  : /Failed|Invalid|Timed out|Rate limited/i.test(String(s?.fundStatus || ""))
+                    ? "text-down"
+                    : "text-muted";
+                const qualTone = qualLabel
+                  ? s?.qualPotential === "yes"
+                    ? "text-up"
+                    : "text-down"
+                  : /Failed|Invalid|Timed out|Rate limited/i.test(String(s?.qualStatus || ""))
+                    ? "text-down"
+                    : "text-muted";
                 return (
                   <tr key={r.symbol}>
                     <td className="px-3 py-2">
@@ -409,12 +437,8 @@ function Improve() {
                       <div className="text-[11px] text-subtle">{r.symbol}</div>
                     </td>
                     <td className="px-3 py-2 font-mono tabular">{(r.weight * 100).toFixed(1)}%</td>
-                    <td className={cn("px-3 py-2", fundTone)}>
-                      {s?.fundTag || (running ? "Scanning…" : "Not run")}
-                    </td>
-                    <td className={cn("px-3 py-2", qualTone)}>
-                      {s?.qualTag || (running ? "Scanning…" : "Not run")}
-                    </td>
+                    <td className={cn("px-3 py-2", fundTone)}>{fundCell}</td>
+                    <td className={cn("px-3 py-2", qualTone)}>{qualCell}</td>
                   </tr>
                 );
               })}

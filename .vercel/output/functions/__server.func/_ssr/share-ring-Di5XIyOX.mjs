@@ -1,6 +1,6 @@
 import { n as require_jsx_runtime } from "../_libs/radix-ui__react-context+react.mjs";
 import { v as Link } from "../_libs/@tanstack/react-router+[...].mjs";
-import { Xn as cn } from "./router-CreVHe0E.mjs";
+import { Qn as cn } from "./router-BWv3yT6z.mjs";
 import { n as canOpenStock } from "./stock-link-ClZslyKN.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/share-ring-Di5XIyOX.js
 var import_jsx_runtime = require_jsx_runtime();

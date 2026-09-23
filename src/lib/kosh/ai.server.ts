@@ -8,7 +8,6 @@ import { fmtVol } from "./ohlc";
 import { businessOf } from "./business";
 import type { ScreenFilter } from "./screens";
 import { fundSystem, qualSystem, COMBINE_SKILL, IMPROVE_SKILL } from "./skills";
-import { metalKey, METALS } from "./commodities";
 import {
   asFund,
   asMix,
@@ -31,6 +30,16 @@ import {
   type SparkBlock,
   type StructureBlock,
 } from "./note-shape";
+import {
+  classifySkillError,
+  correctivePrompt,
+  skillCacheKey,
+  SKILL_CACHE_PREFIX,
+  validateFund,
+  validateQual,
+  type SkillStatus,
+} from "./skill-engine";
+import { metalKey, METALS } from "./commodities";
 
 const cache = new Map<string, { at: number; text: string }>();
 const DAY = 6 * 60 * 60 * 1000;
@@ -50,6 +59,10 @@ export type BookBrief = {
     qualTag?: string;
     qualPotential?: string;
     qualVerdict?: string;
+    fundApproved?: string;
+    qualApproved?: string;
+    fundStatus?: string;
+    qualStatus?: string;
   }[];
 };
 
@@ -149,13 +162,23 @@ async function bookFacts(book: BookBrief) {
     const stem = key.replace(/[-_]SM$/i, "");
     const r = map.get(key) || map.get(stem) || byStem.get(stem);
     const w = `${(h.weight * 100).toFixed(1)}%`;
-    const fundLabel = h.fundTag
-      ? `Fundamental: ${h.fundTag}${h.fundRating ? ` (${h.fundRating})` : ""}${h.fundVerdict ? ` — ${h.fundVerdict.replace(/\s+/g, " ").slice(0, 220)}` : ""}`
-      : "Fundamental: Not run";
-    const qualLabel = h.qualTag
-      ? `Qualitative: ${h.qualTag}${h.qualPotential ? ` (${h.qualPotential})` : ""}${h.qualVerdict ? ` — ${h.qualVerdict.replace(/\s+/g, " ").slice(0, 220)}` : ""}`
-      : "Qualitative: Not run";
-    const skills = `${fundLabel} · ${qualLabel}`;
+    const fundLabel = h.fundApproved || h.fundTag;
+    const qualLabel = h.qualApproved || h.qualTag;
+    const fundState = String(h.fundStatus || "");
+    const qualState = String(h.qualStatus || "");
+    const fundText =
+      fundLabel
+        ? `Fundamental: ${fundLabel}${h.fundRating ? ` (${h.fundRating})` : ""}${h.fundVerdict ? ` — ${h.fundVerdict.replace(/\s+/g, " ").slice(0, 220)}` : ""}`
+        : fundState && fundState !== "Not started" && fundState !== "Done"
+          ? `Fundamental: ${fundState}`
+          : "Fundamental: Not run";
+    const qualText =
+      qualLabel
+        ? `Qualitative: ${qualLabel}${h.qualPotential ? ` (${h.qualPotential})` : ""}${h.qualVerdict ? ` — ${h.qualVerdict.replace(/\s+/g, " ").slice(0, 220)}` : ""}`
+        : qualState && qualState !== "Not started" && qualState !== "Done"
+          ? `Qualitative: ${qualState}`
+          : "Qualitative: Not run";
+    const skills = `${fundText} · ${qualText}`;
     if (r) {
       return `- ${h.symbol} ${w} · ${h.sector} · last ${fmtPx(r.price)} ${fmtPct(r.changePct)} 1M ${n(r.ret1m, (x) => x.toFixed(1) + "%")} 1Y ${n(r.ret1y, (x) => x.toFixed(1) + "%")} PE ${n(r.pe, (x) => x.toFixed(1))} ROE ${n(r.roe, (x) => x.toFixed(0) + "%")} D/E ${n(r.de, (x) => x.toFixed(2))} sales ${n(r.salesYoY, (x) => x.toFixed(0) + "%")} · ${skills}`;
     }
@@ -177,7 +200,7 @@ async function bookFacts(book: BookBrief) {
     }
   };
 
-  const names = book.names.slice(0, 40);
+  const names = book.names;
   const body: string[] = [];
   for (let i = 0; i < names.length; i += 6) {
     const chunk = names.slice(i, i + 6);
@@ -338,13 +361,17 @@ async function chat(
 
   if (search) {
     // Current xAI live research: Responses API + built-in web_search (NOT retired search_parameters).
-    let hit = await post("https://api.x.ai/v1/responses", {
-      model: "grok-4.5",
-      temperature,
-      max_output_tokens: maxTokens,
-      input: messages,
-      tools: [{ type: "web_search" }],
-    });
+    let hit = await post(
+      "https://api.x.ai/v1/responses",
+      {
+        model: "grok-4.5",
+        temperature,
+        max_output_tokens: maxTokens,
+        input: messages,
+        tools: [{ type: "web_search" }],
+      },
+      120_000,
+    );
     if (!hit.ok && (hit.status === 400 || hit.status === 422 || hit.status === 404)) {
       hit = await post("https://api.x.ai/v1/chat/completions", {
         model: "grok-4.5",
@@ -506,7 +533,7 @@ function fromParsed(kind: NoteKind, parsed: Record<string, unknown> | null, raw:
   return { text: readable, quality, spark, qualityBlock, sparkBlock, pulseBlock, mixBlock, fundBlock, qualBlock, structureBlock, pickNotes, notes };
 }
 
-export async function executeNote(input: NoteInput): Promise<NoteOk | { ok: false; error: string }> {
+export async function executeNote(input: NoteInput): Promise<NoteOk | { ok: false; error: string; skillStatus?: SkillStatus }> {
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) return { ok: false, error: "AI is not available in this environment" };
   const kind = input.kind;
@@ -525,22 +552,24 @@ export async function executeNote(input: NoteInput): Promise<NoteOk | { ok: fals
 
   const day = input.fresh ? "f" + String(input.fresh) : new Date().toISOString().slice(0, 10);
   const cacheKey =
-    "v21:" +
-    (kind === "book" || kind === "holdings" || kind === "picks" || kind === "improve"
-      ? `${kind}:${(input.book?.names || [])
-          .map((h) =>
-            kind === "improve"
-              ? `${h.symbol}:${h.fundTag || ""}:${h.qualTag || ""}`
-              : h.symbol,
-          )
-          .join(",")}:${day}`
-      : kind === "pulse"
-        ? `pulse:${new Date().toISOString().slice(0, 10)}`
-        : kind === "structure"
-          ? `structure:${symbol.toUpperCase()}:${input.chart?.mode || ""}:${input.chart?.interval || ""}:${input.chart?.lookback || ""}:${new Date().toISOString().slice(0, 10)}`
-          : kind === "combine"
-            ? `combine:${symbol.toUpperCase()}:${String(input.prior?.fund || "").length}:${String(input.prior?.qual || "").length}:${new Date().toISOString().slice(0, 10)}`
-            : `${kind}:${symbol.toUpperCase()}:${kind === "ask" ? question : day}`);
+    kind === "fund" || kind === "qual"
+      ? skillCacheKey({ kind, symbol: symbol.toUpperCase(), date: day })
+      : `${SKILL_CACHE_PREFIX}:` +
+        (kind === "book" || kind === "holdings" || kind === "picks" || kind === "improve"
+          ? `${kind}:${(input.book?.names || [])
+              .map((h) =>
+                kind === "improve"
+                  ? `${h.symbol}:${h.fundApproved || h.fundTag || ""}:${h.qualApproved || h.qualTag || ""}:${h.fundStatus || ""}:${h.qualStatus || ""}`
+                  : h.symbol,
+              )
+              .join(",")}:${day}`
+          : kind === "pulse"
+            ? `pulse:${new Date().toISOString().slice(0, 10)}`
+            : kind === "structure"
+              ? `structure:${symbol.toUpperCase()}:${input.chart?.mode || ""}:${input.chart?.interval || ""}:${input.chart?.lookback || ""}:${new Date().toISOString().slice(0, 10)}`
+              : kind === "combine"
+                ? `combine:${symbol.toUpperCase()}:${String(input.prior?.fund || "").length}:${String(input.prior?.qual || "").length}:${new Date().toISOString().slice(0, 10)}`
+                : `${kind}:${symbol.toUpperCase()}:${kind === "ask" ? question : day}`);
   const hit = cache.get(cacheKey);
   if (hit && Date.now() - hit.at < DAY) {
     if ((kind === "fund" || kind === "qual") && !skillOutputReady(kind, hit.text)) {
@@ -572,13 +601,13 @@ export async function executeNote(input: NoteInput): Promise<NoteOk | { ok: fals
     kind === "ask"
       ? `QUESTION:\n${question || "What matters on this name?"}\n\nCompany data:\n${blob}`
       : kind === "fund"
-        ? `Write the full equity-fundamental-analysis of ${name} (${ticker}) listed on NSE/BSE now. Do not describe a research process. Do not write a one-line status. The snapshot below is supplementary — if a figure is unavailable, say “Not reliably available.” Be direct: cut descriptive padding by at least half. Keep every required section, verdict label, factor, and number. One sentence of why per factor. Markdown tables only. Final verdict 3–6 sentences.\n\n${blob}`
+        ? `Write the full equity-fundamental-analysis of ${name} (${ticker}) listed on NSE/BSE now. Do not describe a research process. Do not write a one-line status. The snapshot below is supplementary — research NSE/BSE filings, the company IR site, annual reports and quarterly results. If a figure is unavailable, say “Not reliably available.” Be direct: cut descriptive padding by at least half. Keep every required section, verdict label, factor, and number. One sentence of why per factor. Markdown tables only. Final verdict 3–6 sentences. Use exactly one approved verdict from the skill.\n\n${blob}`
         : kind === "qual"
-          ? `Write the full qualitative-multibagger-catalyst analysis of ${name} (${ticker}) listed on NSE/BSE now. Do not describe a research process. Do not write a one-line status such as “Researching…”. Snapshot below is a supporting financial check. Be direct: cut descriptive padding by at least half. Keep every required section, verdict label, factor, and number. One sentence of why per factor. Markdown tables only. Final verdict 3–6 sentences.\n\n${blob}`
+          ? `Write the full qualitative-multibagger-catalyst analysis of ${name} (${ticker}) listed on NSE/BSE now. Do not describe a research process. Do not write a one-line status such as “Researching…”. Snapshot below is a supporting financial check — research primary filings and the company IR site. Be direct: cut descriptive padding by at least half. Keep every required section, verdict label, factor, and number. One sentence of why per factor. Markdown tables only. Final verdict 3–6 sentences. Use exactly one approved qualitative label and one financial classification.\n\n${blob}`
           : kind === "combine"
             ? `Connect the two skill outputs below. Do not rerun either skill. Be direct. Cut padding by half.\n\n${blob}`
             : kind === "improve"
-              ? `Synthesise this Indian portfolio from weights, live numbers, and skill labels in FACTS. Do not rerun either skill. Do not invent labels. Use BOTH fundamental and qualitative labels when they are present. Concentration in a name that both skills back is an opportunity, not automatically a risk. Never write Unscreened, book, or Not on file. Never make "Qualitative Not run" the thesis of the Portfolio verdict — judge from weights and live numbers, and from whatever labels are in FACTS. Copy labels; if a skill is absent write Not run in the table only.\n\n${blob}`
+              ? `Synthesise this Indian portfolio from weights, live numbers, and skill labels in FACTS. Do not rerun either skill. Do not invent labels. Use BOTH fundamental and qualitative labels when they are present. Concentration in a name that both skills back is an opportunity, not automatically a risk. Never write Unscreened, book, or Not on file. Never make "Qualitative Not run" the thesis of the Portfolio verdict — judge from weights and live numbers, and from whatever labels are in FACTS. Copy labels; if a skill is absent write Not run in the table only; if a skill Failed, write Failed — never pretend it was not attempted.\n\n${blob}`
               : `COMPANY DATA\n${blob}`;
 
   const maxTokens =
@@ -595,34 +624,28 @@ export async function executeNote(input: NoteInput): Promise<NoteOk | { ok: fals
               : 1400;
   const temperature = kind === "fund" || kind === "qual" || kind === "combine" || kind === "improve" ? 0.3 : 0.2;
 
-  const run = async (u: string) => chat(apiKey, systemFor(kind), u, maxTokens, temperature, false);
+  const useSearch = kind === "fund" || kind === "qual";
+  const run = async (u: string) => chat(apiKey, systemFor(kind), u, maxTokens, temperature, useSearch);
 
   let text = "";
   try {
     text = await run(user);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Analysis error";
-    if (/timeout|abort|504|Gateway/i.test(msg)) {
-      return { ok: false, error: "The analysis took too long. Retry — a second pass is usually faster." };
-    }
-    return { ok: false, error: msg };
+    return { ok: false, error: msg, skillStatus: classifySkillError(msg) };
   }
   if ((kind === "fund" || kind === "qual") && !skillOutputReady(kind, text)) {
+    const missing = kind === "fund" ? validateFund(text).missing : validateQual(text).missing;
     try {
-      text = await run(
-        `Write the COMPLETE analysis now. Do not describe research. Do not write a one-line status. Include every required heading and a Final verdict.\n\n${user}`,
-      );
+      text = await run(`${correctivePrompt(kind, missing)}\n\n${user}`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Analysis error";
-      if (/timeout|abort|504|Gateway/i.test(msg)) {
-        return { ok: false, error: "The analysis took too long. Retry — a second pass is usually faster." };
-      }
-      return { ok: false, error: msg };
+      return { ok: false, error: msg, skillStatus: classifySkillError(msg) };
     }
   }
-  if (!text) return { ok: false, error: "Empty reply" };
+  if (!text) return { ok: false, error: "Empty reply", skillStatus: "Failed" };
   if ((kind === "fund" || kind === "qual") && !skillOutputReady(kind, text)) {
-    return { ok: false, error: "The analysis did not finish. Retry." };
+    return { ok: false, error: "The analysis did not finish. Retry.", skillStatus: "Failed" };
   }
   cache.set(cacheKey, { at: Date.now(), text });
   const parsed = kind === "fund" || kind === "qual" || kind === "combine" || kind === "improve" ? null : parseJson(text);

@@ -185,7 +185,7 @@ export type NoteResult =
       pickNotes?: PickNote[];
       notes?: HoldingNote[];
     }
-  | { ok: false; error: string };
+  | { ok: false; error: string; skillStatus?: string };
 
 export async function apiNote(body: {
   symbol?: string;

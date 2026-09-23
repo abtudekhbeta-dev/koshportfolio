@@ -17,12 +17,13 @@ import {
   Star,
   Trash2,
   Undo2,
+  UnfoldVertical,
 } from "lucide-react";
 import { apiOhlc } from "@/lib/kosh/api";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { bollinger, ema, fmtVol, macd, rsi, sma, vwap } from "@/lib/kosh/ohlc";
 import { isIstSession, istClock } from "@/lib/kosh/market-hours";
-import { applyDrag, hitTest, type HitMode } from "@/lib/kosh/draw-hit";
+import { applyDrag, channelOffFromThird, hitTest, positionMetrics, type HitMode } from "@/lib/kosh/draw-hit";
 import { detectPatterns, patternStatusLabel, type PatternHit } from "@/lib/kosh/patterns";
 import {
   patchLastBar,
@@ -38,7 +39,7 @@ import { cn } from "@/lib/utils";
 
 const UP = "var(--color-up)";
 const DOWN = "var(--color-down)";
-const GRID = "var(--color-border)";
+const GRID = "var(--color-chart-grid)";
 const INK = "var(--color-fg)";
 const MUTED = "var(--color-subtle)";
 const CHART = "var(--color-chart)";
@@ -81,15 +82,20 @@ function drawIv(id: string) {
   return id;
 }
 
+const EMPTY_SHAPES: DrawShape[] = [];
+const EMPTY_PATTERNS: PatternHit[] = [];
+const EMPTY_BARS: OhlcBar[] = [];
+
 type IndFlags = { sma20: boolean; ema21: boolean; bb: boolean; vwap: boolean; rsi: boolean; macd: boolean };
 type ToolId = "pan" | "crosshair" | DrawKind;
 
 const TOOLS: { id: ToolId; label: string; icon: typeof Minus }[] = [
+  { id: "pan", label: "Select", icon: MousePointer2 },
   { id: "crosshair", label: "Crosshair", icon: Crosshair },
-  { id: "pan", label: "Pan", icon: MousePointer2 },
   { id: "trend", label: "Trend", icon: Spline },
   { id: "hline", label: "H-line", icon: Minus },
   { id: "ray", label: "Ray", icon: MoveRight },
+  { id: "vline", label: "V-line", icon: UnfoldVertical },
   { id: "rect", label: "Rect", icon: Square },
   { id: "channel", label: "Channel", icon: Columns2 },
   { id: "fib", label: "Fib", icon: Layers },
@@ -122,7 +128,7 @@ export function TermChart({
   onStyle?: (style: "candle" | "line") => void;
   onPatterns?: (hits: PatternHit[]) => void;
 }) {
-  const spec = termFetchSpec(interval);
+  const spec = useMemo(() => termFetchSpec(interval), [interval]);
   const session = isIstSession();
   const ohlc = useQuery({
     queryKey: ["ohlc", symbol, spec.range, spec.yahoo],
@@ -132,7 +138,7 @@ export function TermChart({
     refetchInterval: () => (isIstSession() ? (spec.intra ? 15_000 : 60_000) : 5 * 60_000),
     placeholderData: keepPreviousData,
   });
-  const raw = ohlc.data?.bars || [];
+  const raw = ohlc.data?.bars || EMPTY_BARS;
   const hist = useMemo(() => termBars(raw, spec), [raw, spec]);
   const bars = useMemo(
     () => (quote && quote.price > 0 ? patchLastBar(hist, quote, spec) : hist),
@@ -154,7 +160,7 @@ export function TermChart({
   const drawings = useKosh((s) => s.drawings);
   const setDrawings = useKosh((s) => s.setDrawings);
   const dKey = drawKey(symbol, drawIv(interval));
-  const shapes = drawings[dKey] || [];
+  const shapes = drawings[dKey] || EMPTY_SHAPES;
 
   const wrap = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 640, h: 320 });
@@ -163,18 +169,21 @@ export function TermChart({
   const [fs, setFs] = useState(false);
   const [inds, setInds] = useState<IndFlags>({ sma20: false, ema21: false, bb: false, vwap: false, rsi: false, macd: false });
   const [tool, setTool] = useState<ToolId>("pan");
-  const [drawOpen, setDrawOpen] = useState(false);
+  const drawOpen = useKosh((s) => s.chartPrefs.drawOpen !== false);
   const [draft, setDraft] = useState<DrawShape | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const drag = useRef<{ x: number; start: number } | null>(null);
   const move = useRef<{ id: string; mode: HitMode; x: number; y: number; t: number; py: number } | null>(null);
+  const clicks = useRef(0);
 
   useEffect(() => {
     const el = wrap.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
       const r = el.getBoundingClientRect();
-      setSize({ w: Math.max(220, r.width), h: Math.max(160, r.height) });
+      const w = Math.max(220, r.width);
+      const h = Math.max(160, r.height);
+      setSize((prev) => (Math.abs(prev.w - w) < 0.5 && Math.abs(prev.h - h) < 0.5 ? prev : { w, h }));
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -191,7 +200,10 @@ export function TermChart({
   const oscOn = inds.rsi || inds.macd;
   const plotH = Math.max(80, size.h - PAD.t - PAD.b - VOL_H - (oscOn ? OSC_H + 8 : 0));
   const innerW = Math.max(40, size.w - PAD.l - PAD.r);
-  const shown = bars.slice(view.start, view.start + view.count);
+  const shown = useMemo(
+    () => bars.slice(view.start, view.start + view.count),
+    [bars, view.start, view.count],
+  );
   const n = shown.length;
 
   const lo0 = shown.reduce((m, b) => Math.min(m, b.l), Infinity);
@@ -233,11 +245,12 @@ export function TermChart({
   const maxVol = Math.max(...shown.map((b) => b.v || 0), 1);
 
   const patterns = useMemo(
-    () => (patternsOn && shown.length >= 24 ? detectPatterns(shown) : []),
+    () => (patternsOn && shown.length >= 24 ? detectPatterns(shown) : EMPTY_PATTERNS),
     [shown, patternsOn],
   );
   useEffect(() => {
-    if (active) onPatterns?.(patterns);
+    if (!active || !onPatterns) return;
+    onPatterns(patterns);
   }, [active, patterns, onPatterns]);
 
   const yTicks = useMemo(() => {
@@ -290,6 +303,40 @@ export function TermChart({
   function save(next: DrawShape[]) {
     setDrawings(dKey, next);
   }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
+        e.preventDefault();
+        save(shapes.filter((s) => s.id !== selectedId));
+        setSelectedId(null);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (draft) {
+          setDraft(null);
+          clicks.current = 0;
+          return;
+        }
+        if (selectedId) {
+          setSelectedId(null);
+          return;
+        }
+        setTool("pan");
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        save(shapes.slice(0, -1));
+        setSelectedId(null);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [draft, selectedId, shapes, dKey]);
 
   const hoverBar = hover != null ? shown[hover] : shown[n - 1];
   const cur = hoverBar || shown[n - 1];
@@ -403,7 +450,7 @@ export function TermChart({
           aria-label="Drawing tools"
           onClick={(e) => {
             e.stopPropagation();
-            setDrawOpen((v) => !v);
+            patchChartPrefs({ drawOpen: !drawOpen });
           }}
           className={cn("h-7 rounded-sm px-2 text-[11px] font-medium", drawOpen || (tool !== "pan" && tool !== "crosshair") ? "bg-surface-2 text-fg" : "text-muted hover:text-fg")}
         >
@@ -423,6 +470,7 @@ export function TermChart({
                     e.stopPropagation();
                     setTool(t.id);
                     setDraft(null);
+                    clicks.current = 0;
                   }}
                   className={cn(
                     "grid size-7 place-items-center rounded-sm",
@@ -443,6 +491,20 @@ export function TermChart({
               }}
             >
               <Undo2 className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              aria-label="Delete selected drawing"
+              className="grid size-7 place-items-center text-muted hover:text-down"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (selectedId) {
+                  save(shapes.filter((s) => s.id !== selectedId));
+                  setSelectedId(null);
+                }
+              }}
+            >
+              <Trash2 className="size-3.5" />
             </button>
             <button
               type="button"
@@ -481,13 +543,43 @@ export function TermChart({
             return;
           }
           if (!draft) {
+            clicks.current = 1;
             setDraft({ id: newDrawId(), kind: tool, t0: pt.t, y0: pt.p, t1: pt.t, y1: pt.p });
+            return;
+          }
+          if (draft.kind === "channel" && clicks.current === 1) {
+            clicks.current = 2;
+            setDraft({ ...draft, t1: pt.t, y1: pt.p });
+            return;
+          }
+          if (draft.kind === "channel" && clicks.current >= 2) {
+            const done: DrawShape = { ...draft, off: channelOffFromThird(draft, pt.t, pt.p) };
+            save([...shapes, done]);
+            setSelectedId(done.id);
+            setDraft(null);
+            clicks.current = 0;
+            setTool("pan");
+            return;
+          }
+          if ((draft.kind === "long" || draft.kind === "short") && clicks.current === 1) {
+            clicks.current = 2;
+            setDraft({ ...draft, y2: pt.p, t1: pt.t });
+            return;
+          }
+          if ((draft.kind === "long" || draft.kind === "short") && clicks.current >= 2) {
+            const done: DrawShape = { ...draft, t1: pt.t, y1: pt.p };
+            save([...shapes, done]);
+            setSelectedId(done.id);
+            setDraft(null);
+            clicks.current = 0;
+            setTool("pan");
             return;
           }
           const done: DrawShape = { ...draft, t1: pt.t, y1: pt.p };
           save([...shapes, done]);
           setSelectedId(done.id);
           setDraft(null);
+          clicks.current = 0;
           setTool("pan");
         }}
         onPointerMove={(e) => {
@@ -502,6 +594,18 @@ export function TermChart({
             return;
           }
           if (draft) {
+            if (draft.kind === "channel" && clicks.current >= 2) {
+              setDraft({ ...draft, off: channelOffFromThird(draft, pt.t, pt.p) });
+              return;
+            }
+            if ((draft.kind === "long" || draft.kind === "short") && clicks.current >= 2) {
+              setDraft({ ...draft, t1: pt.t, y1: pt.p });
+              return;
+            }
+            if ((draft.kind === "long" || draft.kind === "short") && clicks.current === 1) {
+              setDraft({ ...draft, y2: pt.p, t1: pt.t });
+              return;
+            }
             setDraft({ ...draft, t1: pt.t, y1: pt.p });
             return;
           }
@@ -781,29 +885,86 @@ function ShapeDraw({
       </g>
     );
   }
-  if (s.kind === "long" || s.kind === "short") {
-    const color = s.kind === "long" ? UP : DOWN;
-    const entry = s.y0;
-    const other = s.y1 ?? s.y0;
-    const pct = entry > 0 ? ((other / entry - 1) * 100) : 0;
+  if (s.kind === "vline") {
     return (
       <g>
-        <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={color} strokeWidth={w} />
-        <text x={x1 + 4} y={y1 - 4} fill={color} fontSize="10">
-          {s.kind === "long" ? "Long" : "Short"} {fmtPx(entry)} → {fmtPx(other)} {pct >= 0 ? "+" : ""}
-          {pct.toFixed(1)}% · measurement
-        </text>
+        <line x1={x0} y1={PAD.t} x2={x0} y2={PAD.t + 4000} stroke={stroke} strokeWidth={w} />
         {handles}
       </g>
     );
   }
+  if (s.kind === "long" || s.kind === "short") {
+    const color = s.kind === "long" ? UP : DOWN;
+    const m = positionMetrics(s);
+    const yStop = yPx(m.stop);
+    const yEntry = y0;
+    const yTarget = y1;
+    const top = Math.min(yStop, yEntry, yTarget);
+    const left = Math.min(x0, x1);
+    const width = Math.max(36, Math.abs(x1 - x0));
+    const riskTop = Math.min(yEntry, yStop);
+    const riskH = Math.abs(yEntry - yStop);
+    const rewTop = Math.min(yEntry, yTarget);
+    const rewH = Math.abs(yEntry - yTarget);
+    return (
+      <g>
+        <rect x={left} y={rewTop} width={width} height={Math.max(2, rewH)} fill={color} fillOpacity="0.12" />
+        <rect x={left} y={riskTop} width={width} height={Math.max(2, riskH)} fill={DOWN} fillOpacity="0.18" />
+        <line x1={left} x2={left + width} y1={yEntry} y2={yEntry} stroke={INK} strokeWidth={w} />
+        <line x1={left} x2={left + width} y1={yStop} y2={yStop} stroke={DOWN} strokeWidth={w} />
+        <line x1={left} x2={left + width} y1={yTarget} y2={yTarget} stroke={UP} strokeWidth={w} />
+        <text x={left + width + 4} y={top + 10} fill={color} fontSize="9">
+          {s.kind === "long" ? "Long" : "Short"} · measurement
+        </text>
+        <text x={left + width + 4} y={top + 22} fill={MUTED} fontSize="9">
+          R:R {m.rr ? m.rr.toFixed(2) : "—"} · risk {m.riskPct.toFixed(1)}% · reward {m.rewardPct.toFixed(1)}%
+        </text>
+        <text x={left + 4} y={yEntry - 3} fill={INK} fontSize="8">
+          Entry {fmtPx(m.entry)}
+        </text>
+        <text x={left + 4} y={yStop - 3} fill={DOWN} fontSize="8">
+          Stop {fmtPx(m.stop)}
+        </text>
+        <text x={left + 4} y={yTarget - 3} fill={UP} fontSize="8">
+          Target {fmtPx(m.target)}
+        </text>
+        {selected ? (
+          <g>
+            <rect x={left + width / 2 - 3} y={yEntry - 3} width="6" height="6" fill="var(--color-bg)" stroke={stroke} />
+            <rect x={left + width / 2 - 3} y={yTarget - 3} width="6" height="6" fill="var(--color-bg)" stroke={stroke} />
+            <rect x={left + width / 2 - 3} y={yStop - 3} width="6" height="6" fill="var(--color-bg)" stroke={stroke} />
+          </g>
+        ) : null}
+      </g>
+    );
+  }
   if (s.kind === "channel") {
-    const off = s.off ?? Math.abs(s.y0) * 0.012;
+    const off = s.off;
     return (
       <g>
         <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={stroke} strokeWidth={w} />
-        <line x1={x0} y1={yPx(s.y0 + off)} x2={x1} y2={yPx((s.y1 ?? s.y0) + off)} stroke={stroke} strokeWidth={w} />
+        {off != null ? (
+          <>
+            <line x1={x0} y1={yPx(s.y0 + off)} x2={x1} y2={yPx((s.y1 ?? s.y0) + off)} stroke={stroke} strokeWidth={w} />
+            <polygon
+              points={`${x0},${y0} ${x1},${y1} ${x1},${yPx((s.y1 ?? s.y0) + off)} ${x0},${yPx(s.y0 + off)}`}
+              fill={ACCENT}
+              fillOpacity="0.06"
+              stroke="none"
+            />
+          </>
+        ) : null}
         {handles}
+        {selected && off != null ? (
+          <rect
+            x={(x0 + x1) / 2 - 3}
+            y={(yPx(s.y0 + off) + yPx((s.y1 ?? s.y0) + off)) / 2 - 3}
+            width="6"
+            height="6"
+            fill="var(--color-bg)"
+            stroke={stroke}
+          />
+        ) : null}
       </g>
     );
   }

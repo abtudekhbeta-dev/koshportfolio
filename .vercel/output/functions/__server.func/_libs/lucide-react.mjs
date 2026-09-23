@@ -286,6 +286,50 @@ var Download = createLucideIcon("download", [
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var GripVertical = createLucideIcon("grip-vertical", [
+	["circle", {
+		cx: "9",
+		cy: "12",
+		r: "1",
+		key: "1vctgf"
+	}],
+	["circle", {
+		cx: "9",
+		cy: "5",
+		r: "1",
+		key: "hp0tcf"
+	}],
+	["circle", {
+		cx: "9",
+		cy: "19",
+		r: "1",
+		key: "fkjjf6"
+	}],
+	["circle", {
+		cx: "15",
+		cy: "12",
+		r: "1",
+		key: "1tmaij"
+	}],
+	["circle", {
+		cx: "15",
+		cy: "5",
+		r: "1",
+		key: "19l28e"
+	}],
+	["circle", {
+		cx: "15",
+		cy: "19",
+		r: "1",
+		key: "f4zoj3"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var Layers = createLucideIcon("layers", [
 	["path", {
 		d: "M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z",
@@ -742,6 +786,46 @@ var Undo2 = createLucideIcon("undo-2", [["path", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var UnfoldVertical = createLucideIcon("unfold-vertical", [
+	["path", {
+		d: "M12 22v-6",
+		key: "6o8u61"
+	}],
+	["path", {
+		d: "M12 8V2",
+		key: "1wkif3"
+	}],
+	["path", {
+		d: "M4 12H2",
+		key: "rhcxmi"
+	}],
+	["path", {
+		d: "M10 12H8",
+		key: "s88cx1"
+	}],
+	["path", {
+		d: "M16 12h-2",
+		key: "10asgb"
+	}],
+	["path", {
+		d: "M22 12h-2",
+		key: "14jgyd"
+	}],
+	["path", {
+		d: "m15 19-3 3-3-3",
+		key: "11eu04"
+	}],
+	["path", {
+		d: "m15 5-3-3-3 3",
+		key: "itvq4r"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var X = createLucideIcon("x", [["path", {
 	d: "M18 6 6 18",
 	key: "1bl5f8"
@@ -750,4 +834,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { CircleHelp as A, Magnet as C, Crosshair as D, Download as E, ArrowUpRight as F, ArrowRight as I, ArrowDownRight as L, ChevronRight as M, ChevronDown as N, Copy as O, Bell as P, Mail as S, Layers as T, Moon as _, Sun as a, MessageCircle as b, Spline as c, RotateCcw as d, Plus as f, MousePointer2 as g, MoveRight as h, Trash2 as i, ChevronUp as j, Columns2 as k, Send as l, Pause as m, Undo2 as n, Star as o, Play as p, TriangleAlert as r, Square as s, X as t, Search as u, Minus as v, LayoutGrid as w, Maximize2 as x, Minimize2 as y };
+export { Copy as A, Mail as C, GripVertical as D, Layers as E, ChevronDown as F, Bell as I, ArrowUpRight as L, CircleHelp as M, ChevronUp as N, Download as O, ChevronRight as P, ArrowRight as R, Maximize2 as S, LayoutGrid as T, MousePointer2 as _, Trash2 as a, Minimize2 as b, Square as c, Search as d, RotateCcw as f, MoveRight as g, Pause as h, TriangleAlert as i, Columns2 as j, Crosshair as k, Spline as l, Play as m, UnfoldVertical as n, Sun as o, Plus as p, Undo2 as r, Star as s, X as t, Send as u, Moon as v, Magnet as w, MessageCircle as x, Minus as y, ArrowDownRight as z };

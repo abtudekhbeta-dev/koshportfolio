@@ -40,6 +40,10 @@ export const Route = createFileRoute("/api/note")({
               qualTag?: string;
               qualPotential?: string;
               qualVerdict?: string;
+              fundApproved?: string;
+              qualApproved?: string;
+              fundStatus?: string;
+              qualStatus?: string;
             }[];
           };
           chart?: {
@@ -62,16 +66,20 @@ export const Route = createFileRoute("/api/note")({
           ? {
               name: String(body.book.name || "Portfolio").slice(0, 80),
               bench: String(body.book.bench || "nifty").slice(0, 40),
-              names: (body.book.names || []).slice(0, 40).map((h) => ({
+              names: (body.book.names || []).slice(0, 200).map((h) => ({
                 symbol: String(h.symbol || "").slice(0, 24),
                 weight: Number(h.weight) || 0,
                 sector: String(h.sector || "").slice(0, 40),
-                fundTag: String(h.fundTag || "").slice(0, 80) || undefined,
+                fundTag: String(h.fundApproved || h.fundTag || "").slice(0, 80) || undefined,
                 fundRating: String(h.fundRating || "").slice(0, 8) || undefined,
                 fundVerdict: String(h.fundVerdict || "").slice(0, 400) || undefined,
-                qualTag: String(h.qualTag || "").slice(0, 80) || undefined,
+                qualTag: String(h.qualApproved || h.qualTag || "").slice(0, 80) || undefined,
                 qualPotential: String(h.qualPotential || "").slice(0, 8) || undefined,
                 qualVerdict: String(h.qualVerdict || "").slice(0, 400) || undefined,
+                fundApproved: String(h.fundApproved || h.fundTag || "").slice(0, 80) || undefined,
+                qualApproved: String(h.qualApproved || h.qualTag || "").slice(0, 80) || undefined,
+                fundStatus: String(h.fundStatus || "").slice(0, 24) || undefined,
+                qualStatus: String(h.qualStatus || "").slice(0, 24) || undefined,
               })),
             }
           : undefined;

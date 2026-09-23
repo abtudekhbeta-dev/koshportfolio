@@ -95,7 +95,7 @@ export function IntelPanel({
   ] as const;
 
   return (
-    <section data-intel-panel className="flex h-full min-h-0 flex-col bg-bg">
+    <section data-intel-panel className="flex flex-col bg-bg">
       <div className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -140,20 +140,25 @@ export function IntelPanel({
         </p>
       ) : null}
 
-      {hits.length ? (
+      {patternsOn ? (
         <div data-pattern-box className="shrink-0 border-b border-border px-3 py-2">
           <div className="text-[10px] font-semibold tracking-[0.08em] text-subtle uppercase">Technical</div>
-          <ul className="mt-1 space-y-1">
-            {hits.map((h) => (
-              <li key={h.kind} className="text-[12px] leading-snug text-muted">
-                <span className="font-semibold text-fg">
-                  {h.label} · {patternStatusLabel(h.status)}
-                </span>
-                <span className="mx-1 text-subtle">·</span>
-                {h.note} Observed on this timeframe — not a signal or prediction.
-              </li>
-            ))}
-          </ul>
+          {hits.length ? (
+            <ul className="mt-1 space-y-1">
+              {hits.map((h) => (
+                <li key={h.kind} className="text-[12px] leading-snug text-muted">
+                  <span className="font-semibold text-fg">
+                    {h.label} · {patternStatusLabel(h.status)}
+                  </span>
+                  <span className="mx-1 text-subtle">·</span>
+                  {h.note}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-[12px] text-muted">No pattern on this window.</p>
+          )}
+          <p className="mt-1 text-[10px] text-subtle">Analytical aid — not a signal or prediction.</p>
         </div>
       ) : null}
 
@@ -173,7 +178,7 @@ export function IntelPanel({
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="p-3">
         {active === "overview" ? <Overview fund={fund} snap={snap} owned={owned} /> : null}
         {active === "fundamentals" ? <FundamentalsTab fund={fund} /> : null}
         {active === "valuation" ? <ValuationTab models={models} fund={fund} /> : null}

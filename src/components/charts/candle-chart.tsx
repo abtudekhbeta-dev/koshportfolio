@@ -20,7 +20,7 @@ import {
   sessionOpeningRange,
 } from "@/lib/kosh/ohlc";
 import { detectPatterns, patternStatusLabel, type PatternHit } from "@/lib/kosh/patterns";
-import { applyDrag, hitTest, magnetPrice, type HitMode } from "@/lib/kosh/draw-hit";
+import { applyDrag, channelOffFromThird, hitTest, magnetPrice, positionMetrics, type HitMode } from "@/lib/kosh/draw-hit";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { apiOhlc } from "@/lib/kosh/api";
 import { Seg } from "@/components/seg";
@@ -45,11 +45,12 @@ import {
   Pause,
   Magnet,
   Crosshair,
+  UnfoldVertical,
 } from "lucide-react";
 
 const UP = "var(--color-up)";
 const DOWN = "var(--color-down)";
-const GRID = "var(--color-border)";
+const GRID = "var(--color-chart-grid)";
 const TICK = "var(--color-subtle)";
 const MA20 = "var(--color-chart)";
 const MA50 = "var(--color-warn)";
@@ -651,34 +652,49 @@ function ShapeSvg({
   }
   if (s.kind === "long" || s.kind === "short") {
     const color = s.kind === "long" ? UP : DOWN;
+    const m = positionMetrics(s);
+    const yStop = yOf(m.stop);
+    const left = Math.min(x0, x1);
+    const width = Math.max(36, Math.abs(x1 - x0));
+    const riskTop = Math.min(y0, yStop);
+    const rewTop = Math.min(y0, y1);
     return (
       <g>
-        <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={color} strokeWidth={selected ? 1.8 : 1.5} vectorEffect="nonScalingStroke" />
-        <circle cx={x0} cy={y0} r="3" fill={color} />
-        <circle cx={x1} cy={y1} r="3" fill={color} />
-        <text x={x1 + 4} y={y1 - 4} fill={color} fontSize="10" fontFamily="IBM Plex Sans, system-ui, sans-serif">
-          {s.kind === "long" ? "Long" : "Short"} {nice(s.y0)} → {nice(s.y1 ?? s.y0)}
+        <rect x={left} y={rewTop} width={width} height={Math.max(2, Math.abs(y1 - y0))} fill={color} fillOpacity="0.12" />
+        <rect x={left} y={riskTop} width={width} height={Math.max(2, Math.abs(yStop - y0))} fill={DOWN} fillOpacity="0.18" />
+        <line x1={left} x2={left + width} y1={y0} y2={y0} stroke={INK} strokeWidth={selected ? 1.6 : 1.2} vectorEffect="nonScalingStroke" />
+        <line x1={left} x2={left + width} y1={yStop} y2={yStop} stroke={DOWN} strokeWidth={1.2} vectorEffect="nonScalingStroke" />
+        <line x1={left} x2={left + width} y1={y1} y2={y1} stroke={UP} strokeWidth={1.2} vectorEffect="nonScalingStroke" />
+        <text x={left + width + 4} y={Math.min(y0, y1, yStop) + 10} fill={color} fontSize="9" fontFamily="IBM Plex Sans, system-ui, sans-serif">
+          {s.kind === "long" ? "Long" : "Short"} · measurement · R:R {m.rr ? m.rr.toFixed(2) : "—"}
+        </text>
+        <text x={left + width + 4} y={Math.min(y0, y1, yStop) + 22} fill={TICK} fontSize="9">
+          risk {m.riskPct.toFixed(1)}% · reward {m.rewardPct.toFixed(1)}%
         </text>
         {handles}
       </g>
     );
   }
   if (s.kind === "channel") {
-    const off = s.off ?? Math.abs(s.y0) * 0.012;
-    const y0b = yOf(s.y0 + off);
-    const y1b = yOf((s.y1 ?? s.y0) + off);
+    const off = s.off;
+    const y0b = off != null ? yOf(s.y0 + off) : y0;
+    const y1b = off != null ? yOf((s.y1 ?? s.y0) + off) : y1;
     return (
       <g>
         <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={stroke} strokeWidth={w} vectorEffect="nonScalingStroke" />
-        <line x1={x0} y1={y0b} x2={x1} y2={y1b} stroke={stroke} strokeWidth={w} vectorEffect="nonScalingStroke" />
-        <polygon
-          points={`${x0},${y0} ${x1},${y1} ${x1},${y1b} ${x0},${y0b}`}
-          fill={ACCENT}
-          fillOpacity="0.08"
-          stroke="none"
-        />
+        {off != null ? (
+          <>
+            <line x1={x0} y1={y0b} x2={x1} y2={y1b} stroke={stroke} strokeWidth={w} vectorEffect="nonScalingStroke" />
+            <polygon
+              points={`${x0},${y0} ${x1},${y1} ${x1},${y1b} ${x0},${y0b}`}
+              fill={ACCENT}
+              fillOpacity="0.08"
+              stroke="none"
+            />
+          </>
+        ) : null}
         {handles}
-        {selected ? (
+        {selected && off != null ? (
           <rect
             x={(x0 + x1) / 2 - 4}
             y={(y0b + y1b) / 2 - 4}
@@ -963,6 +979,7 @@ export function CandleChart({
   const [tool, setTool] = useState<ToolId>("pan");
   const [toolLock, setToolLock] = useState(false);
   const [draft, setDraft] = useState<DrawShape | null>(null);
+  const drawClicks = useRef(0);
   const [fs, setFs] = useState(false);
   const [fsH, setFsH] = useState(640);
   const [replayOn, setReplayOn] = useState(false);
@@ -1082,6 +1099,12 @@ export function CandleChart({
     function onKey(e: KeyboardEvent) {
       const tagName = (e.target as HTMLElement | null)?.tagName;
       if (tagName === "INPUT" || tagName === "TEXTAREA") return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        commit(shapes.slice(0, -1));
+        setSelectedId(null);
+        return;
+      }
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedId) {
           e.preventDefault();
@@ -1093,6 +1116,7 @@ export function CandleChart({
       if (e.key !== "Escape") return;
       if (draft) {
         setDraft(null);
+        drawClicks.current = 0;
         return;
       }
       if (selectedId) {
@@ -1218,7 +1242,15 @@ export function CandleChart({
       return;
     }
     if (draft && src[i]) {
-      setDraft({ ...draft, t1: src[i].t, y1: price });
+      if (draft.kind === "channel" && drawClicks.current >= 2) {
+        setDraft({ ...draft, off: channelOffFromThird(draft, src[i].t, price) });
+      } else if ((draft.kind === "long" || draft.kind === "short") && drawClicks.current >= 2) {
+        setDraft({ ...draft, t1: src[i].t, y1: price });
+      } else if ((draft.kind === "long" || draft.kind === "short") && drawClicks.current === 1) {
+        setDraft({ ...draft, y2: price, t1: src[i].t });
+      } else {
+        setDraft({ ...draft, t1: src[i].t, y1: price });
+      }
     }
     if (drag.current && e.buttons && tool === "pan") {
       const dx = e.clientX - drag.current.x;
@@ -1306,7 +1338,44 @@ export function CandleChart({
         return;
       }
       if (!draft) {
+        drawClicks.current = 1;
         setDraft({ id: newDrawId(), kind: tool, t0: bar.t, y0: price, t1: bar.t, y1: price });
+        return;
+      }
+      if (draft.kind === "channel" && drawClicks.current === 1) {
+        drawClicks.current = 2;
+        setDraft({ ...draft, t1: bar.t, y1: price });
+        return;
+      }
+      if (draft.kind === "channel" && drawClicks.current >= 2) {
+        const done = { ...draft, off: channelOffFromThird(draft, bar.t, price) };
+        setShapes((s) => {
+          const next = [...s, done];
+          if (key) setDrawings(key, next);
+          return next;
+        });
+        setSelectedId(done.id);
+        setDraft(null);
+        drawClicks.current = 0;
+        finishTool();
+        return;
+      }
+      if ((draft.kind === "long" || draft.kind === "short") && drawClicks.current === 1) {
+        drawClicks.current = 2;
+        setDraft({ ...draft, y2: price, t1: bar.t });
+        return;
+      }
+      if ((draft.kind === "long" || draft.kind === "short") && drawClicks.current >= 2) {
+        const done = { ...draft, t1: bar.t, y1: price };
+        setShapes((s) => {
+          const next = [...s, done];
+          if (key) setDrawings(key, next);
+          return next;
+        });
+        setSelectedId(done.id);
+        setDraft(null);
+        drawClicks.current = 0;
+        finishTool();
         return;
       }
       setShapes((s) => {
@@ -1316,6 +1385,7 @@ export function CandleChart({
       });
       setSelectedId(draft.id);
       setDraft(null);
+      drawClicks.current = 0;
       finishTool();
       return;
     }
@@ -1404,10 +1474,10 @@ export function CandleChart({
       : null;
 
   const tools: { id: ToolId; label: string; icon: typeof Minus }[] = [
-    { id: "pan", label: "Pan", icon: MousePointer2 },
+    { id: "pan", label: "Select", icon: MousePointer2 },
     { id: "trend", label: "Trend", icon: Spline },
     { id: "hline", label: "H-line", icon: Minus },
-    { id: "vline", label: "V-line", icon: Minus },
+    { id: "vline", label: "V-line", icon: UnfoldVertical },
     { id: "ray", label: "Ray", icon: MoveRight },
     { id: "rect", label: "Rect", icon: Square },
     { id: "fib", label: "Fib", icon: Layers },

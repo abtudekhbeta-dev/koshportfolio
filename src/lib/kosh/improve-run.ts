@@ -1,8 +1,9 @@
-/** Scan both skills to completion (retries + second pass), then one portfolio verdict. */
+/** Scan both skills to completion (retry-once on the server), then one portfolio verdict. */
 
 import { apiNote, apiSkillPut } from "./api";
 import { asFund, asQual, skillOutputReady } from "./note-shape";
 import { skillOf, skillPeek, skillReadMerge } from "./screens";
+import { classifySkillError, isTerminalStatus, type SkillStatus } from "./skill-engine";
 import { useKosh } from "@/lib/store";
 
 export type ImproveTarget = { symbol: string; name: string; weight: number; sector: string };
@@ -22,12 +23,16 @@ function namesWithReads(targets: ImproveTarget[]) {
       symbol: r.symbol,
       weight: r.weight,
       sector: r.sector || "Other",
-      fundTag: s?.fundTag,
+      fundTag: s?.fundApproved || s?.fundTag,
       fundRating: s?.fundRating,
       fundVerdict: s?.fundVerdict,
-      qualTag: s?.qualTag,
+      qualTag: s?.qualApproved || s?.qualTag,
       qualPotential: s?.qualPotential,
       qualVerdict: s?.qualVerdict,
+      fundApproved: s?.fundApproved || s?.fundTag,
+      qualApproved: s?.qualApproved || s?.qualTag,
+      fundStatus: s?.fundStatus,
+      qualStatus: s?.qualStatus,
     };
   });
 }
@@ -40,11 +45,19 @@ function coverage(targets: ImproveTarget[]) {
   };
 }
 
-function missingSides(r: ImproveTarget) {
+function sideOpen(r: ImproveTarget, side: "fund" | "qual") {
   const s = skillPeek(useKosh.getState().skillReads, r.symbol);
+  const status = side === "fund" ? s?.fundStatus : s?.qualStatus;
+  const tag = side === "fund" ? s?.fundTag : s?.qualTag;
+  if (tag) return false;
+  if (isTerminalStatus(status)) return false;
+  return true;
+}
+
+function missingSides(r: ImproveTarget) {
   const sides: ("fund" | "qual")[] = [];
-  if (!s?.fundTag) sides.push("fund");
-  if (!s?.qualTag) sides.push("qual");
+  if (sideOpen(r, "fund")) sides.push("fund");
+  if (sideOpen(r, "qual")) sides.push("qual");
   return sides;
 }
 
@@ -66,36 +79,87 @@ async function writeVerdict(input: {
   return r;
 }
 
+function writeStatus(r: ImproveTarget, side: "fund" | "qual", status: SkillStatus) {
+  const existing = skillPeek(useKosh.getState().skillReads, r.symbol);
+  const read = skillReadMerge(existing, {
+    symbol: r.symbol,
+    name: r.name,
+    sector: r.sector,
+    fundStatus: side === "fund" ? status : existing?.fundStatus,
+    qualStatus: side === "qual" ? status : existing?.qualStatus,
+  });
+  useKosh.getState().setSkillRead(read);
+}
+
 async function persistSide(
   r: ImproveTarget,
   side: "fund" | "qual",
-  pack: { ok: boolean; text?: string; error?: string; fundBlock?: ReturnType<typeof asFund>; qualBlock?: ReturnType<typeof asQual> },
+  pack: {
+    ok: boolean;
+    text?: string;
+    error?: string;
+    skillStatus?: string;
+    fundBlock?: ReturnType<typeof asFund>;
+    qualBlock?: ReturnType<typeof asQual>;
+  },
 ) {
-  if (!pack.ok || !pack.text || !skillOutputReady(side, pack.text)) return false;
+  if (!pack.ok || !pack.text || !skillOutputReady(side, pack.text)) {
+    const status = classifySkillError(pack.error || pack.skillStatus || "The analysis did not finish. Retry.");
+    writeStatus(r, side, status === "Done" ? "Failed" : status);
+    return false;
+  }
   const fund = side === "fund" ? pack.fundBlock || asFund(pack.text) : null;
   const qual = side === "qual" ? pack.qualBlock || asQual(pack.text) : null;
-  if (side === "fund" && !fund) return false;
-  if (side === "qual" && !qual) return false;
+  if (side === "fund" && !fund) {
+    writeStatus(r, side, "Failed");
+    return false;
+  }
+  if (side === "qual" && !qual) {
+    writeStatus(r, side, "Failed");
+    return false;
+  }
   const existing = skillPeek(useKosh.getState().skillReads, r.symbol);
-  const read = skillReadMerge(existing, { symbol: r.symbol, name: r.name, sector: r.sector, fund, qual });
+  const read = skillReadMerge(existing, {
+    symbol: r.symbol,
+    name: r.name,
+    sector: r.sector,
+    fund,
+    qual,
+    fundStatus: side === "fund" ? "Done" : existing?.fundStatus,
+    qualStatus: side === "qual" ? "Done" : existing?.qualStatus,
+  });
   useKosh.getState().setSkillRead(read);
   if (read.fundTag && read.qualTag) void apiSkillPut(read).catch(() => {});
   return true;
 }
 
 async function runSide(r: ImproveTarget, kind: "fund" | "qual", fresh?: number) {
-  const delays = [0, 2800, 6500];
-  for (let i = 0; i < delays.length; i++) {
-    if (delays[i]) await sleep(delays[i]);
-    try {
-      const pack = await apiNote({ kind, symbol: r.symbol, fresh });
-      if (await persistSide(r, kind, pack)) return true;
-      if (!pack.ok && /Too many reads|429/i.test(pack.error || "")) await sleep(18000);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "";
-      if (/Busy|Too many|429|took too long|Retry|Gateway|504/i.test(msg)) {
-        await sleep(i === 0 ? 4000 : 9000);
+  writeStatus(r, kind, "Running");
+  try {
+    const pack = await apiNote({ kind, symbol: r.symbol, fresh });
+    if (await persistSide(r, kind, pack)) return true;
+    if (!pack.ok && /Too many reads|429|Busy|rate.?limit/i.test(pack.error || "")) {
+      await sleep(18000);
+      writeStatus(r, kind, "Running");
+      const again = await apiNote({ kind, symbol: r.symbol, fresh });
+      if (await persistSide(r, kind, again)) return true;
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    const status = classifySkillError(msg);
+    if (status === "Rate limited" || status === "Timed out") {
+      await sleep(status === "Rate limited" ? 18000 : 4000);
+      try {
+        writeStatus(r, kind, "Running");
+        const pack = await apiNote({ kind, symbol: r.symbol, fresh });
+        if (await persistSide(r, kind, pack)) return true;
+      } catch (e2) {
+        writeStatus(r, kind, classifySkillError(e2 instanceof Error ? e2.message : msg));
+        return false;
       }
+    } else {
+      writeStatus(r, kind, status);
+      return false;
     }
   }
   return false;
@@ -108,11 +172,6 @@ async function runPair(r: ImproveTarget, fresh?: number, force?: boolean) {
     await Promise.all([runSide(r, "fund", fresh), runSide(r, "qual", fresh)]);
   } else {
     await runSide(r, need[0], fresh);
-  }
-  const still = missingSides(r);
-  for (const side of still) {
-    await sleep(2500);
-    await runSide(r, side, fresh);
   }
 }
 
@@ -157,7 +216,7 @@ export async function startImprove(input: {
   try {
     const first = input.force
       ? input.targets
-      : input.targets.filter((r) => !skillOf(useKosh.getState().skillReads, r.symbol));
+      : input.targets.filter((r) => missingSides(r).length);
 
     async function scan(list: ImproveTarget[], passLabel: string, force?: boolean) {
       if (!list.length) return;
@@ -197,9 +256,6 @@ export async function startImprove(input: {
     }
 
     await scan(first, "", input.force);
-
-    const incomplete = input.targets.filter((r) => missingSides(r).length);
-    if (incomplete.length) await scan(incomplete, " — finishing both skills", false);
 
     setRun({
       portfolioId: input.portfolioId,

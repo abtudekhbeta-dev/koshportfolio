@@ -1,4 +1,4 @@
-import { $n as sectorOf } from "./router-CreVHe0E.mjs";
+import { tr as sectorOf } from "./router-BWv3yT6z.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/peers-W1QrnXEK.js
 var LINES = [
 	{

@@ -421,6 +421,11 @@ export type SkillRead = {
   qualPotential: "yes" | "no";
   qualVerdict: string;
   at: number;
+  fundApproved?: string;
+  qualApproved?: string;
+  fundScore?: number | null;
+  fundStatus?: import("./skill-engine").SkillStatus;
+  qualStatus?: import("./skill-engine").SkillStatus;
 };
 
 export function skillPass(r: SkillRead | null | undefined) {
@@ -457,13 +462,18 @@ export function skillReadFrom(input: {
     symbol,
     name: input.name || symbol,
     sector: input.sector || sectorOf(symbol),
-    fundTag: input.fund.tag,
+    fundTag: input.fund.approvedVerdict || input.fund.tag,
     fundRating: input.fund.rating,
     fundVerdict: input.fund.verdict,
-    qualTag: input.qual.tag,
+    qualTag: input.qual.approvedVerdict || input.qual.tag,
     qualPotential: input.qual.potential,
     qualVerdict: input.qual.verdict,
     at: Date.now(),
+    fundApproved: input.fund.approvedVerdict || input.fund.tag,
+    qualApproved: input.qual.approvedVerdict || input.qual.tag,
+    fundScore: input.fund.score ?? null,
+    fundStatus: input.fund.approvedVerdict || input.fund.tag ? "Done" : "Not started",
+    qualStatus: input.qual.approvedVerdict || input.qual.tag ? "Done" : "Not started",
   };
 }
 
@@ -475,22 +485,31 @@ export function skillReadMerge(
     sector?: string;
     fund?: FundBlock | null;
     qual?: QualBlock | null;
+    fundStatus?: SkillRead["fundStatus"];
+    qualStatus?: SkillRead["qualStatus"];
   },
 ): SkillRead {
   const symbol = String(patch.symbol || "")
     .replace(/\.(NS|BO)$/i, "")
     .toUpperCase();
+  const fundApproved = patch.fund?.approvedVerdict || patch.fund?.tag || existing?.fundApproved || "";
+  const qualApproved = patch.qual?.approvedVerdict || patch.qual?.tag || existing?.qualApproved || "";
   return {
     symbol,
     name: patch.name || existing?.name || symbol,
     sector: patch.sector || existing?.sector || sectorOf(symbol),
-    fundTag: patch.fund?.tag || existing?.fundTag || "",
+    fundTag: patch.fund?.approvedVerdict || patch.fund?.tag || existing?.fundTag || "",
     fundRating: patch.fund?.rating || existing?.fundRating || "fail",
     fundVerdict: patch.fund?.verdict || existing?.fundVerdict || "",
-    qualTag: patch.qual?.tag || existing?.qualTag || "",
+    qualTag: patch.qual?.approvedVerdict || patch.qual?.tag || existing?.qualTag || "",
     qualPotential: patch.qual?.potential || existing?.qualPotential || "no",
     qualVerdict: patch.qual?.verdict || existing?.qualVerdict || "",
     at: Date.now(),
+    fundApproved: fundApproved || existing?.fundApproved,
+    qualApproved: qualApproved || existing?.qualApproved,
+    fundScore: patch.fund?.score !== undefined ? patch.fund.score : existing?.fundScore ?? null,
+    fundStatus: patch.fundStatus || (patch.fund ? "Done" : existing?.fundStatus) || "Not started",
+    qualStatus: patch.qualStatus || (patch.qual ? "Done" : existing?.qualStatus) || "Not started",
   };
 }
 
