@@ -1,4 +1,4 @@
-/** Indexed-to-100 and USD adjustment. Missing inputs stay missing — no invented series. */
+/** Indexed comparison, benchmark-adjusted OHLC, and USD adjustment. Missing inputs stay missing. */
 
 export type Px = { t: number; c: number };
 
@@ -71,4 +71,50 @@ export function applyHistoricalFx<T extends FxBar>(bars: T[], fx: Px[]): { bars:
     out.push({ ...b, o: b.o / r, h: b.h / r, l: b.l / r, c: b.c / r });
   }
   return { bars: out, missing };
+}
+
+export type OhlcIn = { t: number; o: number; h: number; l: number; c: number };
+
+/**
+ * Benchmark-adjusted OHLC. One candle series, not two indexed lines.
+ *
+ * Alignment:
+ * - "day": same IST calendar day. No print that day means the stock bar is dropped.
+ * - "time": same clock minute, for intraday. A bar from another session is not borrowed.
+ *
+ * relative OHLC = stock component / benchmark component.
+ * The slice is then rebased so the first relative close is 100.
+ * If high and low invert, the wick uses the min and max of the four ratios.
+ * Open and close stay on the formula. A zero benchmark component drops the bar.
+ */
+export function adjustOhlcToBenchmark<T extends OhlcIn>(
+  stock: T[],
+  bench: OhlcIn[],
+  mode: "day" | "time" = "day",
+): { bars: T[]; dropped: number } {
+  const keyOf = (t: number) => (mode === "day" ? istDay(t) : Math.floor(t / 60));
+  const bmap = new Map<number, OhlcIn>();
+  for (const b of bench) {
+    if (b.o > 0 && b.h > 0 && b.l > 0 && b.c > 0) bmap.set(keyOf(b.t), b);
+  }
+  const raw: { bar: T; ro: number; rh: number; rl: number; rc: number }[] = [];
+  let dropped = 0;
+  for (const s of stock) {
+    const b = bmap.get(keyOf(s.t));
+    if (!b || !(s.o > 0) || !(s.h > 0) || !(s.l > 0) || !(s.c > 0)) {
+      dropped += 1;
+      continue;
+    }
+    raw.push({ bar: s, ro: s.o / b.o, rh: s.h / b.h, rl: s.l / b.l, rc: s.c / b.c });
+  }
+  const base = raw.find((r) => r.rc > 0)?.rc;
+  if (!base) return { bars: [], dropped: dropped + raw.length };
+  const bars = raw.map((r) => {
+    const o = (r.ro / base) * 100;
+    const c = (r.rc / base) * 100;
+    const h = (r.rh / base) * 100;
+    const l = (r.rl / base) * 100;
+    return { ...r.bar, o, c, h: Math.max(o, c, h, l), l: Math.min(o, c, h, l) };
+  });
+  return { bars, dropped };
 }

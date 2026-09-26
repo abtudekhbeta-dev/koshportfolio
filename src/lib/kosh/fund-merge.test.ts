@@ -131,6 +131,7 @@ describe("XBRL filing parse", () => {
     assert.ok(y!.interestCover != null && Math.abs(y!.interestCover - 13) < 0.2);
     assert.ok(y!.roce != null && y!.roce > 20 && y!.roce < 40);
     assert.ok(y!.de != null && Math.abs(y!.de - 0.1) < 0.02);
+    assert.equal(y!.opm, null);
     const q = filingFromXbrl(xml, "quarter");
     assert.equal(q?.sales, 10);
     assert.equal(q?.cfo, null);
@@ -171,5 +172,19 @@ describe("shareholding percents", () => {
     assert.equal(y!.profits, 29440);
     assert.equal(y!.cfo, 33986);
     assert.equal(y!.period, "Mar 2026");
+    assert.equal(y!.opm, null);
+  });
+
+  it("uses operating profit for OPM and never profit before tax", () => {
+    const xml = `<?xml version="1.0"?>
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:in-bse-fin="http://www.bseindia.com/xbrl/fin">
+  <xbrli:context id="FourD"><xbrli:period><xbrli:startDate>2023-04-01</xbrli:startDate><xbrli:endDate>2024-03-31</xbrli:endDate></xbrli:period></xbrli:context>
+  <in-bse-fin:RevenueFromOperations contextRef="FourD" unitRef="INR">1000000000.00</in-bse-fin:RevenueFromOperations>
+  <in-bse-fin:ProfitBeforeTax contextRef="FourD" unitRef="INR">400000000.00</in-bse-fin:ProfitBeforeTax>
+  <in-bse-fin:OperatingProfit contextRef="FourD" unitRef="INR">200000000.00</in-bse-fin:OperatingProfit>
+</xbrli:xbrl>`;
+    const y = filingFromXbrl(xml, "year");
+    assert.ok(y);
+    assert.ok(y!.opm != null && Math.abs(y!.opm - 20) < 0.2);
   });
 });

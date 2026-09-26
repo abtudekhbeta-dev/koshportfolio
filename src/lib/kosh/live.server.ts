@@ -8,6 +8,9 @@ import { listedEquities } from "./master.server.ts";
 import { newsAboutCompany, newsMaterial } from "./news.ts";
 import { stakeDelta } from "./shareholding.ts";
 import { detectVcp } from "./vcp.ts";
+import { loadCompanyFunds } from "./company-cache.server.ts";
+import { fillBlankScreenFund } from "./screens.ts";
+import { rememberNifty } from "./nifty-snap.ts";
 import type { Fundamentals, NewsItem, OhlcPack, ScreenRow, WikiCard } from "./types";
 
 const UA =
@@ -303,9 +306,19 @@ function emptyRow(u: { symbol: string; name: string }): ScreenRow {
   };
 }
 
+async function withCachedFunds(rows: ScreenRow[]): Promise<ScreenRow[]> {
+  const cache = await loadCompanyFunds(rows.map((r) => r.symbol));
+  const next = cache.size ? rows.map((r) => fillBlankScreenFund(r, cache.get(r.symbol)?.fund)) : rows;
+  rememberNifty(next);
+  return next;
+}
+
 export async function fetchScreener(): Promise<ScreenRow[]> {
   const hit = screenCache.get("deep-v9");
-  if (hit && Date.now() - hit.at < 15 * 60 * 1000) return hit.data;
+  if (hit && Date.now() - hit.at < 15 * 60 * 1000) {
+    rememberNifty(hit.data);
+    return hit.data;
+  }
   if (deepInflight) return deepInflight;
   deepInflight = (async () => {
     const rows = await pool(DEEP_UNIVERSE, 14, async (u) => {
@@ -321,8 +334,9 @@ export async function fetchScreener(): Promise<ScreenRow[]> {
       }
     });
     const ok = rows.filter((r) => r.price > 0);
-    if (ok.length) screenCache.set("deep-v9", { at: Date.now(), data: ok });
-    return ok;
+    const patched = await withCachedFunds(ok);
+    if (patched.length) screenCache.set("deep-v9", { at: Date.now(), data: patched });
+    return patched;
   })().finally(() => {
     deepInflight = null;
   });
@@ -331,7 +345,10 @@ export async function fetchScreener(): Promise<ScreenRow[]> {
 
 export async function fetchScreenerUniverse(): Promise<ScreenRow[]> {
   const hit = screenCache.get("uni-v10");
-  if (hit && Date.now() - hit.at < 15 * 60 * 1000) return hit.data;
+  if (hit && Date.now() - hit.at < 15 * 60 * 1000) {
+    rememberNifty(hit.data);
+    return hit.data;
+  }
   if (uniInflight) return uniInflight;
   uniInflight = (async () => {
     const listed = await listedEquities().catch(() => [] as Awaited<ReturnType<typeof listedEquities>>);
@@ -379,8 +396,9 @@ export async function fetchScreenerUniverse(): Promise<ScreenRow[]> {
       };
     });
     const nPriced = rows.filter((r) => r.price > 0).length;
-    if (nPriced > 0) screenCache.set("uni-v10", { at: Date.now(), data: rows });
-    return rows;
+    const patched = await withCachedFunds(rows);
+    if (nPriced > 0) screenCache.set("uni-v10", { at: Date.now(), data: patched });
+    return patched;
   })().finally(() => {
     uniInflight = null;
   });

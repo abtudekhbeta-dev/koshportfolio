@@ -86,9 +86,9 @@ export function EventCalendar({ compact, symbols }: { compact?: boolean; symbols
   const shown = compact ? rows.slice(0, 12) : rows.slice(0, 24);
 
   return (
-    <div className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+    <div className="min-w-0 rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
+      <div className="flex min-w-0 flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
           <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Calendar</h2>
           <p className="mt-1 text-[12px] text-subtle">Results, board events, and recurring macro dates.</p>
         </div>
@@ -111,7 +111,7 @@ export function EventCalendar({ compact, symbols }: { compact?: boolean; symbols
       {q.isPending && !shown.length ? (
         <p className="mt-3 text-sm text-muted">Loading the calendar…</p>
       ) : shown.length ? (
-        <ul className="mt-3 grid gap-1.5">
+        <ul className="mt-3 grid min-w-0 gap-1.5">
           {shown.map((r, i) => {
             const kind = r.kind || "stock";
             const label = (
@@ -129,13 +129,13 @@ export function EventCalendar({ compact, symbols }: { compact?: boolean; symbols
               </>
             );
             return (
-            <li key={r.symbol + r.date + r.purpose + String(i)} className="flex items-baseline justify-between gap-3 text-[13px]">
+            <li key={r.symbol + r.date + r.purpose + String(i)} className="flex min-w-0 items-baseline justify-between gap-3 text-[13px]">
               {canOpenStock(r.symbol) ? (
-                <Link to="/s/$symbol" params={{ symbol: r.symbol }} className="min-w-0 truncate hover:text-chart">
+                <Link to="/s/$symbol" params={{ symbol: r.symbol }} className="min-w-0 flex-1 truncate hover:text-chart">
                   {label}
                 </Link>
               ) : (
-                <span className="min-w-0 truncate">{label}</span>
+                <span className="min-w-0 flex-1 truncate">{label}</span>
               )}
               <span className="shrink-0 font-mono text-[12px] text-muted tabular">{formatIstDate(r.date)}</span>
             </li>

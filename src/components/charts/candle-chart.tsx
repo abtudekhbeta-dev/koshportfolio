@@ -1,5 +1,4 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import type { ChartMark, OhlcBar } from "@/lib/kosh/types";
 import {
@@ -22,10 +21,13 @@ import {
 import { detectPatterns, patternStatusLabel, type PatternHit } from "@/lib/kosh/patterns";
 import { applyDrag, channelOffFromThird, hitTest, magnetPrice, positionMetrics, type HitMode } from "@/lib/kosh/draw-hit";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
-import { panBy, zoomAround } from "@/lib/kosh/chart-nav";
-import { applyHistoricalFx, alignIndexed, indexedGap, istDay } from "@/lib/kosh/relative";
+import { panBy, zoomAround, atLatest, resetView } from "@/lib/kosh/chart-nav";
+import { applyHistoricalFx, adjustOhlcToBenchmark } from "@/lib/kosh/relative";
+import { resolveBench } from "@/lib/kosh/benchmarks";
 import { histInit, histPush, histRedo, histUndo, type DrawHist } from "@/lib/kosh/draw-history";
 import { apiOhlc } from "@/lib/kosh/api";
+import { AdjustMenu } from "@/components/charts/adjust-menu";
+import { useChartFullscreen } from "@/components/charts/use-fullscreen";
 import { Seg } from "@/components/seg";
 import { cn } from "@/lib/utils";
 import { bareSymbol, drawKey, newDrawId, useKosh, type DrawKind, type DrawShape } from "@/lib/store";
@@ -115,35 +117,6 @@ function alignCompare(src: OhlcBar[], cmp: OhlcBar[]) {
     }
     return last;
   });
-}
-
-/** Visible window only. Both series start at 100 on the first shared day. */
-function indexWindow(stock: OhlcBar[], bench: OhlcBar[]) {
-  const aligned = alignIndexed(
-    stock.map((b) => ({ t: b.t, c: b.c })),
-    bench.map((b) => ({ t: b.t, c: b.c })),
-  );
-  if (aligned.length < 2) return null;
-  const by = new Map(aligned.map((p) => [istDay(p.t), p]));
-  const first = stock.find((b) => by.has(istDay(b.t)) && b.c > 0);
-  if (!first) return null;
-  const s0 = first.c;
-  const bars: OhlcBar[] = [];
-  const compare: (number | null)[] = [];
-  for (const b of stock) {
-    const row = by.get(istDay(b.t));
-    if (!row || !(b.c > 0) || !(b.o > 0) || !(b.h > 0) || !(b.l > 0)) continue;
-    bars.push({
-      ...b,
-      o: (b.o / s0) * 100,
-      h: (b.h / s0) * 100,
-      l: (b.l / s0) * 100,
-      c: (b.c / s0) * 100,
-    });
-    compare.push(row.bench);
-  }
-  if (bars.length < 2) return null;
-  return { bars, compare, gap: indexedGap(aligned) };
 }
 
 type Layout = {
@@ -1017,10 +990,12 @@ export function CandleChart({
   const activeSpec = specRef.current;
   const horizon = (live.data && !live.data.missing && live.data.bars?.length ? live.data.bars : bars) || EMPTY_BARS;
   const chartMode = prefs.chartMode || "price";
+  const chartBench = prefs.chartBench || "nifty";
+  const benchMeta = resolveBench(chartBench);
   const chartHeight = prefs.chartHeight || 580;
   const benchQ = useQuery({
-    queryKey: ["ohlc", "^NSEI", "5y", "1d"],
-    queryFn: () => apiOhlc("^NSEI", "5y", "1d"),
+    queryKey: ["ohlc", benchMeta.symbol, "5y", "1d"],
+    queryFn: () => apiOhlc(benchMeta.symbol, "5y", "1d"),
     enabled: chartMode === "bench",
     staleTime: 60_000,
   });
@@ -1046,8 +1021,8 @@ export function CandleChart({
   const [toolLock, setToolLock] = useState(false);
   const [draft, setDraft] = useState<DrawShape | null>(null);
   const drawClicks = useRef(0);
-  const [fs, setFs] = useState(false);
-  const [fsH, setFsH] = useState(640);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const { fs, fallback, toggle: toggleFs } = useChartFullscreen(cardRef);
   const [replayOn, setReplayOn] = useState(false);
   const [replayEnd, setReplayEnd] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -1070,6 +1045,7 @@ export function CandleChart({
   const tag = useRef<HTMLDivElement>(null);
   const dateTag = useRef<HTMLDivElement>(null);
   const read = useRef<HTMLDivElement>(null);
+  const hoverRaf = useRef(0);
   const layout = useRef<Layout | null>(null);
   const drag = useRef<{ x: number; start: number; moved: boolean } | null>(null);
   const shapeDrag = useRef<{ id: string; mode: HitMode; t: number; y: number; orig: DrawShape } | null>(null);
@@ -1083,19 +1059,22 @@ export function CandleChart({
   const sliceEnd = replayOn ? Math.max(8, Math.min(nAll, replayEnd || nAll)) : start + count;
   const sliceStart = replayOn ? 0 : start;
   const windowBars = useMemo(() => full.slice(sliceStart, sliceEnd), [full, sliceStart, sliceEnd]);
-  const benchView = useMemo(
-    () => (chartMode === "bench" ? indexWindow(windowBars, benchQ.data?.bars || []) : null),
-    [chartMode, windowBars, benchQ.data],
+  const benchPack = useMemo(
+    () =>
+      chartMode === "bench"
+        ? adjustOhlcToBenchmark(windowBars, benchQ.data?.bars || [], chartIntra ? "time" : "day")
+        : null,
+    [chartMode, windowBars, benchQ.data, chartIntra],
   );
-  const src = benchView?.bars ?? windowBars;
-  const indexScale = Boolean(benchView);
+  const src = benchPack && benchPack.bars.length >= 2 ? benchPack.bars : windowBars;
+  const indexScale = false;
   const compare = useMemo(() => {
-    if (chartMode === "bench") return benchView?.compare ?? windowBars.map(() => null);
+    if (chartMode === "bench") return src.map(() => null);
     return alignCompare(windowBars, cmpHorizon);
-  }, [chartMode, benchView, windowBars, cmpHorizon]);
+  }, [chartMode, src, windowBars, cmpHorizon]);
   const oscN = (inds.rsi ? 1 : 0) + (inds.macd ? 1 : 0) + (inds.stoch ? 1 : 0) + (inds.atr ? 1 : 0);
   const volH = volOn ? VOL_H : 0;
-  const baseH = fs ? fsH : narrow ? 300 : chartHeight;
+  const baseH = fs ? Math.max(520, (typeof window !== "undefined" ? window.innerHeight : 800) - 180) : narrow ? 300 : chartHeight;
   const vh = baseH + oscN * OSC_H;
   const last = src[src.length - 1];
   const atrLast = lastNum(atr(src));
@@ -1141,18 +1120,6 @@ export function CandleChart({
     setShapes(key ? useKosh.getState().drawings[key] || [] : []);
     setDraft(null);
   }, [key]);
-
-  useEffect(() => {
-    if (!fs) return;
-    const go = () => setFsH(Math.max(480, window.innerHeight - 170));
-    go();
-    window.addEventListener("resize", go);
-    document.documentElement.classList.add("kosh-fs-lock");
-    return () => {
-      window.removeEventListener("resize", go);
-      document.documentElement.classList.remove("kosh-fs-lock");
-    };
-  }, [fs]);
 
   function saveChart() {
     const svg = wrapRef.current?.querySelector("svg");
@@ -1202,10 +1169,6 @@ export function CandleChart({
       }
       if (selectedId) {
         setSelectedId(null);
-        return;
-      }
-      if (fs) {
-        setFs(false);
         return;
       }
       if (tool !== "pan") {
@@ -1362,7 +1325,10 @@ export function CandleChart({
       const hit = hitTest(shapes, x, y, src, L.xOf, L.yOf, L.left, L.right, L.plotTop, L.plotBot);
       (e.currentTarget as HTMLElement).style.cursor = hit ? (hit.mode === "body" ? "move" : "grab") : "crosshair";
     }
-    paint(i, y);
+    if (hoverRaf.current) cancelAnimationFrame(hoverRaf.current);
+    const ii = i;
+    const yy = y;
+    hoverRaf.current = requestAnimationFrame(() => paint(ii, yy));
   }
 
   function onDown(e: React.PointerEvent) {
@@ -1584,8 +1550,12 @@ export function CandleChart({
     { id: "channel", label: "Channel", icon: Columns2 },
   ];
 
+  const onLatest = !replayOn && atLatest({ start, count }, nAll);
   const card = (
-    <div className={cn("rounded-lg bg-surface p-3 sm:p-4 shadow-[var(--shadow-border)]", fs && "kosh-chart-fs")}>
+    <div
+      ref={cardRef}
+      className={cn("rounded-lg bg-surface p-3 shadow-[var(--shadow-border)] sm:p-4", fallback && "kosh-chart-fs", fs && "kosh-fs-live")}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2 overflow-x-auto">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <label className="flex flex-wrap items-center gap-2">
@@ -1669,25 +1639,7 @@ export function CandleChart({
           >
             Log
           </button>
-          {(
-            [
-              ["price", "Price"],
-              ["bench", "vs Nifty"],
-              ["usd", "USD"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => patchChartPrefs({ chartMode: id })}
-              className={cn(
-                "h-8 rounded-sm px-2.5 text-[11px] font-semibold shadow-[var(--shadow-border)]",
-                chartMode === id ? "bg-surface-2 text-fg" : "bg-bg text-muted",
-              )}
-            >
-              {label}
-            </button>
-          ))}
+          <AdjustMenu />
           <div className="relative">
             <button
               type="button"
@@ -1846,20 +1798,7 @@ export function CandleChart({
           <button
             type="button"
             title={fs ? "Exit fullscreen" : "Fullscreen"}
-            onClick={() => {
-              const el = wrapRef.current;
-              if (!el) {
-                setFs((s) => !s);
-                return;
-              }
-              if (document.fullscreenElement) {
-                void document.exitFullscreen();
-                setFs(false);
-              } else if (el.requestFullscreen) {
-                void el.requestFullscreen();
-                setFs(true);
-              } else setFs((s) => !s);
-            }}
+            onClick={() => void toggleFs()}
             className={cn("inline-flex h-8 items-center rounded-sm px-2.5 text-[11px] font-medium shadow-[var(--shadow-border)]", fs ? "bg-surface-2 text-fg" : "bg-bg text-muted")}
           >
             {fs ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
@@ -1981,11 +1920,11 @@ export function CandleChart({
         <div className="mt-1 text-[11px] text-warn">Overlaid vs {compareLabel} (both as % from the first print in view)</div>
       ) : chartMode === "bench" ? (
         <div className="mt-1 text-[11px] text-muted">
-          {benchView
-            ? `Nifty 50 indexed to 100 on the first shared day in view${benchView.gap != null ? ` · ${benchView.gap >= 0 ? "+" : ""}${benchView.gap.toFixed(1)} pp vs Nifty 50` : ""}. Not a signal.`
+          {benchPack && benchPack.bars.length >= 2
+            ? `${benchMeta.name} adjusted candles. First close in view is 100. The index is taken out of the stock, not drawn beside it.${benchPack.dropped ? ` ${benchPack.dropped} bars had no matching index print.` : ""} Not a signal.`
             : benchQ.isPending
-              ? "Loading Nifty 50 history…"
-              : "Nifty 50 history unavailable for this window."}
+              ? `Loading ${benchMeta.name}…`
+              : `${benchMeta.name} history unavailable for this window. Price scale unchanged.`}
         </div>
       ) : chartMode === "usd" ? (
         <div className="mt-1 text-[11px] text-muted">
@@ -2058,7 +1997,7 @@ export function CandleChart({
         <div ref={tag} className="kosh-px-tag" />
         <div
           ref={dateTag}
-          className="pointer-events-none absolute bottom-1 z-[5] -translate-x-1/2 rounded-sm bg-surface-2 px-1 py-0.5 font-mono text-[10px] text-fg"
+          className="kosh-date-tag"
           style={{ display: "none" }}
         />
         <div
@@ -2102,13 +2041,14 @@ export function CandleChart({
         </button>
         <button
           type="button"
+          disabled={onLatest}
           onClick={() => {
             const vis = Math.min(TF_VIEW[intervalId] || 252, nAll || 0);
-            setView({ start: Math.max(0, (nAll || 0) - vis), count: vis || 1 });
+            setView(resetView(nAll || 0, vis || 1));
             setReplayOn(false);
             setPlaying(false);
           }}
-          className="inline-flex h-8 items-center gap-1 rounded-sm bg-bg px-2.5 text-[11px] font-medium text-muted shadow-[var(--shadow-border)]"
+          className="inline-flex h-8 items-center gap-1 rounded-sm bg-bg px-2.5 text-[11px] font-medium text-muted shadow-[var(--shadow-border)] disabled:opacity-40"
         >
           <MoveRight className="size-3.5" />
           Go to latest
@@ -2117,7 +2057,7 @@ export function CandleChart({
           type="button"
           onClick={() => {
             const vis = Math.min(TF_VIEW[intervalId] || 252, nAll || 0);
-            setView({ start: Math.max(0, (nAll || 0) - vis), count: vis || 1 });
+            setView(resetView(nAll || 0, vis || 1));
             setReplayOn(false);
             setPlaying(false);
             setReplayEnd(nAll);
@@ -2153,7 +2093,6 @@ export function CandleChart({
       </div>
     </div>
   );
-  if (fs && typeof document !== "undefined") return createPortal(card, document.body);
   return card;
 }
 

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { skillPass, skillReadFrom, skillReadMerge, skillOf, rankMultibagger, candidateMultibagger, scoreMultibagger, SOUND_RULES, GROWTH_RULES, matchLabel, pickScreenRow, screenKey, screenRowFromQuote, mergeScreenRows, applyScreen, blankScreenRow, type SkillRead } from "./screens.ts";
+import { skillPass, skillReadFrom, skillReadMerge, skillOf, rankMultibagger, candidateMultibagger, scoreMultibagger, SOUND_RULES, GROWTH_RULES, matchLabel, pickScreenRow, screenKey, screenRowFromQuote, mergeScreenRows, applyScreen, blankScreenRow, fillBlankScreenFund, type SkillRead } from "./screens.ts";
 
 function read(p: Partial<SkillRead>): SkillRead {
   return {
@@ -284,6 +284,18 @@ describe("screen rows hydrate", () => {
     assert.equal(merged.length, 2);
     assert.equal(pickScreenRow(merged, "kaynes")?.name, "Kaynes");
     assert.ok((pickScreenRow(merged, "KAYNES")?.offHigh ?? 0) < 0);
+  });
+
+  it("fills blank ROCE and OPM from a company card and never replaces a number with a blank", () => {
+    const row = blankScreenRow("INFY", "Infosys");
+    const filled = fillBlankScreenFund(row, { roce: 28, opm: 24, pe: 22 });
+    assert.equal(filled.roce, 28);
+    assert.equal(filled.opm, 24);
+    assert.equal(filled.pe, 22);
+    const kept = fillBlankScreenFund({ ...filled, pe: 19 }, { pe: null, roce: null, opm: 30 });
+    assert.equal(kept.pe, 19);
+    assert.equal(kept.roce, 28);
+    assert.equal(kept.opm, 24);
   });
 });
 

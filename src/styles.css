@@ -490,8 +490,6 @@ html {
 .kosh-candle {
   position: relative;
   width: 100%;
-  height: 420px;
-  min-height: 420px;
   overflow: hidden;
   border-radius: 6px;
   background: var(--color-surface);
@@ -513,7 +511,7 @@ html {
   bottom: 22px;
   width: 1px;
   left: -9px;
-  background: var(--color-border-strong);
+  background: color-mix(in srgb, var(--color-fg) 55%, transparent);
   pointer-events: none;
   z-index: 4;
 }
@@ -523,24 +521,33 @@ html {
   right: 52px;
   height: 1px;
   top: -9px;
-  background: var(--color-border-strong);
+  background: color-mix(in srgb, var(--color-fg) 55%, transparent);
   pointer-events: none;
   z-index: 4;
+}
+.kosh-px-tag,
+.kosh-date-tag {
+  pointer-events: none;
+  z-index: 5;
+  background: var(--color-fg);
+  color: var(--color-bg);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 4px 6px;
+  border-radius: 2px;
 }
 .kosh-px-tag {
   position: absolute;
   right: 0;
   top: -9px;
   transform: translateY(-50%);
-  pointer-events: none;
-  z-index: 5;
-  background: var(--color-surface-2);
-  color: var(--color-fg);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 10px;
-  line-height: 1;
-  padding: 3px 5px;
-  border-radius: 3px;
+}
+.kosh-date-tag {
+  position: absolute;
+  bottom: 2px;
+  transform: translateX(-50%);
 }
 
 [cmdk-group-heading] {
@@ -557,6 +564,15 @@ html {
   background: var(--color-surface);
 }
 
+.kosh-fs-live:fullscreen,
+.kosh-fs-live:-webkit-full-screen {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--color-bg);
+  overflow: auto;
+}
 .kosh-chart-fs {
   position: fixed;
   inset: 0;

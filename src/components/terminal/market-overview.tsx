@@ -14,8 +14,43 @@ import { fmtInr, fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { overlayQuotes, pickLiveSymbols } from "@/lib/kosh/live-overlay";
 import { isIstSession } from "@/lib/kosh/market-hours";
 import { applyScreen, sectorPulse } from "@/lib/kosh/screens";
+import { cycleSort, sortEntities, sortGlyph, type SortDir } from "@/lib/kosh/kosh-table";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
+
+type HoldKey = "name" | "last" | "chg" | "chgPct" | "value" | "weight";
+type WatchKey = "name" | "last" | "chg" | "chgPct";
+
+function SortTh({
+  label,
+  on,
+  dir,
+  align,
+  onClick,
+}: {
+  label: string;
+  on: boolean;
+  dir: SortDir;
+  align?: "right";
+  onClick: () => void;
+}) {
+  return (
+    <th className={cn("py-1 font-medium", align === "right" && "text-right")}>
+      <button
+        type="button"
+        className={cn(
+          "inline-flex w-full items-center gap-1 text-[10px] tracking-[0.06em] uppercase",
+          align === "right" && "justify-end",
+          on ? "text-fg" : "text-subtle",
+        )}
+        onClick={onClick}
+      >
+        {label}
+        <span aria-hidden>{sortGlyph(on, on ? dir : null)}</span>
+      </button>
+    </th>
+  );
+}
 
 export function MarketOverview() {
   const liveSession = isIstSession();
@@ -35,6 +70,10 @@ export function MarketOverview() {
   const [moreHold, setMoreHold] = useState(false);
   const [moreWatch, setMoreWatch] = useState(false);
   const watch = useKosh((s) => s.watch);
+  const holdSort = useKosh((s) => s.overviewHoldSort);
+  const setOverviewHoldSort = useKosh((s) => s.setOverviewHoldSort);
+  const overviewWatchSorts = useKosh((s) => s.overviewWatchSorts);
+  const setOverviewWatchSort = useKosh((s) => s.setOverviewWatchSort);
   const screen = useQuery({ queryKey: ["screener"], queryFn: apiScreener, staleTime: 10 * 60_000 });
   const rows = screen.data?.rows || [];
   const upSeed = applyScreen(rows, "up").slice(0, 12);
@@ -88,19 +127,39 @@ export function MarketOverview() {
       return { ...r, last, chg, chgPct, value };
     });
     const total = draft.reduce((s, r) => s + (r.value || 0), 0);
-    return draft
-      .map((r) => ({ ...r, weight: r.value != null && total > 0 ? (r.value / total) * 100 : null }))
-      .sort((a, b) => (b.value || 0) - (a.value || 0));
+    return draft.map((r) => ({ ...r, weight: r.value != null && total > 0 ? (r.value / total) * 100 : null }));
   }, [bookId, ports, qBy, liveRows]);
+  const sortedHold = useMemo(() => {
+    if (!holdSort) return sortEntities(holdRows, "value", "desc");
+    return sortEntities(holdRows, holdSort.key, holdSort.dir);
+  }, [holdRows, holdSort]);
   const activeList = watchlists.find((l) => l.id === (listId || activeWatchId)) || watchlists[0];
-  const embeddedWatch = (activeList?.symbols || []).map((s) => {
-    const k = s.toUpperCase().replace(/\.(NS|BO)$/i, "");
-    const q = qBy.get(k);
-    const screenRow = liveRows.find((x) => x.symbol === k);
-    const last = q && q.price > 0 ? q.price : screenRow && screenRow.price > 0 ? screenRow.price : null;
-    const chgPct = q && Number.isFinite(q.changePct) ? q.changePct : screenRow?.changePct ?? null;
-    return { symbol: k, name: q?.name || screenRow?.name || k, last, chgPct };
-  });
+  const watchSort = activeList ? overviewWatchSorts[activeList.id] : undefined;
+  const embeddedWatch = useMemo(() => {
+    const list = (activeList?.symbols || []).map((s) => {
+      const k = s.toUpperCase().replace(/\.(NS|BO)$/i, "");
+      const q = qBy.get(k);
+      const screenRow = liveRows.find((x) => x.symbol === k);
+      const last = q && q.price > 0 ? q.price : screenRow && screenRow.price > 0 ? screenRow.price : null;
+      const prev = q && q.previousClose > 0 ? q.previousClose : null;
+      const chg = last != null && prev != null ? last - prev : null;
+      const chgPct = q && Number.isFinite(q.changePct) ? q.changePct : screenRow?.changePct ?? null;
+      return { symbol: k, name: q?.name || screenRow?.name || k, last, chg, chgPct };
+    });
+    if (!watchSort) return list;
+    return sortEntities(list, watchSort.key, watchSort.dir);
+  }, [activeList, qBy, liveRows, watchSort]);
+  function cycleHold(key: HoldKey) {
+    const cur = holdSort ? { key: holdSort.key, dir: holdSort.dir as SortDir } : { key: null, dir: null as SortDir };
+    const next = cycleSort(cur, key);
+    setOverviewHoldSort(next.key && next.dir ? { key: next.key, dir: next.dir } : null);
+  }
+  function cycleWatch(key: WatchKey) {
+    if (!activeList) return;
+    const cur = watchSort ? { key: watchSort.key, dir: watchSort.dir as SortDir } : { key: null, dir: null as SortDir };
+    const next = cycleSort(cur, key);
+    setOverviewWatchSort(activeList.id, next.key && next.dir ? { key: next.key, dir: next.dir } : null);
+  }
   const up = overlayQuotes(upSeed, quotes.data)
     .slice()
     .sort((a, b) => b.changePct - a.changePct)
@@ -117,9 +176,9 @@ export function MarketOverview() {
   });
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-6 px-3 py-5 sm:px-4 sm:py-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+    <div className="mx-auto grid min-w-0 max-w-6xl grid-cols-1 gap-6 px-3 py-5 sm:px-4 sm:py-6">
+      <div className="flex min-w-0 flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-[22px] font-semibold tracking-tight">Indian market overview</h1>
           <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-muted">
             Indices, breadth, movers, and Pulse — what the cash market is doing today. Open Terminal to watch a name.
@@ -166,7 +225,7 @@ export function MarketOverview() {
       </section>
 
       {ports.some((p) => p.holdings.length) ? (
-        <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
+        <section className="min-w-0 rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Your holdings today</h2>
             <select
@@ -186,22 +245,22 @@ export function MarketOverview() {
               ))}
             </select>
           </div>
-          {holdRows.length ? (
+          {sortedHold.length ? (
             <>
               <div className="mt-2 overflow-x-auto">
                 <table className="w-full min-w-[520px] text-left text-[12px]">
                   <thead className="text-[10px] tracking-[0.06em] text-subtle uppercase">
                     <tr>
-                      <th className="py-1 font-medium">Name</th>
-                      <th className="py-1 text-right font-medium">Last</th>
-                      <th className="py-1 text-right font-medium">Chg</th>
-                      <th className="py-1 text-right font-medium">Chg %</th>
-                      <th className="py-1 text-right font-medium">Value</th>
-                      <th className="py-1 text-right font-medium">Weight</th>
+                      <SortTh label="Name" on={holdSort?.key === "name"} dir={holdSort?.dir || null} onClick={() => cycleHold("name")} />
+                      <SortTh label="Last" align="right" on={holdSort?.key === "last"} dir={holdSort?.dir || null} onClick={() => cycleHold("last")} />
+                      <SortTh label="Chg" align="right" on={holdSort?.key === "chg"} dir={holdSort?.dir || null} onClick={() => cycleHold("chg")} />
+                      <SortTh label="Chg %" align="right" on={holdSort?.key === "chgPct"} dir={holdSort?.dir || null} onClick={() => cycleHold("chgPct")} />
+                      <SortTh label="Value" align="right" on={holdSort?.key === "value"} dir={holdSort?.dir || null} onClick={() => cycleHold("value")} />
+                      <SortTh label="Weight" align="right" on={holdSort?.key === "weight"} dir={holdSort?.dir || null} onClick={() => cycleHold("weight")} />
                     </tr>
                   </thead>
                   <tbody>
-                    {(moreHold ? holdRows : holdRows.slice(0, 8)).map((r) => (
+                    {(moreHold ? sortedHold : sortedHold.slice(0, 8)).map((r) => (
                       <tr key={r.symbol} className="border-t border-border/70">
                         <td className="py-1.5">
                           <Link to="/s/$symbol" params={{ symbol: r.symbol }} className="font-medium hover:text-chart">
@@ -223,9 +282,9 @@ export function MarketOverview() {
                   </tbody>
                 </table>
               </div>
-              {holdRows.length > 8 ? (
+              {sortedHold.length > 8 ? (
                 <button type="button" className="mt-2 text-[12px] text-chart" onClick={() => setMoreHold((v) => !v)}>
-                  {moreHold ? "Show less" : `Show all ${holdRows.length} names`}
+                  {moreHold ? "Show less" : `Show all ${sortedHold.length} names`}
                 </button>
               ) : null}
             </>
@@ -276,7 +335,7 @@ export function MarketOverview() {
       </div>
 
       {watchlists.some((l) => l.symbols.length) || embeddedWatch.length ? (
-        <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
+        <section className="min-w-0 rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Watch</h2>
             <select
@@ -297,28 +356,37 @@ export function MarketOverview() {
           </div>
           {embeddedWatch.length ? (
             <>
-              <ul className="mt-2 divide-y divide-border/70">
-                {(moreWatch ? embeddedWatch : embeddedWatch.slice(0, 8)).map((r) => (
-                  <li key={r.symbol}>
-                    <Link
-                      to="/s/$symbol"
-                      params={{ symbol: r.symbol }}
-                      className="flex items-center justify-between py-1.5 hover:text-chart"
-                    >
-                      <span className="truncate text-[13px]">
-                        <span className="font-medium">{r.symbol}</span>
-                        <span className="ml-2 text-subtle">{r.name}</span>
-                      </span>
-                      <span className="ml-3 font-mono text-[13px] tabular">
-                        {r.last != null ? fmtPx(r.last) : "—"}
-                        <span className={cn("ml-2", (r.chgPct ?? 0) >= 0 ? "text-up" : "text-down")}>
-                          {r.chgPct == null ? "" : fmtPct(r.chgPct)}
-                        </span>
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-2 overflow-x-auto">
+                <table className="w-full min-w-[420px] text-left text-[12px]">
+                  <thead>
+                    <tr>
+                      <SortTh label="Name" on={watchSort?.key === "name"} dir={watchSort?.dir || null} onClick={() => cycleWatch("name")} />
+                      <SortTh label="Last" align="right" on={watchSort?.key === "last"} dir={watchSort?.dir || null} onClick={() => cycleWatch("last")} />
+                      <SortTh label="Chg" align="right" on={watchSort?.key === "chg"} dir={watchSort?.dir || null} onClick={() => cycleWatch("chg")} />
+                      <SortTh label="Chg %" align="right" on={watchSort?.key === "chgPct"} dir={watchSort?.dir || null} onClick={() => cycleWatch("chgPct")} />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(moreWatch ? embeddedWatch : embeddedWatch.slice(0, 8)).map((r) => (
+                      <tr key={r.symbol} className="border-t border-border/70">
+                        <td className="py-1.5">
+                          <Link to="/s/$symbol" params={{ symbol: r.symbol }} className="font-medium hover:text-chart">
+                            {r.symbol}
+                          </Link>
+                          <span className="ml-2 text-subtle">{r.name}</span>
+                        </td>
+                        <td className="py-1.5 text-right font-mono tabular">{r.last != null ? fmtPx(r.last) : "—"}</td>
+                        <td className={cn("py-1.5 text-right font-mono tabular", (r.chg ?? 0) >= 0 ? "text-up" : "text-down")}>
+                          {r.chg == null ? "—" : `${r.chg >= 0 ? "+" : ""}${fmtPx(Math.abs(r.chg))}`}
+                        </td>
+                        <td className={cn("py-1.5 text-right font-mono tabular", (r.chgPct ?? 0) >= 0 ? "text-up" : "text-down")}>
+                          {r.chgPct == null ? "—" : fmtPct(r.chgPct)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               {embeddedWatch.length > 8 ? (
                 <button type="button" className="mt-2 text-[12px] text-chart" onClick={() => setMoreWatch((v) => !v)}>
                   {moreWatch ? "Show less" : `Show all ${embeddedWatch.length} names`}

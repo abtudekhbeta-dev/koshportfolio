@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
+import { useMemo, useRef, useState } from "react";
 import { Maximize2, Minimize2 } from "lucide-react";
 import type { ChartMode, ChartRange, NavPoint } from "@/lib/kosh/types";
 import {
@@ -23,6 +22,7 @@ import {
   type PlotStyle,
 } from "@/lib/kosh/plot";
 import { Seg } from "@/components/seg";
+import { useChartFullscreen } from "@/components/charts/use-fullscreen";
 import { cn } from "@/lib/utils";
 import { sliceNav } from "@/lib/kosh/engine";
 import { useKosh, type NavStyle } from "@/lib/store";
@@ -162,25 +162,14 @@ export function NavChart({
     onRange?.(next);
   }
   const [hover, setHover] = useState<number | null>(null);
-  const [fs, setFs] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const { fs, fallback, toggle } = useChartFullscreen(cardRef);
   const [mixOn, setMixOn] = useState(true);
   const [pathOn, setPathOn] = useState(true);
   const [sameOn, setSameOn] = useState(true);
   const [benchOn, setBenchOn] = useState(pathPrimary ? !hideBench : !hideBench && prefs.showBench);
   const smaOn = prefs.smaOn;
   const style = asStyle(prefs.style);
-  useEffect(() => {
-    if (!fs) return;
-    document.documentElement.classList.add("kosh-fs-lock");
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFs(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.documentElement.classList.remove("kosh-fs-lock");
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [fs]);
   const windowed = useMemo(
     () => sliceNav(nav || [], range, range === "CUSTOM" ? { from: customFrom, to: customTo } : undefined),
     [nav, range, customFrom, customTo],
@@ -285,7 +274,14 @@ export function NavChart({
   }
 
   const card = (
-    <div className={cn("rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]", fs && "kosh-chart-fs")}>
+    <div
+      ref={cardRef}
+      className={cn(
+        "rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]",
+        fallback && "kosh-chart-fs",
+        fs && "kosh-fs-live",
+      )}
+    >
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <Seg
           value={mode}
@@ -392,7 +388,7 @@ export function NavChart({
         <button
           type="button"
           title={fs ? "Exit fullscreen" : "Fullscreen"}
-          onClick={() => setFs((s) => !s)}
+          onClick={() => void toggle()}
           className={cn("inline-flex h-8 items-center justify-center gap-1.5 rounded-sm px-3 text-[12px] leading-none shadow-[var(--shadow-border)]", fs ? "bg-bg-elevated text-fg" : "text-muted hover:text-fg")}
         >
           {fs ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
@@ -611,7 +607,6 @@ export function NavChart({
       ) : null}
     </div>
   );
-  if (fs && typeof document !== "undefined") return createPortal(card, document.body);
   return card;
 }
 

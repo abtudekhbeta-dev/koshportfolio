@@ -12,6 +12,7 @@ import { insights, fmtInr, fmtPct } from "@/lib/kosh/engine";
 import { bookXirr } from "@/lib/kosh/xirr";
 import { apiNews, apiScreener, apiFundamentals } from "@/lib/kosh/api";
 import { mixVsNifty, niftyOverlap, bareSym } from "@/lib/kosh/portfolio-stats";
+import type { NiftySnap } from "@/lib/kosh/nifty-snap";
 import { AttentionStrip } from "@/components/attention-strip";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -94,7 +95,7 @@ function Overview() {
         </section>
       ) : null}
 
-      <MixFacts rows={rows} screen={screen.data?.rows || []} ready={!screen.isPending} />
+      <MixFacts rows={rows} screen={screen.data?.rows || []} nifty={screen.data?.nifty ?? null} ready={!screen.isPending} />
 
       <section>
         <h2 className="mb-1 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">This mix vs {book.benchName}</h2>
@@ -272,10 +273,12 @@ function PortfolioNews({
 function MixFacts({
   rows,
   screen,
+  nifty,
   ready,
 }: {
   rows: { symbol: string; name: string; weight: number; kind?: string }[];
   screen: { symbol: string; pe?: number | null; roe?: number | null; de?: number | null; divYield?: number | null }[];
+  nifty: NiftySnap | null;
   ready: boolean;
 }) {
   const eq = rows.filter((r) => r.kind !== "commodity");
@@ -315,6 +318,7 @@ function MixFacts({
   if (!eq.length) return null;
   const vs = mixVsNifty(eq, map, screen);
   const ov = niftyOverlap(eq);
+  const snap = nifty && nifty.covered >= 15 ? nifty : null;
   const line = (label: string, a: number | null, b: number | null, fmt: (x: number) => string) => (
     <div className="kosh-row kosh-row-stack py-1.5">
       <dt className="text-[13px] text-muted">{label}</dt>
@@ -332,17 +336,17 @@ function MixFacts({
         zero.
       </p>
       <dl className="mt-2 max-w-xl">
-        {line("You pay for earnings", vs.pe, vs.niftyPe, (x) => x.toFixed(1) + "×")}
-        {line("Profitability (ROE)", vs.roe, vs.niftyRoe, (x) => x.toFixed(0) + "%")}
-        {line("Debt / equity", vs.de, vs.niftyDe, (x) => x.toFixed(2))}
-        {line("Dividend", vs.divYield, vs.niftyDiv, (x) => x.toFixed(1) + "%")}
+        {line("You pay for earnings", vs.pe, snap?.pe ?? null, (x) => x.toFixed(1) + "×")}
+        {line("Profitability (ROE)", vs.roe, snap?.roe ?? null, (x) => x.toFixed(0) + "%")}
+        {line("Debt / equity", vs.de, snap?.de ?? null, (x) => x.toFixed(2))}
+        {line("Dividend", vs.divYield, snap?.divYield ?? null, (x) => x.toFixed(1) + "%")}
       </dl>
       <p className="mt-3 text-[12px] text-subtle">
         {vs.covered} of {eq.length} names have numbers
         {ov.satellites.length ? ` · ${ov.satellites.length} sit outside the 50` : ""}.
-        {vs.niftyCovered < 15
-          ? " Nifty averages use only the constituents on this refresh — a blank is unavailable, not zero."
-          : " Nifty side is the average of Nifty 50 names on this refresh."}
+        {snap
+          ? ` Nifty side is the saved average of ${snap.covered} Nifty 50 names. A blank stays blank.`
+          : " Nifty side is unavailable until enough constituents are on file. A blank is unavailable, not zero."}
       </p>
     </section>
   );

@@ -193,7 +193,8 @@ const EPS = [
   "BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations",
   "BasicEarningsLossPerShareFromContinuingOperations",
 ];
-const OPM_NUM = ["ProfitBeforeExceptionalItemsAndTax", "ProfitBeforeTax"];
+const OP_MARGIN = ["OperatingProfitMargin", "OperatingMargin"];
+const OP_PROFIT = ["OperatingProfit", "ProfitFromOperations", "ProfitLossFromOperatingActivities"];
 const EBITDA = ["EarningsBeforeInterestTaxDepreciationAndAmortisation", "EBITDA"];
 const FINANCE = ["FinanceCosts"];
 const BORROW_C = ["BorrowingsCurrent"];
@@ -228,9 +229,17 @@ export function filingFromXbrl(xml: string, kind: "year" | "quarter"): FilingSli
   const deFiled = factAt(facts, DE, id);
   const face = factAt(facts, FACE, id);
   const eps = factAt(facts, EPS, id);
-  const pbt = toCr(factAt(facts, OPM_NUM, id), unitOf(OPM_NUM));
+  const pbt = toCr(factAt(facts, ["ProfitBeforeExceptionalItemsAndTax", "ProfitBeforeTax"], id), unitOf(["ProfitBeforeExceptionalItemsAndTax", "ProfitBeforeTax"]));
   const finance = toCr(factAt(facts, FINANCE, id), unitOf(FINANCE));
-  const opm = sales && sales !== 0 && pbt != null ? (pbt / sales) * 100 : null;
+  const marginFact = factAt(facts, OP_MARGIN, id);
+  const opProfit = toCr(factAt(facts, OP_PROFIT, id), unitOf(OP_PROFIT));
+  let opm: number | null = null;
+  if (marginFact != null && Number.isFinite(marginFact) && marginFact > -5 && marginFact < 150) {
+    opm = marginFact <= 1.5 ? marginFact * 100 : marginFact;
+  } else if (opProfit != null && sales && sales !== 0) {
+    const m = (opProfit / sales) * 100;
+    opm = Number.isFinite(m) && m > -50 && m < 150 ? m : null;
+  }
   const ebit = pbt != null ? pbt + (finance && finance > 0 ? finance : 0) : null;
   let interestCover: number | null = null;
   if (kind === "year" && ebit != null && finance != null && finance > 0.01) {

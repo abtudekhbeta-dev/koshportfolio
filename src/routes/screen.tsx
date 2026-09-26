@@ -10,6 +10,7 @@ import {
   applyFilter,
   applyScreen,
   candidateMultibagger,
+  fillBlankScreenFund,
   filterSector,
   matchLabel,
   mergeScreenRows,
@@ -39,7 +40,16 @@ function ScreenPage() {
   const saveCustomScreen = useKosh((s) => s.saveCustomScreen);
   const removeCustomScreen = useKosh((s) => s.removeCustomScreen);
   const reads = useKosh((s) => s.skillReads);
-  const rows = useMemo(() => mergeScreenRows(q.data?.rows || [], deep.data?.rows || []), [q.data, deep.data]);
+  const deepFunds = useKosh((s) => s.deepFunds);
+  const rows = useMemo(() => {
+    const merged = mergeScreenRows(q.data?.rows || [], deep.data?.rows || []);
+    const keys = Object.keys(deepFunds);
+    if (!keys.length) return merged;
+    return merged.map((r) => {
+      const fund = deepFunds[r.symbol]?.fund;
+      return fund ? fillBlankScreenFund(r, fund) : r;
+    });
+  }, [q.data, deep.data, deepFunds]);
   const sectors = useMemo(() => ["All", ...[...new Set(rows.map((r) => r.sector))].sort()], [rows]);
   const needle = qtext.trim().toUpperCase();
   const searched = useMemo(() => {

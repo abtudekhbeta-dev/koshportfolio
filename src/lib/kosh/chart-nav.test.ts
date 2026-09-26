@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { atLatest, panBy, resetView, zoomAround } from "./chart-nav.ts";
-import { alignIndexed, applyHistoricalFx, indexTo100, indexedGap } from "./relative.ts";
+import { alignIndexed, applyHistoricalFx, adjustOhlcToBenchmark, indexTo100, indexedGap } from "./relative.ts";
 import { histPush, histRedo, histUndo, histInit } from "./draw-history.ts";
 import { sectorIndex } from "./benchmarks.ts";
 
@@ -73,6 +73,34 @@ describe("indexed benchmark and USD", () => {
     assert.equal(out.missing, 1);
     assert.equal(out.bars.length, 1);
     assert.ok(Math.abs(out.bars[0].c - 10) < 0.001);
+  });
+
+  it("turns matched OHLC into one benchmark-relative series rebased at 100", () => {
+    const stock = [
+      { t: 1_700_000_000, o: 100, h: 110, l: 90, c: 100 },
+      { t: 1_700_086_400, o: 105, h: 112, l: 100, c: 110 },
+      { t: 1_701_000_000, o: 50, h: 55, l: 48, c: 52 },
+    ];
+    const bench = [
+      { t: 1_700_000_000, o: 200, h: 206, l: 194, c: 200 },
+      { t: 1_700_086_400, o: 206, h: 216, l: 200, c: 216 },
+    ];
+    const out = adjustOhlcToBenchmark(stock, bench, "day");
+    assert.equal(out.dropped, 1);
+    assert.equal(out.bars.length, 2);
+    assert.ok(Math.abs(out.bars[0].c - 100) < 0.01);
+    const want = (110 / 216) / (100 / 200) * 100;
+    assert.ok(Math.abs(out.bars[1].c - want) < 0.05);
+    assert.ok(out.bars[1].h >= out.bars[1].c && out.bars[1].l <= out.bars[1].o);
+  });
+
+  it("does not divide by a zero benchmark print", () => {
+    const out = adjustOhlcToBenchmark(
+      [{ t: 1_700_000_000, o: 10, h: 11, l: 9, c: 10 }],
+      [{ t: 1_700_000_000, o: 0, h: 1, l: 1, c: 1 }],
+      "day",
+    );
+    assert.equal(out.bars.length, 0);
   });
 });
 

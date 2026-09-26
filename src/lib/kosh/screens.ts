@@ -1,4 +1,4 @@
-import type { ScreenRow } from "./types";
+import type { ScreenRow, Fundamentals } from "./types";
 import type { FundBlock, QualBlock } from "./note-shape";
 import { NIFTY50 } from "./universe.ts";
 import { sectorOf } from "./sectors.ts";
@@ -162,6 +162,40 @@ export function sortRows(rows: ScreenRow[], key: SortKey, dir: "asc" | "desc") {
     if (bv == null) return -1;
     return mul * (av - bv);
   });
+}
+
+const BLANK_FUND = [
+  "pe",
+  "pb",
+  "roe",
+  "de",
+  "mcapCr",
+  "divYield",
+  "eps",
+  "salesYoY",
+  "profitYoY",
+  "promoters",
+  "roce",
+  "opm",
+  "salesCagr3",
+  "profitCagr3",
+  "profitCagr5",
+  "fii",
+  "dii",
+] as const;
+
+/** Fill a screener row from a cached company card. Never replace a number with a blank. */
+export function fillBlankScreenFund<T extends ScreenRow>(row: T, fund: Partial<Fundamentals> | null | undefined): T {
+  if (!fund) return row;
+  const next = { ...row };
+  for (const k of BLANK_FUND) {
+    const cur = next[k];
+    const v = fund[k];
+    if (cur == null && typeof v === "number" && Number.isFinite(v)) {
+      (next as Record<string, unknown>)[k] = v;
+    }
+  }
+  return next;
 }
 
 export function filterSector(rows: ScreenRow[], sector: string) {

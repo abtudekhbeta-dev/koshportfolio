@@ -1,6 +1,7 @@
 import type { Fundamentals, HistoryPack, MacroPack, NewsItem, OhlcPack, Quote, ScreenRow, TapeRow, WikiCard } from "./types";
 import type { BookBrief, FundBlock, HoldingNote, MixBlock, NoteKind, PulseBlock, QualBlock, QualityBlock, SparkBlock, StructureBlock, ChartFactsIn, PickNote } from "./ai-kinds";
 import type { ScreenFilter, SkillRead } from "./screens";
+import type { NiftySnap } from "./nifty-snap";
 
 function friendlyHttp(status: number, t: string) {
   if (/<!DOCTYPE|Gateway time-out|Error code 504|cf-error/i.test(t) || status === 504 || status === 502) {
@@ -89,12 +90,12 @@ export async function apiWiki(name: string) {
 }
 
 export async function apiScreener() {
-  const d = await json<{ rows: ScreenRow[]; asOf: string }>("/api/screener");
+  const d = await json<{ rows: ScreenRow[]; asOf: string; nifty?: NiftySnap | null }>("/api/screener");
   return d;
 }
 
 export async function apiScreenerDeep() {
-  const d = await json<{ rows: ScreenRow[]; asOf: string }>("/api/screener?depth=full");
+  const d = await json<{ rows: ScreenRow[]; asOf: string; nifty?: NiftySnap | null }>("/api/screener?depth=full");
   return d;
 }
 
