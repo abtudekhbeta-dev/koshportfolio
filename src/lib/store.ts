@@ -69,6 +69,8 @@ export type ChartPrefs = {
   structOn: boolean;
   patternsOn: boolean;
   drawOpen: boolean;
+  chartMode: "price" | "bench" | "usd";
+  chartHeight: number;
   rev: number;
 };
 
@@ -85,7 +87,9 @@ export const DEFAULT_CHART_PREFS: ChartPrefs = {
   structOn: false,
   patternsOn: false,
   drawOpen: true,
-  rev: 4,
+  chartMode: "price",
+  chartHeight: 580,
+  rev: 5,
 };
 
 export type NavStyle = "area" | "line" | "step" | "bar" | "columns";
@@ -238,6 +242,7 @@ type KoshState = {
   tourDone: boolean;
   chartPrefs: ChartPrefs;
   navPrefs: NavPrefs;
+  watchSorts: Record<string, { key: "last" | "chg" | "chgPct"; dir: "asc" | "desc" }>;
   deepFunds: Record<string, DeepFundSnap>;
   hydrate: (ports: Portfolio[]) => void;
   setIconId: (id: IconId) => void;
@@ -284,6 +289,7 @@ type KoshState = {
   setTourDone: (on: boolean) => void;
   patchChartPrefs: (p: Omit<Partial<ChartPrefs>, "inds"> & { inds?: Partial<IndFlags> }) => void;
   patchNavPrefs: (p: Partial<NavPrefs>) => void;
+  setWatchSort: (id: string, sort: { key: "last" | "chg" | "chgPct"; dir: "asc" | "desc" } | null) => void;
 };
 
 export const useKosh = create<KoshState>()(
@@ -308,6 +314,7 @@ export const useKosh = create<KoshState>()(
       tourDone: false,
       chartPrefs: { ...DEFAULT_CHART_PREFS, inds: { ...DEFAULT_INDS } },
       navPrefs: { ...DEFAULT_NAV_PREFS },
+      watchSorts: {},
       deepFunds: {},
       hydrate: (ports) => {
         if (ports.length)
@@ -526,9 +533,17 @@ export const useKosh = create<KoshState>()(
             ...s.chartPrefs,
             ...p,
             inds: p.inds ? { ...s.chartPrefs.inds, ...p.inds } : s.chartPrefs.inds,
+            chartHeight: Math.max(360, Math.min(900, p.chartHeight ?? s.chartPrefs.chartHeight ?? 580)),
           },
         })),
       patchNavPrefs: (p) => set((s) => ({ navPrefs: { ...s.navPrefs, ...p } })),
+      setWatchSort: (id, sort) =>
+        set((s) => {
+          const next = { ...s.watchSorts };
+          if (!sort) delete next[id];
+          else next[id] = sort;
+          return { watchSorts: next };
+        }),
     }),
     {
       name: "kosh-v2",
@@ -574,10 +589,13 @@ export const useKosh = create<KoshState>()(
               structOn: old.structOn === true,
               patternsOn: old.patternsOn === true,
               drawOpen: old.drawOpen !== false,
-              rev: 4,
+              chartMode: old.chartMode === "bench" || old.chartMode === "usd" ? old.chartMode : "price",
+              chartHeight: Math.max(360, Math.min(900, old.chartHeight || 580)),
+              rev: 5,
             };
           })(),
           navPrefs: { ...DEFAULT_NAV_PREFS, ...(p.navPrefs || {}) },
+          watchSorts: p.watchSorts || {},
           deepFunds: p.deepFunds || {},
           portfolios: (p.portfolios?.length ? p.portfolios : current.portfolios).map((port) => ({
             ...port,

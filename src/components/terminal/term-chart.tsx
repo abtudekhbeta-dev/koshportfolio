@@ -11,6 +11,7 @@ import {
   Minus,
   MousePointer2,
   MoveRight,
+  Plus,
   RotateCcw,
   Spline,
   Square,
@@ -21,6 +22,10 @@ import {
 } from "lucide-react";
 import { apiOhlc } from "@/lib/kosh/api";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
+import { panBy, zoomAround } from "@/lib/kosh/chart-nav";
+import { alignIndexed, applyHistoricalFx, istDay } from "@/lib/kosh/relative";
+import { histInit, histPush, histRedo, histUndo, type DrawHist } from "@/lib/kosh/draw-history";
+import { resolveBench } from "@/lib/kosh/benchmarks";
 import { bollinger, ema, fmtVol, macd, rsi, sma, vwap } from "@/lib/kosh/ohlc";
 import { isIstSession, istClock } from "@/lib/kosh/market-hours";
 import { applyDrag, channelOffFromThird, hitTest, positionMetrics, type HitMode } from "@/lib/kosh/draw-hit";
@@ -140,10 +145,48 @@ export function TermChart({
   });
   const raw = ohlc.data?.bars || EMPTY_BARS;
   const hist = useMemo(() => termBars(raw, spec), [raw, spec]);
-  const bars = useMemo(
+  const priceBars = useMemo(
     () => (quote && quote.price > 0 ? patchLastBar(hist, quote, spec) : hist),
     [hist, quote, spec],
   );
+  const chartMode = useKosh((s) => s.chartPrefs.chartMode || "price");
+  const benchMeta = resolveBench("nifty");
+  const benchQ = useQuery({
+    queryKey: ["ohlc", benchMeta.symbol, spec.range, spec.yahoo],
+    queryFn: () => apiOhlc(benchMeta.symbol, spec.range, spec.yahoo),
+    enabled: chartMode === "bench" && Boolean(symbol),
+    staleTime: 60_000,
+  });
+  const fxQ = useQuery({
+    queryKey: ["ohlc", "INR=X", spec.intra ? "6mo" : spec.range, "1d"],
+    queryFn: () => apiOhlc("INR=X", spec.intra ? "6mo" : spec.range, "1d"),
+    enabled: chartMode === "usd",
+    staleTime: 60_000,
+  });
+  const indexed = useMemo(
+    () => (chartMode === "bench" ? alignIndexed(priceBars, benchQ.data?.bars || []) : []),
+    [chartMode, priceBars, benchQ.data],
+  );
+  const usdPack = useMemo(
+    () => (chartMode === "usd" ? applyHistoricalFx(priceBars, fxQ.data?.bars || []) : null),
+    [chartMode, priceBars, fxQ.data],
+  );
+  const bars = useMemo(() => {
+    if (chartMode === "usd" && usdPack && usdPack.bars.length >= 2) return usdPack.bars;
+    if (chartMode === "bench" && indexed.length >= 2) {
+      const byDay = new Map(indexed.map((p) => [istDay(p.t), p.stock]));
+      const next = priceBars
+        .map((b) => {
+          const v = byDay.get(istDay(b.t));
+          if (v == null) return null;
+          return { ...b, o: v, h: v, l: v, c: v };
+        })
+        .filter((b): b is (typeof priceBars)[number] => Boolean(b));
+      return next.length >= 2 ? next : priceBars;
+    }
+    return priceBars;
+  }, [chartMode, priceBars, indexed, usdPack]);
+  const benchByDay = useMemo(() => new Map(indexed.map((p) => [istDay(p.t), p.bench])), [indexed]);
   const px = quote?.price && quote.price > 0 ? quote.price : (ohlc.data?.price || bars.at(-1)?.c || 0);
   const chg = quote?.changePct ?? ohlc.data?.changePct ?? 0;
   const status = quoteStatus({ session, price: px, retrievedAt: quote?.retrievedAt });
@@ -163,9 +206,13 @@ export function TermChart({
   const shapes = drawings[dKey] || EMPTY_SHAPES;
 
   const wrap = useRef<HTMLDivElement>(null);
+  const vLine = useRef<HTMLDivElement>(null);
+  const hLine = useRef<HTMLDivElement>(null);
+  const priceTag = useRef<HTMLDivElement>(null);
+  const dateTag = useRef<HTMLDivElement>(null);
+  const ohlcRead = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 640, h: 320 });
   const [view, setView] = useState({ start: 0, count: TF_VIEW[interval] || 180 });
-  const [hover, setHover] = useState<number | null>(null);
   const [fs, setFs] = useState(false);
   const [inds, setInds] = useState<IndFlags>({ sma20: false, ema21: false, bb: false, vwap: false, rsi: false, macd: false });
   const [tool, setTool] = useState<ToolId>("pan");
@@ -175,6 +222,10 @@ export function TermChart({
   const drag = useRef<{ x: number; start: number } | null>(null);
   const move = useRef<{ id: string; mode: HitMode; x: number; y: number; t: number; py: number } | null>(null);
   const clicks = useRef(0);
+  const histDraw = useRef<DrawHist<DrawShape>>(histInit([]));
+  useEffect(() => {
+    histDraw.current = histInit(drawings[dKey] || EMPTY_SHAPES);
+  }, [dKey]);
 
   useEffect(() => {
     const el = wrap.current;
@@ -193,17 +244,34 @@ export function TermChart({
     const n = bars.length;
     const count = Math.min(n, TF_VIEW[interval] || 180);
     setView({ start: Math.max(0, n - count), count: count || 1 });
-    setHover(null);
     setDraft(null);
   }, [symbol, interval, bars.length]);
 
   const oscOn = inds.rsi || inds.macd;
   const plotH = Math.max(80, size.h - PAD.t - PAD.b - VOL_H - (oscOn ? OSC_H + 8 : 0));
   const innerW = Math.max(40, size.w - PAD.l - PAD.r);
-  const shown = useMemo(
+  const sliced = useMemo(
     () => bars.slice(view.start, view.start + view.count),
     [bars, view.start, view.count],
   );
+  const shown = useMemo(() => {
+    if (chartMode !== "bench" || sliced.length < 2 || !(sliced[0].c > 0)) return sliced;
+    const s0 = sliced[0].c;
+    return sliced.map((b) => ({
+      ...b,
+      o: (b.o / s0) * 100,
+      h: (b.h / s0) * 100,
+      l: (b.l / s0) * 100,
+      c: (b.c / s0) * 100,
+    }));
+  }, [chartMode, sliced]);
+  const benchBase = chartMode === "bench" && sliced[0] ? benchByDay.get(istDay(sliced[0].t)) : null;
+  const vsBench = useMemo(() => {
+    if (chartMode !== "bench" || shown.length < 2 || !benchBase || !sliced.length) return null;
+    const b1 = benchByDay.get(istDay(sliced[sliced.length - 1].t));
+    if (b1 == null) return null;
+    return shown[shown.length - 1].c - (b1 / benchBase) * 100;
+  }, [chartMode, shown, benchBase, benchByDay, sliced]);
   const n = shown.length;
 
   const lo0 = shown.reduce((m, b) => Math.min(m, b.l), Infinity);
@@ -286,11 +354,14 @@ export function TermChart({
   function onWheel(e: WheelEvent<HTMLDivElement>) {
     e.preventDefault();
     if (bars.length < 20) return;
+    if (e.shiftKey) {
+      const dir = e.deltaY > 0 || e.deltaX > 0 ? 1 : -1;
+      const step = Math.max(1, Math.round(view.count * 0.08)) * dir;
+      setView(panBy(view, bars.length, step));
+      return;
+    }
     const i = idxAt(e.clientX);
-    const nextCount = Math.max(20, Math.min(bars.length, Math.round(view.count * (e.deltaY > 0 ? 1.18 : 0.82))));
-    const center = view.start + i;
-    const nextStart = Math.max(0, Math.min(bars.length - nextCount, Math.round(center - (i / Math.max(1, view.count)) * nextCount)));
-    setView({ start: nextStart, count: nextCount });
+    setView(zoomAround(view, bars.length, i, e.deltaY < 0));
   }
 
   function fit() {
@@ -301,7 +372,21 @@ export function TermChart({
     setView({ start: Math.max(0, bars.length - count), count });
   }
   function save(next: DrawShape[]) {
+    histDraw.current = histPush(histDraw.current, next);
     setDrawings(dKey, next);
+  }
+  function undoDraw() {
+    const u = histUndo(histDraw.current);
+    if (!u) return;
+    histDraw.current = u.hist;
+    setDrawings(dKey, u.shapes);
+    setSelectedId(null);
+  }
+  function redoDraw() {
+    const u = histRedo(histDraw.current);
+    if (!u) return;
+    histDraw.current = u.hist;
+    setDrawings(dKey, u.shapes);
   }
 
   useEffect(() => {
@@ -330,18 +415,56 @@ export function TermChart({
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        save(shapes.slice(0, -1));
-        setSelectedId(null);
+        if (e.shiftKey) redoDraw();
+        else undoDraw();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [draft, selectedId, shapes, dKey]);
 
-  const hoverBar = hover != null ? shown[hover] : shown[n - 1];
-  const cur = hoverBar || shown[n - 1];
   const last = shown[n - 1];
   const lastUp = last && last.c >= last.o;
+
+  function readText(b: (typeof shown)[number]) {
+    return `${fmtWhen(b.t, spec.intra)} · O ${fmtPx(b.o)} H ${fmtPx(b.h)} L ${fmtPx(b.l)} C ${fmtPx(b.c)}${volMissing ? " · Volume unavailable" : ` · Vol ${fmtVol(b.v)}`}`;
+  }
+  function paintHover(i: number, y: number) {
+    const bar = shown[i];
+    if (!bar) return;
+    const x = xAt(i);
+    const price = yInv(y);
+    if (vLine.current) {
+      vLine.current.style.display = "block";
+      vLine.current.style.left = `${x}px`;
+    }
+    if (hLine.current) {
+      hLine.current.style.display = "block";
+      hLine.current.style.top = `${y}px`;
+    }
+    if (priceTag.current) {
+      priceTag.current.style.display = "block";
+      priceTag.current.style.top = `${y}px`;
+      priceTag.current.textContent = price >= 100 ? price.toFixed(1) : price.toFixed(2);
+    }
+    if (dateTag.current) {
+      dateTag.current.style.display = "block";
+      dateTag.current.style.left = `${x}px`;
+      dateTag.current.textContent = fmtWhen(bar.t, spec.intra);
+    }
+    if (ohlcRead.current) ohlcRead.current.textContent = readText(bar);
+  }
+  function hideHover() {
+    if (vLine.current) vLine.current.style.display = "none";
+    if (hLine.current) hLine.current.style.display = "none";
+    if (priceTag.current) priceTag.current.style.display = "none";
+    if (dateTag.current) dateTag.current.style.display = "none";
+    if (ohlcRead.current && last) ohlcRead.current.textContent = readText(last);
+  }
+
+  useEffect(() => {
+    if (ohlcRead.current && last) ohlcRead.current.textContent = `${fmtWhen(last.t, spec.intra)} · O ${fmtPx(last.o)} H ${fmtPx(last.h)} L ${fmtPx(last.l)} C ${fmtPx(last.c)}`;
+  }, [last, spec.intra]);
 
   function poly(vals: (number | null)[], color: string) {
     const pts: string[] = [];
@@ -432,6 +555,25 @@ export function TermChart({
         >
           Log
         </button>
+        {(
+          [
+            ["price", "Price"],
+            ["bench", "vs Nifty"],
+            ["usd", "USD"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              patchChartPrefs({ chartMode: id });
+            }}
+            className={cn("h-7 rounded-sm px-2 text-[11px] font-medium", chartMode === id ? "bg-surface-2 text-fg" : "text-muted hover:text-fg")}
+          >
+            {label}
+          </button>
+        ))}
         <button
           type="button"
           aria-pressed={patternsOn}
@@ -487,10 +629,21 @@ export function TermChart({
               className="grid size-7 place-items-center text-muted hover:text-fg"
               onClick={(e) => {
                 e.stopPropagation();
-                save(shapes.slice(0, -1));
+                undoDraw();
               }}
             >
               <Undo2 className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              aria-label="Redo drawing"
+              className="grid size-7 place-items-center text-muted hover:text-fg"
+              onClick={(e) => {
+                e.stopPropagation();
+                redoDraw();
+              }}
+            >
+              <RotateCcw className="size-3.5" />
             </button>
             <button
               type="button"
@@ -520,7 +673,20 @@ export function TermChart({
             </button>
           </div>
         ) : null}
-        <span className="ml-auto text-[10px] text-subtle">{useLog ? "Log scale" : "Linear"} · RAW OHLC</span>
+        <span className="ml-auto text-[10px] text-subtle">
+          {chartMode === "bench"
+            ? vsBench == null
+              ? "Benchmark unavailable for this window"
+              : `${vsBench >= 0 ? "+" : ""}${vsBench.toFixed(1)} pp vs Nifty 50 · indexed to 100 · not a signal`
+            : chartMode === "usd"
+              ? usdPack && usdPack.bars.length >= 2
+                ? "USD · historical USD/INR · not today's rate on old bars"
+                : "USD/INR history unavailable"
+              : useLog
+                ? "Log scale"
+                : "Linear"}
+          {chartMode === "price" ? " · RAW OHLC" : ""}
+        </span>
       </div>
 
       <div
@@ -584,7 +750,7 @@ export function TermChart({
         }}
         onPointerMove={(e) => {
           const pt = xyAt(e.clientX, e.clientY);
-          setHover(pt.i);
+          paintHover(pt.i, pt.y);
           if (move.current) {
             const cur = shapes.find((s) => s.id === move.current!.id);
             if (!cur) return;
@@ -619,7 +785,7 @@ export function TermChart({
           drag.current = null;
           move.current = null;
         }}
-        onPointerLeave={() => setHover(null)}
+        onPointerLeave={() => hideHover()}
       >
         {ohlc.isPending && !bars.length ? (
           <div className="absolute inset-0 animate-pulse bg-surface/40" />
@@ -654,7 +820,7 @@ export function TermChart({
             {sma20 ? poly(sma20, CHART) : null}
             {ema21 ? poly(ema21, WARN) : null}
             {vw ? poly(vw, WARN) : null}
-            {style === "line"
+            {style === "line" || chartMode === "bench"
               ? poly(closes, CHART)
               : shown.map((b, i) => {
                   const up = b.c >= b.o;
@@ -670,6 +836,15 @@ export function TermChart({
                     </g>
                   );
                 })}
+            {chartMode === "bench"
+              ? poly(
+                  shown.map((b) => {
+                    const v = benchByDay.get(istDay(b.t));
+                    return v != null && benchBase ? (v / benchBase) * 100 : null;
+                  }),
+                  MUTED,
+                )
+              : null}
             {shown.map((b, i) => {
               const vh = ((b.v || 0) / maxVol) * (VOL_H - 4);
               const x = xAt(i);
@@ -698,12 +873,6 @@ export function TermChart({
               <ShapeDraw key={s.id} s={s} src={shown} xAt={xAt} yPx={yPx} right={size.w - PAD.r} selected={s.id === selectedId} />
             ))}
             {draft ? <ShapeDraw s={draft} src={shown} xAt={xAt} yPx={yPx} right={size.w - PAD.r} /> : null}
-            {cur && hover != null ? (
-              <>
-                <line x1={xAt(hover)} x2={xAt(hover)} y1={PAD.t} y2={PAD.t + plotH + VOL_H} stroke={MUTED} strokeDasharray="3 3" />
-                <line x1={PAD.l} x2={size.w - PAD.r} y1={yPx(cur.c)} y2={yPx(cur.c)} stroke={MUTED} strokeDasharray="3 3" />
-              </>
-            ) : null}
             {last ? (
               <g>
                 <circle cx={xAt(n - 1)} cy={yPx(last.c)} r="3" fill={lastUp ? UP : DOWN} stroke="var(--color-bg)" />
@@ -727,19 +896,16 @@ export function TermChart({
             ) : null}
           </svg>
         )}
-        {cur ? (
-          <div className="pointer-events-none absolute left-3 top-2 font-mono text-[11px] text-muted">
-            {fmtWhen(cur.t, spec.intra)} · O {fmtPx(cur.o)} H {fmtPx(cur.h)} L {fmtPx(cur.l)} C {fmtPx(cur.c)}
-            {volMissing ? " · Volume unavailable" : ` · Vol ${fmtVol(cur.v)}`}
-          </div>
-        ) : null}
-        <div className="absolute right-14 top-2 flex gap-1">
-          <IconBtn label="Fit" onClick={fit}>
-            <Minimize2 className="size-3.5" />
-          </IconBtn>
-          <IconBtn label="Latest" onClick={latest}>
-            <RotateCcw className="size-3.5" />
-          </IconBtn>
+        <div ref={ohlcRead} className="pointer-events-none absolute left-3 top-2 z-[6] font-mono text-[11px] text-muted" />
+        <div ref={vLine} className="kosh-cross-v" style={{ display: "none", bottom: 0 }} />
+        <div ref={hLine} className="kosh-cross-h" style={{ display: "none", left: PAD.l, right: PAD.r }} />
+        <div ref={priceTag} className="kosh-px-tag" style={{ display: "none" }} />
+        <div
+          ref={dateTag}
+          className="pointer-events-none absolute bottom-1 z-[5] -translate-x-1/2 rounded-sm bg-surface-2 px-1 py-0.5 font-mono text-[10px] text-fg"
+          style={{ display: "none" }}
+        />
+        <div className="absolute right-2 top-2 z-[6]">
           <IconBtn
             label="Fullscreen"
             onClick={() => {
@@ -757,6 +923,27 @@ export function TermChart({
             {fs ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
           </IconBtn>
         </div>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1 border-t border-border px-2 py-1" data-testid="chart-nav">
+        <IconBtn label="Zoom out" onClick={() => setView(zoomAround(view, bars.length, Math.floor(view.count / 2), false))}>
+          <Minus className="size-3.5" />
+        </IconBtn>
+        <IconBtn label="Zoom in" onClick={() => setView(zoomAround(view, bars.length, Math.floor(view.count / 2), true))}>
+          <Plus className="size-3.5" />
+        </IconBtn>
+        <IconBtn
+          label="Go to latest"
+          onClick={latest}
+        >
+          <MoveRight className="size-3.5" />
+        </IconBtn>
+        <IconBtn label="Reset view" onClick={latest}>
+          <RotateCcw className="size-3.5" />
+        </IconBtn>
+        <IconBtn label="Fit" onClick={fit}>
+          <Minimize2 className="size-3.5" />
+        </IconBtn>
       </div>
 
       {patternsOn && patterns.length ? (
@@ -917,7 +1104,9 @@ function ShapeDraw({
           {s.kind === "long" ? "Long" : "Short"} · measurement
         </text>
         <text x={left + width + 4} y={top + 22} fill={MUTED} fontSize="9">
-          R:R {m.rr ? m.rr.toFixed(2) : "—"} · risk {m.riskPct.toFixed(1)}% · reward {m.rewardPct.toFixed(1)}%
+          {m.valid
+            ? `R:R ${m.rr != null ? m.rr.toFixed(2) : "—"} · risk ${m.riskPct.toFixed(1)}% · reward ${m.rewardPct.toFixed(1)}%`
+            : "Invalid levels — not a measurement"}
         </text>
         <text x={left + 4} y={yEntry - 3} fill={INK} fontSize="8">
           Entry {fmtPx(m.entry)}

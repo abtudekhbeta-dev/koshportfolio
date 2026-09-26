@@ -91,6 +91,13 @@ describe("long / short position", () => {
     assert.ok(m.target < m.entry);
   });
 
+  it("does not print a ratio when long geometry is upside down", () => {
+    const s: DrawShape = { id: "bad", kind: "long", t0: 1, y0: 100, t1: 5, y1: 80, y2: 120 };
+    const m = positionMetrics(s);
+    assert.equal(m.valid, false);
+    assert.equal(m.rr, null);
+  });
+
   it("p2 handle moves the stop only", () => {
     const s: DrawShape = { id: "l2", kind: "long", t0: 1, y0: 100, t1: 5, y1: 130, y2: 90 };
     const next = applyDrag(s, "p2", 0, 0, 3, 85);

@@ -66,13 +66,15 @@ export function impliedGrowthFromPe(_pe: number | null | undefined): number | nu
   return null;
 }
 
-/** What 5-year EPS CAGR would justify today's price at a stated exit multiple, discounted at 12%. */
+/** What 5-year EPS CAGR today's price requires at a stated exit multiple.
+ *  Discount defaults to 0 — the primary figure is undiscounted algebra.
+ *  Pass a discount only for an explicitly labelled scenario. */
 export function reverseImpliedCagr(
   price: number | null | undefined,
   eps: number | null | undefined,
   exitPe: number | null | undefined,
   years = YEARS,
-  discount = DISCOUNT,
+  discount = 0,
 ): number | null {
   const p = num(price);
   const e = num(eps);
@@ -87,7 +89,7 @@ export function reverseImpliedCagr(
 
 function buildReverse(price: number | null, eps: number | null, industryPe: number | null): ReverseVal {
   const years = YEARS;
-  const discount = DISCOUNT * 100;
+  const discount = 0;
   if (price == null || !(price > 0) || eps == null || !(eps > 0)) {
     return {
       exitPe: null,
@@ -121,7 +123,7 @@ function buildReverse(price: number | null, eps: number | null, industryPe: numb
     impliedCagr: g,
     years,
     discount,
-    body: `At the reported industry multiple of ${industryPe.toFixed(0)}× as a 5-year exit, discounted at 12% as a modelling assumption, today's price implies about ${g.toFixed(0)}% annual EPS growth. That is the growth the price is asking for under those assumptions — not a forecast.`,
+    body: `At the reported industry multiple of ${industryPe.toFixed(0)}× as a 5-year exit, with no discount rate applied, today's price requires about ${g.toFixed(0)}% annual EPS growth. That is a mathematical requirement under those inputs — not a forecast.`,
   };
 }
 
@@ -173,7 +175,7 @@ export function buildValuation(input: {
     cases.push(
       mk("Bear", bearG, bearPe, `Haircut the recorded profit CAGR by 6 pp, exit at ${bearPe.toFixed(0)}×. ${exitNote}`),
       mk("Base", baseG, basePe, `Keep the recorded profit CAGR, exit at ${basePe.toFixed(0)}×. ${exitNote}`),
-      mk("Bull", bullG, bullPe, `Give growth +5 pp, exit at ${bullPe.toFixed(0)}×. 12% discount is a modelling assumption.`),
+      mk("Bull", bullG, bullPe, `Give growth +5 pp, exit at ${bullPe.toFixed(0)}×. The 12% discount is only this optional scenario — not the reverse-valuation figure.`),
     );
   }
 
@@ -229,7 +231,7 @@ function interpret(v: {
   const base = v.cases.find((c) => c.label === "Base");
   if (base && base.vsPrice != null) {
     bits.push(
-      `Under the base case (recorded CAGR, 12% discount as a modelling assumption, 5-year exit) the implied value is ${base.vsPrice >= 0 ? "+" : ""}${base.vsPrice.toFixed(0)}% versus last price. Change the growth or the exit multiple and the number moves — it is not a buy call.`,
+      `Under the optional base case (recorded CAGR, 12% discount labelled as a model assumption — not a company fact, 5-year exit) the implied value is ${base.vsPrice >= 0 ? "+" : ""}${base.vsPrice.toFixed(0)}% versus last price. Change the growth or the exit multiple and the number moves — it is not a buy call.`,
     );
   } else if (v.growth == null) {
     bits.push("No 3Y/5Y profit CAGR on the company card, so the three cases stay blank.");
@@ -463,7 +465,7 @@ function modelC(input: { price: number | null; eps: number | null; industryPe: n
   const paying = reverseImpliedCagr(input.price, input.eps, input.industryPe);
   const word = wordByGap(paying, input.delivered);
   const rows: ValRow[] = [];
-  if (paying != null) rows.push({ label: "Growth the price is paying for", value: `${paying.toFixed(0)}% a year` });
+  if (paying != null) rows.push({ label: "Growth the price requires", value: `${paying.toFixed(0)}% a year` });
   if (input.delivered != null) rows.push({ label: "Growth delivered", value: `${input.delivered.toFixed(0)}% a year` });
   if (input.industryPe != null) rows.push({ label: "Exit multiple used", value: `${input.industryPe.toFixed(0)}× industry` });
 
@@ -471,36 +473,47 @@ function modelC(input: { price: number | null; eps: number | null; industryPe: n
   if (paying == null) {
     body = "Need last price, positive EPS, and a reported industry multiple to say what growth the price is already paying for.";
   } else if (input.delivered == null) {
-    body = `The price is already paying for about ${paying.toFixed(0)}% annual earnings growth over 5 years (industry exit, 12% discount as a modelling assumption). Delivered profit CAGR is not on the card, so there is nothing to compare it with.`;
+    body = `The price requires about ${paying.toFixed(0)}% annual earnings growth over 5 years if the exit is the industry multiple and no discount rate is applied. Delivered profit CAGR is not on the card, so there is nothing to compare it with.`;
   } else {
-    body = `The price is already paying for about ${paying.toFixed(0)}% annual earnings growth over 5 years. The company has delivered ${input.delivered.toFixed(0)}% profit CAGR. That is a comparison under those assumptions — not a forecast.`;
+    body = `The price requires about ${paying.toFixed(0)}% annual earnings growth over 5 years if the exit is the industry multiple. No discount rate is applied. The company has delivered ${input.delivered.toFixed(0)}% profit CAGR. That comparison is a requirement, not a forecast.`;
   }
 
   return {
     id: "C",
-    title: "Growth the price is paying for",
+    title: "Growth the price requires",
     word: paying == null ? "Not enough data" : input.delivered == null ? "Not enough data" : word,
-    figure: paying != null && input.delivered != null ? `Paying for ${paying.toFixed(0)}% · delivered ${input.delivered.toFixed(0)}%` : paying != null ? `Paying for ${paying.toFixed(0)}%` : "No figure",
+    figure: paying != null && input.delivered != null ? `Requires ${paying.toFixed(0)}% · delivered ${input.delivered.toFixed(0)}%` : paying != null ? `Requires ${paying.toFixed(0)}%` : "No figure",
     body,
     rows,
-    note: "5-year exit at the reported industry multiple, discounted at 12% as a modelling assumption. Not a forecast.",
+    note: "5-year exit at the reported industry multiple. No discount rate. Not a forecast.",
   };
 }
 
 function modelD(input: { pb: number | null; roe: number | null; growth: number | null }): ValModel {
-  const gKnown = input.growth != null;
-  const g = gKnown ? input.growth : 0;
+  if (input.growth == null) {
+    return {
+      id: "D",
+      title: "Justified P/B from ROE",
+      word: "Not enough data",
+      figure: "No figure",
+      body: "Profit CAGR is not on the card, so this model does not assume growth is 0%.",
+      rows: [
+        ...(input.roe != null ? [{ label: "ROE", value: `${input.roe.toFixed(1)}%` }] : []),
+        { label: "Discount (r)", value: "12% (modelling assumption)" },
+        { label: "Growth used (g)", value: "Unavailable" },
+      ],
+      note: "Missing growth is not treated as 0%. The 12% discount is a labelled assumption, not a company fact.",
+    };
+  }
+  const g = input.growth;
   const just = justifiedPb(input.roe, g, 12);
   const word = wordOf(input.pb, just, true);
   const rows: ValRow[] = [];
   if (input.pb != null) rows.push({ label: "P/B today", value: `${input.pb.toFixed(2)}×` });
   if (just != null) rows.push({ label: "Justified P/B", value: `${just.toFixed(2)}×` });
   if (input.roe != null) rows.push({ label: "ROE", value: `${input.roe.toFixed(1)}%` });
-  rows.push({ label: "Discount (r)", value: "12%" });
-  rows.push({
-    label: "Growth used (g)",
-    value: gKnown ? `${(g as number).toFixed(0)}%` : "0% (no CAGR on card)",
-  });
+  rows.push({ label: "Discount (r)", value: "12% (modelling assumption)" });
+  rows.push({ label: "Growth used (g)", value: `${g.toFixed(0)}% from recorded profit CAGR` });
 
   let body: string;
   if (input.roe == null) {
@@ -508,9 +521,9 @@ function modelD(input: { pb: number | null; roe: number | null; growth: number |
   } else if (just == null) {
     body = "ROE is not high enough versus the 12% discount to justify a P/B on this model.";
   } else if (input.pb == null) {
-    body = `Justified P/B is ${just.toFixed(2)}× from ROE ${(input.roe).toFixed(0)}% and g ${gKnown ? (g as number).toFixed(0) + "%" : "0% (no profit CAGR on the card)"}. Today's P/B is not on the card.`;
+    body = `Justified P/B is ${just.toFixed(2)}× from ROE ${(input.roe).toFixed(0)}% and g ${g.toFixed(0)}% from the recorded profit CAGR. Today's P/B is not on the card.`;
   } else {
-    body = `Justified P/B is ${just.toFixed(2)}× from ROE ${input.roe.toFixed(0)}% (r = 12% labelled). Today's P/B is ${input.pb.toFixed(2)}×. g is ${gKnown ? (g as number).toFixed(0) + "% from recorded profit CAGR" : "set to 0% because a profit CAGR is not on the card"}.`;
+    body = `Justified P/B is ${just.toFixed(2)}× from ROE ${input.roe.toFixed(0)}% (r = 12% is a modelling assumption, not a company fact). Today's P/B is ${input.pb.toFixed(2)}×. g is ${g.toFixed(0)}% from the recorded profit CAGR.`;
   }
 
   return {
@@ -544,5 +557,66 @@ export function buildValuationModels(input: {
   const graham = grahamNumber(eps, f?.book);
   const grahamGap = graham != null && price != null && graham > 0 ? (price / graham - 1) * 100 : null;
   return { models: [a, c, d], simple: a, hist, graham, grahamGap };
+}
+
+export type EvidenceTone = "Supportive" | "Mixed" | "Limited" | "Insufficient";
+
+export type EvidenceItem = { label: string; value: string | null };
+
+function pctTxt(v: number | null | undefined, digits = 1): string | null {
+  if (v == null || !Number.isFinite(v)) return null;
+  return `${v.toFixed(digits)}%`;
+}
+
+/** Separate growth evidence from any required-growth figure. Missing stays unavailable. */
+export function growthEvidence(f: Fundamentals | null | undefined): {
+  tone: EvidenceTone;
+  body: string;
+  items: EvidenceItem[];
+} {
+  const q = f?.qProfits || [];
+  let quarter: string | null = null;
+  if (q.length >= 2) {
+    const prev = q[q.length - 2]?.value;
+    const last = q[q.length - 1]?.value;
+    if (prev != null && last != null && prev !== 0 && Number.isFinite(prev) && Number.isFinite(last)) {
+      quarter = `${(((last - prev) / Math.abs(prev)) * 100).toFixed(1)}% latest quarter vs the one before`;
+    }
+  }
+  const items: EvidenceItem[] = [
+    { label: "Sales CAGR 3Y", value: pctTxt(f?.salesCagr3) },
+    { label: "Sales CAGR 5Y", value: null },
+    { label: "Profit CAGR 3Y", value: pctTxt(f?.profitCagr3) },
+    { label: "Profit CAGR 5Y", value: pctTxt(f?.profitCagr5) },
+    { label: "Sales 1Y", value: pctTxt(f?.salesYoY) },
+    { label: "Profit 1Y", value: pctTxt(f?.profitYoY) },
+    { label: "Latest quarter profit", value: quarter },
+    { label: "OPM", value: pctTxt(f?.opm) },
+    { label: "ROCE", value: pctTxt(f?.roce) },
+    { label: "ROE", value: pctTxt(f?.roe) },
+    { label: "CFO / PAT", value: f?.cfoPat != null && Number.isFinite(f.cfoPat) ? `${f.cfoPat.toFixed(2)}×` : null },
+    { label: "Debt / equity", value: f?.de != null && Number.isFinite(f.de) ? f.de.toFixed(2) : null },
+    { label: "Management guidance", value: null },
+  ];
+  const growth = [f?.salesCagr3, f?.profitCagr3, f?.profitCagr5, f?.salesYoY, f?.profitYoY].filter(
+    (n): n is number => n != null && Number.isFinite(n),
+  );
+  const pos = growth.filter((n) => n > 0).length;
+  const neg = growth.filter((n) => n < 0).length;
+  const cashWeak = f?.cfoPat != null && f.cfoPat < 0.5;
+  let tone: EvidenceTone = "Insufficient";
+  if (growth.length < 2) tone = "Insufficient";
+  else if ((pos > 0 && neg > 0) || (cashWeak && pos > 0)) tone = "Mixed";
+  else if (pos === growth.length && growth.length >= 3) tone = "Supportive";
+  else tone = "Limited";
+  const body =
+    tone === "Insufficient"
+      ? "Fewer than two growth prints are on the card. Missing growth is not treated as 0%. This is not a forecast."
+      : tone === "Supportive"
+        ? "The growth prints on file point the same way. Evidence only — not a forecast and not the growth the price requires."
+        : tone === "Mixed"
+          ? "The prints on file do not agree, or cash conversion is weak beside the growth. Evidence only — not a forecast."
+          : "Only a few growth prints are on file. Not enough to call the evidence supportive. Not a forecast.";
+  return { tone, body, items };
 }
 

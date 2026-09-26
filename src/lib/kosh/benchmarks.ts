@@ -31,24 +31,31 @@ export const TAPE: { id: string; symbol: string; label: string }[] = [
   { id: "silver", symbol: "SILVER", label: "SILVER" },
 ];
 
-/** Prefer Nifty indices that actually have 10y daily bars on Yahoo.
- *  Several CNX sector tickers only return a last price — use the ETF that tracks them. */
-export const SECTOR_BENCH: Record<string, BenchMeta> = {
+/** Prefer the real index. Null means we do not have that sector index — never relabel Nifty 500. */
+export const SECTOR_BENCH: Record<string, BenchMeta | null> = {
   Financials: { symbol: "^NSEBANK", name: "Nifty Bank" },
   IT: { symbol: "^CNXIT", name: "Nifty IT" },
   Healthcare: { symbol: "^CNXPHARMA", name: "Nifty Pharma" },
-  Auto: { symbol: "AUTOBEES.NS", name: "Nifty Auto ETF" },
-  FMCG: { symbol: "CONSUMBEES.NS", name: "Nifty Consumption" },
-  Consumer: { symbol: "CONSUMBEES.NS", name: "Nifty Consumption" },
-  Energy: { symbol: "CPSEETF.NS", name: "CPSE ETF" },
-  Telecom: { symbol: "^NSEI", name: "Nifty 50" },
-  Materials: { symbol: "^CRSLDX", name: "Nifty 500" },
-  Chemicals: { symbol: "^CRSLDX", name: "Nifty 500" },
-  Industrials: { symbol: "^CRSLDX", name: "Nifty 500" },
-  Realty: { symbol: "^CRSLDX", name: "Nifty 500" },
-  Other: { symbol: "^NSEI", name: "Nifty 50" },
-  Commodities: { symbol: "XAUINR=X", name: "Gold (INR)" },
+  Auto: { symbol: "^CNXAUTO", name: "Nifty Auto" },
+  FMCG: { symbol: "^CNXFMCG", name: "Nifty FMCG" },
+  Consumer: { symbol: "^CNXFMCG", name: "Nifty FMCG" },
+  Energy: { symbol: "^CNXENERGY", name: "Nifty Energy" },
+  Metal: { symbol: "^CNXMETAL", name: "Nifty Metal" },
+  Materials: { symbol: "^CNXMETAL", name: "Nifty Metal" },
+  Realty: { symbol: "^CNXREALTY", name: "Nifty Realty" },
+  Infra: { symbol: "^CNXINFRA", name: "Nifty Infra" },
+  Telecom: null,
+  Chemicals: null,
+  Industrials: null,
+  Other: null,
+  Commodities: null,
 };
+
+export function sectorIndex(sector: string | null | undefined): BenchMeta | null {
+  if (!sector) return null;
+  if (sector in SECTOR_BENCH) return SECTOR_BENCH[sector];
+  return null;
+}
 
 export function resolveBench(key: string | undefined | null): BenchMeta {
   if (!key) return BENCH.nifty;
@@ -59,5 +66,5 @@ export function resolveBench(key: string | undefined | null): BenchMeta {
 }
 
 export function allSectorBenchSymbols(): string[] {
-  return [...new Set(Object.values(SECTOR_BENCH).map((s) => s.symbol))];
+  return [...new Set(Object.values(SECTOR_BENCH).flatMap((s) => (s ? [s.symbol] : [])))];
 }

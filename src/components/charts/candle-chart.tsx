@@ -22,12 +22,16 @@ import {
 import { detectPatterns, patternStatusLabel, type PatternHit } from "@/lib/kosh/patterns";
 import { applyDrag, channelOffFromThird, hitTest, magnetPrice, positionMetrics, type HitMode } from "@/lib/kosh/draw-hit";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
+import { panBy, zoomAround } from "@/lib/kosh/chart-nav";
+import { applyHistoricalFx, alignIndexed, indexedGap, istDay } from "@/lib/kosh/relative";
+import { histInit, histPush, histRedo, histUndo, type DrawHist } from "@/lib/kosh/draw-history";
 import { apiOhlc } from "@/lib/kosh/api";
 import { Seg } from "@/components/seg";
 import { cn } from "@/lib/utils";
 import { bareSymbol, drawKey, newDrawId, useKosh, type DrawKind, type DrawShape } from "@/lib/store";
 import {
   Minus,
+  Plus,
   MoveRight,
   Square,
   Spline,
@@ -113,6 +117,35 @@ function alignCompare(src: OhlcBar[], cmp: OhlcBar[]) {
   });
 }
 
+/** Visible window only. Both series start at 100 on the first shared day. */
+function indexWindow(stock: OhlcBar[], bench: OhlcBar[]) {
+  const aligned = alignIndexed(
+    stock.map((b) => ({ t: b.t, c: b.c })),
+    bench.map((b) => ({ t: b.t, c: b.c })),
+  );
+  if (aligned.length < 2) return null;
+  const by = new Map(aligned.map((p) => [istDay(p.t), p]));
+  const first = stock.find((b) => by.has(istDay(b.t)) && b.c > 0);
+  if (!first) return null;
+  const s0 = first.c;
+  const bars: OhlcBar[] = [];
+  const compare: (number | null)[] = [];
+  for (const b of stock) {
+    const row = by.get(istDay(b.t));
+    if (!row || !(b.c > 0) || !(b.o > 0) || !(b.h > 0) || !(b.l > 0)) continue;
+    bars.push({
+      ...b,
+      o: (b.o / s0) * 100,
+      h: (b.h / s0) * 100,
+      l: (b.l / s0) * 100,
+      c: (b.c / s0) * 100,
+    });
+    compare.push(row.bench);
+  }
+  if (bars.length < 2) return null;
+  return { bars, compare, gap: indexedGap(aligned) };
+}
+
 type Layout = {
   n: number;
   xOf: (i: number) => number;
@@ -157,6 +190,7 @@ function PlotSvg({
   intra,
   logScale,
   compare,
+  indexScale = false,
   measure,
   vh,
   volOn,
@@ -170,6 +204,8 @@ function PlotSvg({
   intra: boolean;
   logScale: boolean;
   compare: (number | null)[];
+  /** Both series are already indexed to 100. Do not convert them to percent-from-first. */
+  indexScale?: boolean;
   measure: [number, number] | null;
   vh: number;
   volOn: boolean;
@@ -209,7 +245,8 @@ function PlotSvg({
   const vpBins = inds.vp ? volumeProfile(src, 22) : [];
   const maxVp = Math.max(...vpBins.map((x) => x.vol), 1);
 
-  const rel = compare.some((x) => x != null);
+  const rel = !indexScale && compare.some((x) => x != null);
+  const showCmp = compare.some((x) => x != null);
   const base = src[0]?.c || 1;
   const cmpBase = compare.find((x) => x != null && x > 0) || 1;
   const yVal = (v: number) => (rel ? (v / base - 1) * 100 : v);
@@ -231,6 +268,7 @@ function PlotSvg({
   if (inds.ma50) ma50.forEach((v) => consider(v ?? undefined));
   if (inds.ma200) ma200.forEach((v) => consider(v ?? undefined));
   if (rel) compare.forEach((v) => v != null && v > 0 && consider(base * (v / cmpBase)));
+  if (indexScale) compare.forEach((v) => v != null && v > 0 && consider(v));
   if (!Number.isFinite(hi) || !Number.isFinite(lo) || hi === lo) {
     hi = rel ? 2 : src[n - 1]?.c || 1;
     lo = rel ? -2 : hi * 0.98;
@@ -401,7 +439,15 @@ function PlotSvg({
       {inds.ma200 ? <path d={linePath(ma200)} fill="none" stroke={MA200} strokeWidth="1.6" vectorEffect="nonScalingStroke" /> : null}
       {inds.ema21 ? <path d={linePath(e21)} fill="none" stroke={DOWN} strokeWidth="1.3" strokeDasharray="4 3" vectorEffect="nonScalingStroke" /> : null}
       {inds.vwap ? <path d={linePath(vw)} fill="none" stroke={MA50} strokeWidth="1.3" vectorEffect="nonScalingStroke" /> : null}
-      {rel ? <path d={linePath(compare, (v) => base * (v / cmpBase))} fill="none" stroke={CMP} strokeWidth="1.6" vectorEffect="nonScalingStroke" /> : null}
+      {showCmp ? (
+        <path
+          d={linePath(compare, rel ? (v) => base * (v / cmpBase) : (v) => v)}
+          fill="none"
+          stroke={CMP}
+          strokeWidth="1.6"
+          vectorEffect="nonScalingStroke"
+        />
+      ) : null}
 
       {measure ? (
         <g>
@@ -970,6 +1016,26 @@ export function CandleChart({
   if (!live.isPlaceholderData) specRef.current = spec;
   const activeSpec = specRef.current;
   const horizon = (live.data && !live.data.missing && live.data.bars?.length ? live.data.bars : bars) || EMPTY_BARS;
+  const chartMode = prefs.chartMode || "price";
+  const chartHeight = prefs.chartHeight || 580;
+  const benchQ = useQuery({
+    queryKey: ["ohlc", "^NSEI", "5y", "1d"],
+    queryFn: () => apiOhlc("^NSEI", "5y", "1d"),
+    enabled: chartMode === "bench",
+    staleTime: 60_000,
+  });
+  const fxQ = useQuery({
+    queryKey: ["ohlc", "INR=X", "5y", "1d"],
+    queryFn: () => apiOhlc("INR=X", "5y", "1d"),
+    enabled: chartMode === "usd",
+    staleTime: 60_000,
+  });
+  const priceHorizon = useMemo(() => {
+    if (chartMode !== "usd") return horizon;
+    const adj = applyHistoricalFx(horizon, fxQ.data?.bars || []);
+    return adj.bars.length >= 2 ? adj.bars : horizon;
+  }, [chartMode, horizon, fxQ.data]);
+  const cmpSource = chartMode === "bench" ? benchQ.data?.bars || [] : compareBars || EMPTY_BARS;
   const chartIntra = live.data && !live.data.missing && live.data.bars?.length ? activeSpec.intra : intra;
   const updating = Boolean(symbol) && live.isFetching;
   const [measureOn, setMeasureOn] = useState(false);
@@ -996,29 +1062,40 @@ export function CandleChart({
   const menuRef = useRef<HTMLDivElement>(null);
   const key = symbol ? drawKey(symbol, intervalId) : "";
   const [shapes, setShapes] = useState<DrawShape[]>(() => (key ? useKosh.getState().drawings[key] || [] : []));
+  const drawHist = useRef<DrawHist<DrawShape>>(histInit([]));
   const wrapRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const vLine = useRef<HTMLDivElement>(null);
   const hLine = useRef<HTMLDivElement>(null);
   const tag = useRef<HTMLDivElement>(null);
+  const dateTag = useRef<HTMLDivElement>(null);
   const read = useRef<HTMLDivElement>(null);
   const layout = useRef<Layout | null>(null);
   const drag = useRef<{ x: number; start: number; moved: boolean } | null>(null);
   const shapeDrag = useRef<{ id: string; mode: HitMode; t: number; y: number; orig: DrawShape } | null>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
-  const cmpHorizon = compareBars || EMPTY_BARS;
-  const full = horizon;
+  const cmpHorizon = cmpSource;
+  const full = priceHorizon;
   const nAll = full.length;
   const count = view.count > 0 ? Math.min(view.count, nAll) : nAll;
   const start = Math.max(0, Math.min(Math.max(0, nAll - count), view.start));
   const sliceEnd = replayOn ? Math.max(8, Math.min(nAll, replayEnd || nAll)) : start + count;
   const sliceStart = replayOn ? 0 : start;
-  const src = useMemo(() => full.slice(sliceStart, sliceEnd), [full, sliceStart, sliceEnd]);
-  const compare = useMemo(() => alignCompare(src, cmpHorizon), [src, cmpHorizon]);
+  const windowBars = useMemo(() => full.slice(sliceStart, sliceEnd), [full, sliceStart, sliceEnd]);
+  const benchView = useMemo(
+    () => (chartMode === "bench" ? indexWindow(windowBars, benchQ.data?.bars || []) : null),
+    [chartMode, windowBars, benchQ.data],
+  );
+  const src = benchView?.bars ?? windowBars;
+  const indexScale = Boolean(benchView);
+  const compare = useMemo(() => {
+    if (chartMode === "bench") return benchView?.compare ?? windowBars.map(() => null);
+    return alignCompare(windowBars, cmpHorizon);
+  }, [chartMode, benchView, windowBars, cmpHorizon]);
   const oscN = (inds.rsi ? 1 : 0) + (inds.macd ? 1 : 0) + (inds.stoch ? 1 : 0) + (inds.atr ? 1 : 0);
   const volH = volOn ? VOL_H : 0;
-  const baseH = fs ? fsH : narrow ? 300 : 420;
+  const baseH = fs ? fsH : narrow ? 300 : chartHeight;
   const vh = baseH + oscN * OSC_H;
   const last = src[src.length - 1];
   const atrLast = lastNum(atr(src));
@@ -1101,7 +1178,11 @@ export function CandleChart({
       if (tagName === "INPUT" || tagName === "TEXTAREA") return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        commit(shapes.slice(0, -1));
+        const step = e.shiftKey ? histRedo(drawHist.current) : histUndo(drawHist.current);
+        if (!step) return;
+        drawHist.current = step.hist;
+        setShapes(step.shapes);
+        if (key) setDrawings(key, step.shapes);
         setSelectedId(null);
         return;
       }
@@ -1137,6 +1218,7 @@ export function CandleChart({
   }, [draft, fs, tool, selectedId, shapes]);
 
   function commit(next: DrawShape[]) {
+    drawHist.current = histPush(drawHist.current, next);
     setShapes(next);
     if (key) setDrawings(key, next);
   }
@@ -1144,13 +1226,21 @@ export function CandleChart({
   useEffect(() => {
     const n = src.length;
     const plotH = vh - PAD.t - PAD.b - volH - oscN * OSC_H;
-    const rel = compare.some((x) => x != null);
+    const rel = !indexScale && compare.some((x) => x != null);
     const base = src[0]?.c || 1;
     let hi = -Infinity;
     let lo = Infinity;
     for (const b of src) {
       if (b.h > hi) hi = b.h;
       if (b.l < lo) lo = b.l;
+    }
+    if (indexScale) {
+      for (const v of compare) {
+        if (v != null && v > 0) {
+          if (v > hi) hi = v;
+          if (v < lo) lo = v;
+        }
+      }
     }
     if (!Number.isFinite(hi)) {
       hi = last?.c || 1;
@@ -1191,7 +1281,7 @@ export function CandleChart({
       },
     };
     setLayoutGen((g) => g + 1);
-  }, [src, vh, oscN, logScale, compare, last, volH]);
+  }, [src, vh, oscN, logScale, compare, last, volH, indexScale]);
 
   function svgXY(e: { clientX: number; clientY: number }) {
     const el = wrapRef.current;
@@ -1205,7 +1295,8 @@ export function CandleChart({
 
   function paint(i: number, yPx: number) {
     const L = layout.current;
-    if (!L || !src[i]) return;
+    const b = src[i];
+    if (!L || !b) return;
     const xPct = (L.xOf(i) / VW) * 100;
     const yPct = (Math.min(L.plotBot, Math.max(L.plotTop, yPx)) / vh) * 100;
     if (vLine.current) vLine.current.style.left = xPct + "%";
@@ -1214,7 +1305,11 @@ export function CandleChart({
       tag.current.style.top = yPct + "%";
       tag.current.textContent = nice(L.vOf(yPx));
     }
-    const b = src[i];
+    if (dateTag.current) {
+      dateTag.current.style.left = xPct + "%";
+      dateTag.current.style.display = "block";
+      dateTag.current.textContent = fmtT(b.t, chartIntra);
+    }
     if (read.current) {
       const ch = b.o ? (((b.c - b.o) / b.o) * 100).toFixed(2) + "%" : "";
       read.current.textContent = `${fmtT(b.t, chartIntra)}   O ${nice(b.o)}  H ${nice(b.h)}  L ${nice(b.l)}  C ${nice(b.c)}  ${ch}  Vol ${fmtVol(b.v)}`;
@@ -1410,10 +1505,13 @@ export function CandleChart({
       const L = layout.current;
       const t = L ? (x - PAD.l) / (VW - PAD.l - PAD.r) : 0.5;
       const cur = count || nAll;
-      const nextCount = Math.max(20, Math.min(nAll, Math.round(cur * (e.deltaY > 0 ? 1.18 : 0.82))));
-      const center = start + t * cur;
-      const nextStart = Math.max(0, Math.min(nAll - nextCount, Math.round(center - t * nextCount)));
-      setView({ start: nextStart, count: nextCount });
+      if (e.shiftKey) {
+        const dir = e.deltaY > 0 || e.deltaX > 0 ? 1 : -1;
+        const step = Math.max(1, Math.round(cur * 0.08)) * dir;
+        setView(panBy({ start, count: cur }, nAll, step));
+        return;
+      }
+      setView(zoomAround({ start, count: cur }, nAll, Math.round(t * cur), e.deltaY < 0));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
@@ -1571,6 +1669,25 @@ export function CandleChart({
           >
             Log
           </button>
+          {(
+            [
+              ["price", "Price"],
+              ["bench", "vs Nifty"],
+              ["usd", "USD"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => patchChartPrefs({ chartMode: id })}
+              className={cn(
+                "h-8 rounded-sm px-2.5 text-[11px] font-semibold shadow-[var(--shadow-border)]",
+                chartMode === id ? "bg-surface-2 text-fg" : "bg-bg text-muted",
+              )}
+            >
+              {label}
+            </button>
+          ))}
           <div className="relative">
             <button
               type="button"
@@ -1712,8 +1829,37 @@ export function CandleChart({
           </button>
           <button
             type="button"
+            title="Shorter chart"
+            onClick={() => patchChartPrefs({ chartHeight: Math.max(360, chartHeight - 40) })}
+            className="inline-flex h-8 items-center rounded-sm bg-bg px-2 text-[11px] font-medium text-muted shadow-[var(--shadow-border)]"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            title="Taller chart"
+            onClick={() => patchChartPrefs({ chartHeight: Math.min(900, chartHeight + 40) })}
+            className="inline-flex h-8 items-center rounded-sm bg-bg px-2 text-[11px] font-medium text-muted shadow-[var(--shadow-border)]"
+          >
+            +
+          </button>
+          <button
+            type="button"
             title={fs ? "Exit fullscreen" : "Fullscreen"}
-            onClick={() => setFs((s) => !s)}
+            onClick={() => {
+              const el = wrapRef.current;
+              if (!el) {
+                setFs((s) => !s);
+                return;
+              }
+              if (document.fullscreenElement) {
+                void document.exitFullscreen();
+                setFs(false);
+              } else if (el.requestFullscreen) {
+                void el.requestFullscreen();
+                setFs(true);
+              } else setFs((s) => !s);
+            }}
             className={cn("inline-flex h-8 items-center rounded-sm px-2.5 text-[11px] font-medium shadow-[var(--shadow-border)]", fs ? "bg-surface-2 text-fg" : "bg-bg text-muted")}
           >
             {fs ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
@@ -1833,6 +1979,18 @@ export function CandleChart({
       {measTxt ? <div className="mt-1 font-mono text-[11px] text-fg tabular">{measTxt}</div> : null}
       {compareLabel && compare.some((x) => x != null) ? (
         <div className="mt-1 text-[11px] text-warn">Overlaid vs {compareLabel} (both as % from the first print in view)</div>
+      ) : chartMode === "bench" ? (
+        <div className="mt-1 text-[11px] text-muted">
+          {benchView
+            ? `Nifty 50 indexed to 100 on the first shared day in view${benchView.gap != null ? ` · ${benchView.gap >= 0 ? "+" : ""}${benchView.gap.toFixed(1)} pp vs Nifty 50` : ""}. Not a signal.`
+            : benchQ.isPending
+              ? "Loading Nifty 50 history…"
+              : "Nifty 50 history unavailable for this window."}
+        </div>
+      ) : chartMode === "usd" ? (
+        <div className="mt-1 text-[11px] text-muted">
+          {fxQ.data?.bars?.length ? "USD using each bar’s historical USD/INR. Not today’s rate on old bars." : "USD/INR history unavailable — price scale unchanged."}
+        </div>
       ) : null}
 
       <div
@@ -1851,6 +2009,7 @@ export function CandleChart({
           intra={chartIntra}
           logScale={logScale}
           compare={compare}
+          indexScale={indexScale}
           measure={measure}
           vh={vh}
           volOn={volOn}
@@ -1898,6 +2057,11 @@ export function CandleChart({
         <div ref={hLine} className="kosh-cross-h" />
         <div ref={tag} className="kosh-px-tag" />
         <div
+          ref={dateTag}
+          className="pointer-events-none absolute bottom-1 z-[5] -translate-x-1/2 rounded-sm bg-surface-2 px-1 py-0.5 font-mono text-[10px] text-fg"
+          style={{ display: "none" }}
+        />
+        <div
           ref={overlayRef}
           className="absolute inset-0 z-10 touch-none"
           style={{ cursor: tool === "pan" ? (selectedId ? "move" : "crosshair") : "cell" }}
@@ -1908,8 +2072,60 @@ export function CandleChart({
           onPointerLeave={() => {
             if (vLine.current) vLine.current.style.left = "-9px";
             if (hLine.current) hLine.current.style.top = "-9px";
+            if (dateTag.current) dateTag.current.style.display = "none";
           }}
         />
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1" data-testid="chart-nav">
+        <button
+          type="button"
+          onClick={() => {
+            const cur = viewRef.current.count > 0 ? viewRef.current.count : nAll;
+            const startNow = viewRef.current.count > 0 ? viewRef.current.start : 0;
+            setView(zoomAround({ start: startNow, count: cur }, nAll, Math.round(cur / 2), false));
+          }}
+          className="h-8 rounded-sm bg-bg px-2.5 text-[11px] font-medium text-muted shadow-[var(--shadow-border)]"
+        >
+          Zoom out
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const cur = viewRef.current.count > 0 ? viewRef.current.count : nAll;
+            const startNow = viewRef.current.count > 0 ? viewRef.current.start : 0;
+            setView(zoomAround({ start: startNow, count: cur }, nAll, Math.round(cur / 2), true));
+          }}
+          className="inline-flex h-8 items-center gap-1 rounded-sm bg-bg px-2.5 text-[11px] font-medium text-muted shadow-[var(--shadow-border)]"
+        >
+          <Plus className="size-3.5" />
+          Zoom in
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const vis = Math.min(TF_VIEW[intervalId] || 252, nAll || 0);
+            setView({ start: Math.max(0, (nAll || 0) - vis), count: vis || 1 });
+            setReplayOn(false);
+            setPlaying(false);
+          }}
+          className="inline-flex h-8 items-center gap-1 rounded-sm bg-bg px-2.5 text-[11px] font-medium text-muted shadow-[var(--shadow-border)]"
+        >
+          <MoveRight className="size-3.5" />
+          Go to latest
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const vis = Math.min(TF_VIEW[intervalId] || 252, nAll || 0);
+            setView({ start: Math.max(0, (nAll || 0) - vis), count: vis || 1 });
+            setReplayOn(false);
+            setPlaying(false);
+            setReplayEnd(nAll);
+          }}
+          className="h-8 rounded-sm bg-bg px-2.5 text-[11px] font-medium text-muted shadow-[var(--shadow-border)]"
+        >
+          Reset view
+        </button>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-subtle">
         <span className="font-mono tabular">

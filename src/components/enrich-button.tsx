@@ -27,10 +27,11 @@ export function EnrichButton({ symbols }: { symbols: string[] }) {
           }
           if (Object.keys(rows).length) setDeepFunds(rows);
           const n = Object.keys(rows).length;
+          const missed = eq.length - n;
           toast.success(
             n
-              ? `Loaded full company data for ${n} of ${eq.length} name${eq.length === 1 ? "" : "s"}. Filings stay for everyone who opens a company page.`
-              : "No extra filings found for these names. Existing numbers were left as they are.",
+              ? `Refreshed ${n} of ${eq.length}. Available fields were filled where a filing had them. Existing numbers were not replaced with blanks.${missed ? ` ${missed} still unavailable.` : ""}`
+              : "Still unavailable — no extra filings for these names. Existing numbers were left as they are.",
           );
         } catch (e) {
           toast.error(e instanceof Error ? e.message : "Could not load filings");
@@ -39,7 +40,7 @@ export function EnrichButton({ symbols }: { symbols: string[] }) {
         }
       }}
     >
-      {busy ? "Loading filings…" : nHave ? `Refresh company data · ${nHave}/${eq.length}` : "Load full company data"}
+      {busy ? "Loading data…" : nHave ? `Refresh data · ${nHave}/${eq.length}` : "Load data"}
     </Button>
   );
 }

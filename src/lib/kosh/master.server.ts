@@ -62,6 +62,7 @@ export function parseEquityCsv(text: string): Security[] {
   const iSeries = headers.findIndex((h) => h.includes("SERIES"));
   const iDate = headers.findIndex((h) => h.includes("DATE OF LISTING") || h.includes("LISTING"));
   const iIsin = headers.findIndex((h) => h.includes("ISIN"));
+  const iBse = headers.findIndex((h) => h === "BSE CODE" || h.includes("BSE CODE") || h === "SCRIP CODE");
   if (iSym < 0) return [];
   const rows: Security[] = [];
   for (const line of lines.slice(1)) {
@@ -78,6 +79,8 @@ export function parseEquityCsv(text: string): Security[] {
       .trim()
       .toUpperCase();
     const isin = /^IN[A-Z0-9]{10}$/.test(isinRaw) ? isinRaw : null;
+    const bseRaw = String(iBse >= 0 ? cols[iBse] : "").trim();
+    const bseCode = /^\d{4,7}$/.test(bseRaw) ? bseRaw : null;
     const listedOn = parseListingDate(iDate >= 0 ? cols[iDate] : "");
     const cls = classifySecurity(series, name);
     if (!cls.screener) continue;
@@ -88,6 +91,7 @@ export function parseEquityCsv(text: string): Security[] {
       series,
       listedOn,
       exchange: "NSE",
+      bseCode,
       board: cls.board,
       active: true,
       kind: cls.kind,

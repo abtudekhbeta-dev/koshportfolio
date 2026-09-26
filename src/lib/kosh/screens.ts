@@ -16,6 +16,8 @@ export type SortKey =
   | "pe"
   | "pb"
   | "roe"
+  | "roce"
+  | "opm"
   | "de"
   | "mcapCr"
   | "divYield"

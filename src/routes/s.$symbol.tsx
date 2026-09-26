@@ -293,7 +293,7 @@ function StockBody({
       ) : null}
       <SnapshotCard snap={snap} simple={models.simple} />
       <CoverageLine cov={cov} />
-      <ValuationModels pack={models} />
+      <ValuationModels pack={models} fund={fundData} />
 
       <nav className="flex flex-wrap gap-1" role="tablist" aria-label="Stock sections">
         {(

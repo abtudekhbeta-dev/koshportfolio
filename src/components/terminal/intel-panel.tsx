@@ -10,7 +10,7 @@ import { patternStatusLabel, type PatternHit } from "@/lib/kosh/patterns";
 import { buildSnapshot } from "@/lib/kosh/snapshot";
 import { pickScreenRow } from "@/lib/kosh/screens";
 import { stakeDelta, formatShPeriod } from "@/lib/kosh/shareholding";
-import { buildValuationModels, earningsQualityRead } from "@/lib/kosh/valuation";
+import { buildValuationModels, earningsQualityRead, growthEvidence } from "@/lib/kosh/valuation";
 import { formatFinPeriod } from "@/lib/kosh/fin-series";
 import { WordChip } from "@/components/kosh-snapshot";
 import { bareSymbol, useKosh } from "@/lib/store";
@@ -280,25 +280,27 @@ function ValuationTab({
 }) {
   const simple = models.simple;
   const reverse = models.models.find((m) => m.id === "C");
+  const ev = growthEvidence(fund);
   const pes = models.hist.map((h) => h.pe).filter((x): x is number => x != null && x > 0);
   const med = pes.length >= 4 ? [...pes].sort((a, b) => a - b)[Math.floor(pes.length / 2)] : null;
   return (
-    <div className="grid gap-3 lg:grid-cols-[1.2fr_1fr]">
+    <div className="grid gap-3">
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
         <Metric label="P/E" value={n(fund?.pe, (x) => x.toFixed(1) + "x")} />
         <Metric label="Industry" value={n(fund?.industryPe, (x) => x.toFixed(1) + "x")} />
         <Metric label="Hist median" value={n(med, (x) => x.toFixed(1) + "x")} />
-        <Metric label="P/B" value={n(fund?.pb, (x) => x.toFixed(2))} />
-        <Metric label="PEG" value={n(fund?.peg, (x) => x.toFixed(2))} />
-        <Metric label="Reverse" value={reverse?.figure || "—"} />
+        <Metric label="Requires" value={reverse?.figure || "—"} />
       </div>
+      <p className="text-[12px] leading-relaxed text-muted">{reverse?.body || "Not enough data for reverse valuation."}</p>
+      <p className="text-[11px] text-subtle">
+        Growth evidence: {ev.tone}. {ev.body}
+      </p>
       <div>
         <div className="mb-1 flex items-center gap-2">
-          <span className="text-[11px] tracking-[0.08em] text-subtle uppercase">Kosh valuation</span>
+          <span className="text-[11px] tracking-[0.08em] text-subtle uppercase">P/E vs industry</span>
           <WordChip word={simple.word} />
         </div>
         <p className="text-[12px] leading-relaxed text-muted">{simple.body || simple.figure}</p>
-        <p className="mt-1 text-[11px] text-subtle">{simple.note}</p>
       </div>
     </div>
   );
@@ -306,16 +308,17 @@ function ValuationTab({
 
 function GrowthTab({ fund }: { fund: Fundamentals | null }) {
   if (!fund) return <p className="text-[13px] text-muted">Insufficient data.</p>;
+  const ev = growthEvidence(fund);
   const sales = fund.sales?.slice(-6) || [];
   return (
     <div>
+      <p className="mb-2 text-[12px] text-muted">
+        {ev.tone}. {ev.body}
+      </p>
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-        <Metric label="Sales 1Y" value={n(fund.salesYoY, (x) => fmtPct(x))} tone={fund.salesYoY != null ? (fund.salesYoY >= 0 ? "up" : "down") : undefined} />
-        <Metric label="Profit 1Y" value={n(fund.profitYoY, (x) => fmtPct(x))} tone={fund.profitYoY != null ? (fund.profitYoY >= 0 ? "up" : "down") : undefined} />
-        <Metric label="Sales 3Y" value={n(fund.salesCagr3, (x) => fmtPct(x))} />
-        <Metric label="Profit 3Y" value={n(fund.profitCagr3, (x) => fmtPct(x))} />
-        <Metric label="OPM" value={n(fund.opm, (x) => x.toFixed(1) + "%")} />
-        <Metric label="ROCE" value={n(fund.roce, (x) => x.toFixed(1) + "%")} />
+        {ev.items.map((item) => (
+          <Metric key={item.label} label={item.label} value={item.value ?? "Unavailable"} />
+        ))}
       </div>
       {sales.length >= 2 ? (
         <p className="mt-3 text-[12px] text-muted">

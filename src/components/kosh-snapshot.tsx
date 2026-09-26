@@ -1,7 +1,8 @@
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { KoshSnapshot } from "@/lib/kosh/snapshot";
-import type { ValModel, ValueWord, ValuationModelsPack } from "@/lib/kosh/valuation";
+import { growthEvidence, type ValModel, type ValueWord, type ValuationModelsPack } from "@/lib/kosh/valuation";
+import type { Fundamentals } from "@/lib/kosh/types";
 import { coverageLabel, type CoverageCard as CoverageModel } from "@/lib/kosh/coverage";
 
 export function CoverageCard({ cov }: { cov: CoverageModel }) {
@@ -128,18 +129,53 @@ function ModelBlock({ model }: { model: ValModel }) {
   );
 }
 
-export function ValuationModels({ pack }: { pack: ValuationModelsPack }) {
+export function ValuationModels({ pack, fund }: { pack: ValuationModelsPack; fund?: Fundamentals | null }) {
+  const ev = growthEvidence(fund);
+  const reverse = pack.models.find((m) => m.id === "C");
   return (
     <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
-      <div className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Valuation models</div>
+      <div className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">What the price requires</div>
       <p className="mt-1 text-[12px] text-subtle">
-        One word is a comparison of the prints we have — Cheaper, About right, Expensive, or Not enough data. Not a buy
-        call.
+        Reverse valuation is the main read: the earnings growth today's price requires if the exit multiple is the
+        reported industry multiple in five years. No discount rate is applied. Not a forecast.
       </p>
-      <div className="mt-3 grid gap-3 lg:grid-cols-3">
-        {pack.models.map((m) => (
-          <ModelBlock key={m.id} model={m} />
+      {reverse ? (
+        <div className="mt-3 rounded-sm bg-bg px-3 py-3 shadow-[var(--shadow-border)]">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="text-[13px] font-semibold">{reverse.title}</h3>
+            <WordChip word={reverse.word} />
+          </div>
+          <p className="mt-1 font-mono text-[13px] tabular text-muted">{reverse.figure}</p>
+          <p className="mt-2 text-[13px] leading-relaxed text-fg">{reverse.body}</p>
+          <p className="mt-2 text-[11px] text-subtle">{reverse.note}</p>
+        </div>
+      ) : null}
+
+      <div className="mt-4 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Growth evidence</div>
+      <p className="mt-1 text-[12px] text-subtle">
+        {ev.tone}. {ev.body} Sales CAGR over five years and management guidance are not on the card, so they stay
+        unavailable.
+      </p>
+      <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
+        {ev.items.map((item) => (
+          <li key={item.label} className="flex items-baseline justify-between gap-2 border-b border-border/50 py-1 text-[12px]">
+            <span className="text-muted">{item.label}</span>
+            <span className="font-mono tabular">{item.value ?? "Unavailable"}</span>
+          </li>
         ))}
+      </ul>
+
+      <div className="mt-4 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Other comparisons</div>
+      <p className="mt-1 text-[12px] text-subtle">
+        One word is a comparison of the prints we have — Cheaper, About right, Expensive, or Not enough data. The
+        optional scenario still labels a 12% discount as a model assumption, not a company fact. Not a buy call.
+      </p>
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+        {pack.models
+          .filter((m) => m.id !== "C")
+          .map((m) => (
+            <ModelBlock key={m.id} model={m} />
+          ))}
       </div>
       {pack.graham != null ? (
         <p className="mt-3 text-[12px] text-muted">

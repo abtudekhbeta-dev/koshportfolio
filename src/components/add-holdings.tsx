@@ -204,10 +204,10 @@ function FilePane({
         />
         Drop a holdings export or a buy/sell trade book
         <div className="mt-1 text-[12px] text-subtle">
-          Click to pick · CSV or Excel. Trade books are netted (partial exits kept, sold names dropped) and every dated
-          buy/sell is kept for your path on the same chart as Mix. A workbook with both a holdings sheet and a trade
-          book keeps snapshot quantities and fills dates from the trades. Fill never adds extras. Update from file sets
-          quantity on matches without doubling.
+          Click to pick · CSV or Excel. Read on this device — your original broker file is not uploaded to Kosh.
+          Trade books are netted (partial exits kept, sold names dropped). Dated buy/sell lines stay on Path only.
+          This overview chart is the current mix and does not draw that path. Fill never adds extras. Update from file
+          sets quantity on matches without doubling.
         </div>
       </label>
       <p className="mt-2 text-[12px] text-subtle">{busy ? "Reading…" : msg}</p>
@@ -247,7 +247,7 @@ function FilePane({
           ) : null}
           {previewTrades.length ? (
             <p className="mt-2 text-[12px] text-muted">
-              {previewTrades.length} buy/sell line{previewTrades.length === 1 ? "" : "s"} in this file — they draw Your path on the same chart as This mix.
+              {previewTrades.length} buy/sell line{previewTrades.length === 1 ? "" : "s"} in this file — kept for Path only. This mix is unchanged.
             </p>
           ) : null}
           {existing?.length ? (

@@ -241,6 +241,8 @@ function ScreenPage() {
                       {head("pe", "P/E")}
                       {head("pb", "P/B")}
                       {head("roe", "ROE")}
+                      {head("roce", "ROCE")}
+                      {head("opm", "OPM")}
                       {head("de", "D/E")}
                       {head("promoters", "Promoters")}
                       {head("mcapCr", "Mcap")}
@@ -303,6 +305,8 @@ function ScreenPage() {
                           <Num n={r.pe} d={1} />
                           <Num n={r.pb} d={2} />
                           <Num n={r.roe} d={1} suffix="%" />
+                          <Num n={r.roce} d={1} suffix="%" />
+                          <Num n={r.opm} d={1} suffix="%" />
                           <Num n={r.de} d={2} />
                           <Num n={r.promoters} d={1} suffix="%" />
                           <td className="px-3 py-2 font-mono tabular">
@@ -401,8 +405,12 @@ function ScreenPage() {
                       <div className="font-mono tabular">{r.pe != null ? r.pe.toFixed(1) : "—"}</div>
                     </div>
                     <div>
-                      <div className="text-[11px] text-subtle">RSI</div>
-                      <div className="font-mono tabular">{r.rsi != null ? r.rsi.toFixed(0) : "—"}</div>
+                      <div className="text-[11px] text-subtle">ROCE</div>
+                      <div className="font-mono tabular">{r.roce != null ? `${r.roce.toFixed(1)}%` : "—"}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-subtle">OPM</div>
+                      <div className="font-mono tabular">{r.opm != null ? `${r.opm.toFixed(1)}%` : "—"}</div>
                     </div>
                       </>
                     )}

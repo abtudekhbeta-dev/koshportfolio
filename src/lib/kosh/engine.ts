@@ -577,7 +577,7 @@ export function sectorSleeve(rows: HoldingRow[], histories: Record<string, Bar[]
           ytd: ytdReturn(sleeve.nav).port,
           cagr: mixCagr(sleeve.nav),
         },
-        bench: SECTOR_BENCH[g.sector] || SECTOR_BENCH.Other,
+        bench: SECTOR_BENCH[g.sector] ?? null,
       };
     })
     .sort((a, b) => b.value - a.value);
@@ -764,6 +764,18 @@ export function assembleBook(args: {
 
   const sleeves: Sleeve[] = sectorSleeve(active, histories).map((s) => {
     const spec = s.bench;
+    if (!spec) {
+      return {
+        sector: s.sector,
+        value: s.value,
+        names: s.names,
+        symbols: s.symbols,
+        windows: s.windows,
+        indexName: "Benchmark unavailable",
+        indexSymbol: "",
+        index: { m1: null, m3: null, y1: null, ytd: null },
+      };
+    }
     const bars = packs[spec.symbol]?.bars || [];
     const idx = pathFromBars(bars, []);
     return {

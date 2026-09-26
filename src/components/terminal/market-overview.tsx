@@ -1,5 +1,5 @@
-import { Link } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MarketHeat } from "@/components/charts/market-heat";
 import { MiniBars, BreadthBar } from "@/components/charts/share-ring";
@@ -9,7 +9,8 @@ import { NewsBoard } from "@/components/news-board";
 import { PulseDesk } from "@/components/note-desk";
 import { canOpenStock } from "@/components/stock-link";
 import { apiNews, apiQuotes, apiScreener, apiTape } from "@/lib/kosh/api";
-import { fmtPct, fmtPx } from "@/lib/kosh/engine";
+import { sectorIndex } from "@/lib/kosh/benchmarks";
+import { fmtInr, fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { overlayQuotes, pickLiveSymbols } from "@/lib/kosh/live-overlay";
 import { isIstSession } from "@/lib/kosh/market-hours";
 import { applyScreen, sectorPulse } from "@/lib/kosh/screens";
@@ -25,6 +26,14 @@ export function MarketOverview() {
     refetchInterval: () => (isIstSession() ? 5_000 : 60_000),
   });
   const ports = useKosh((s) => s.portfolios);
+  const watchlists = useKosh((s) => s.watchlists);
+  const activeWatchId = useKosh((s) => s.activeWatchId);
+  const setDeskSymbol = useKosh((s) => s.setDeskSymbol);
+  const nav = useNavigate();
+  const [bookId, setBookId] = useState("all");
+  const [listId, setListId] = useState<string | null>(null);
+  const [moreHold, setMoreHold] = useState(false);
+  const [moreWatch, setMoreWatch] = useState(false);
   const watch = useKosh((s) => s.watch);
   const screen = useQuery({ queryKey: ["screener"], queryFn: apiScreener, staleTime: 10 * 60_000 });
   const rows = screen.data?.rows || [];
@@ -48,14 +57,50 @@ export function MarketOverview() {
     placeholderData: (prev) => prev,
   });
   const liveRows = overlayQuotes(rows, quotes.data);
-  const portRows = overlayQuotes(
-    liveRows.filter((r) => portSyms.includes(r.symbol)),
-    quotes.data,
-  ).sort((a, b) => b.changePct - a.changePct);
-  const watchRows = overlayQuotes(
-    liveRows.filter((r) => watchSyms.includes(r.symbol)),
-    quotes.data,
-  ).sort((a, b) => b.changePct - a.changePct);
+  const qBy = useMemo(() => {
+    const m = new Map<string, { price: number; previousClose: number; changePct: number; name?: string }>();
+    for (const q of quotes.data || []) {
+      const k = q.symbol.toUpperCase().replace(/\.(NS|BO)$/i, "");
+      m.set(k, q);
+    }
+    return m;
+  }, [quotes.data]);
+  const holdRows = useMemo(() => {
+    const chosen = bookId === "all" ? ports : ports.filter((p) => p.id === bookId);
+    const map = new Map<string, { symbol: string; name: string; qty: number }>();
+    for (const p of chosen) {
+      for (const h of p.holdings) {
+        const k = h.symbol.toUpperCase().replace(/\.(NS|BO)$/i, "");
+        if (!k) continue;
+        const cur = map.get(k) || { symbol: k, name: h.name || k, qty: 0 };
+        cur.qty += h.qty || 0;
+        if (h.name) cur.name = h.name;
+        map.set(k, cur);
+      }
+    }
+    const draft = [...map.values()].map((r) => {
+      const q = qBy.get(r.symbol);
+      const screenRow = liveRows.find((x) => x.symbol === r.symbol);
+      const last = q && q.price > 0 ? q.price : screenRow && screenRow.price > 0 ? screenRow.price : null;
+      const chg = last != null && q && q.previousClose > 0 ? last - q.previousClose : null;
+      const chgPct = q && Number.isFinite(q.changePct) ? q.changePct : screenRow?.changePct ?? null;
+      const value = last != null && r.qty ? last * r.qty : null;
+      return { ...r, last, chg, chgPct, value };
+    });
+    const total = draft.reduce((s, r) => s + (r.value || 0), 0);
+    return draft
+      .map((r) => ({ ...r, weight: r.value != null && total > 0 ? (r.value / total) * 100 : null }))
+      .sort((a, b) => (b.value || 0) - (a.value || 0));
+  }, [bookId, ports, qBy, liveRows]);
+  const activeList = watchlists.find((l) => l.id === (listId || activeWatchId)) || watchlists[0];
+  const embeddedWatch = (activeList?.symbols || []).map((s) => {
+    const k = s.toUpperCase().replace(/\.(NS|BO)$/i, "");
+    const q = qBy.get(k);
+    const screenRow = liveRows.find((x) => x.symbol === k);
+    const last = q && q.price > 0 ? q.price : screenRow && screenRow.price > 0 ? screenRow.price : null;
+    const chgPct = q && Number.isFinite(q.changePct) ? q.changePct : screenRow?.changePct ?? null;
+    return { symbol: k, name: q?.name || screenRow?.name || k, last, chgPct };
+  });
   const up = overlayQuotes(upSeed, quotes.data)
     .slice()
     .sort((a, b) => b.changePct - a.changePct)
@@ -122,35 +167,68 @@ export function MarketOverview() {
 
       {ports.some((p) => p.holdings.length) ? (
         <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
-          <div className="flex items-baseline justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Your holdings today</h2>
-            {ports.find((p) => p.holdings.length) ? (
-              <Link
-                to="/p/$id/holdings"
-                params={{ id: ports.find((p) => p.holdings.length)!.id }}
-                className="text-[12px] text-chart hover:underline"
-              >
-                View all holdings →
-              </Link>
-            ) : null}
-          </div>
-          {portRows.length ? (
-            <ul className="mt-2 grid gap-1 sm:grid-cols-2">
-              {portRows.slice(0, 8).map((r) => (
-                <li key={r.symbol}>
-                  <Link
-                    to="/s/$symbol"
-                    params={{ symbol: r.symbol }}
-                    className="flex items-center justify-between rounded-sm px-1 py-1.5 hover:bg-bg"
-                  >
-                    <span className="truncate text-[13px]">{r.name || r.symbol}</span>
-                    <span className={cn("ml-3 font-mono text-[13px] tabular", r.changePct >= 0 ? "text-up" : "text-down")}>
-                      {fmtPct(r.changePct)}
-                    </span>
-                  </Link>
-                </li>
+            <select
+              aria-label="Portfolio"
+              value={bookId}
+              onChange={(e) => {
+                setBookId(e.target.value);
+                setMoreHold(false);
+              }}
+              className="h-8 rounded-sm border border-border bg-bg px-2 text-[12px]"
+            >
+              <option value="all">All</option>
+              {ports.filter((p) => p.holdings.length).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
               ))}
-            </ul>
+            </select>
+          </div>
+          {holdRows.length ? (
+            <>
+              <div className="mt-2 overflow-x-auto">
+                <table className="w-full min-w-[520px] text-left text-[12px]">
+                  <thead className="text-[10px] tracking-[0.06em] text-subtle uppercase">
+                    <tr>
+                      <th className="py-1 font-medium">Name</th>
+                      <th className="py-1 text-right font-medium">Last</th>
+                      <th className="py-1 text-right font-medium">Chg</th>
+                      <th className="py-1 text-right font-medium">Chg %</th>
+                      <th className="py-1 text-right font-medium">Value</th>
+                      <th className="py-1 text-right font-medium">Weight</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(moreHold ? holdRows : holdRows.slice(0, 8)).map((r) => (
+                      <tr key={r.symbol} className="border-t border-border/70">
+                        <td className="py-1.5">
+                          <Link to="/s/$symbol" params={{ symbol: r.symbol }} className="font-medium hover:text-chart">
+                            {r.symbol}
+                          </Link>
+                          <span className="ml-2 text-subtle">{r.name}</span>
+                        </td>
+                        <td className="py-1.5 text-right font-mono tabular">{r.last != null ? fmtPx(r.last) : "—"}</td>
+                        <td className={cn("py-1.5 text-right font-mono tabular", (r.chg ?? 0) >= 0 ? "text-up" : "text-down")}>
+                          {r.chg == null ? "—" : `${r.chg >= 0 ? "+" : ""}${fmtPx(Math.abs(r.chg))}`}
+                        </td>
+                        <td className={cn("py-1.5 text-right font-mono tabular", (r.chgPct ?? 0) >= 0 ? "text-up" : "text-down")}>
+                          {r.chgPct == null ? "—" : fmtPct(r.chgPct)}
+                        </td>
+                        <td className="py-1.5 text-right font-mono tabular">{r.value != null ? fmtInr(r.value) : "—"}</td>
+                        <td className="py-1.5 text-right font-mono tabular">{r.weight != null ? r.weight.toFixed(1) + "%" : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {holdRows.length > 8 ? (
+                <button type="button" className="mt-2 text-[12px] text-chart" onClick={() => setMoreHold((v) => !v)}>
+                  {moreHold ? "Show less" : `Show all ${holdRows.length} names`}
+                </button>
+              ) : null}
+            </>
           ) : (
             <p className="mt-2 text-[13px] text-muted">Waiting on last prints for the names you hold.</p>
           )}
@@ -197,30 +275,59 @@ export function MarketOverview() {
         </section>
       </div>
 
-      {watchRows.length ? (
+      {watchlists.some((l) => l.symbols.length) || embeddedWatch.length ? (
         <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
-          <div className="flex items-baseline justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Watch</h2>
-            <Link to="/watch" className="text-[12px] text-chart hover:underline">
-              Full watch
-            </Link>
+            <select
+              aria-label="Watchlist"
+              value={activeList?.id || ""}
+              onChange={(e) => {
+                setListId(e.target.value);
+                setMoreWatch(false);
+              }}
+              className="h-8 rounded-sm border border-border bg-bg px-2 text-[12px]"
+            >
+              {watchlists.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
           </div>
-          <ul className="mt-2 grid gap-1 sm:grid-cols-2">
-            {watchRows.slice(0, 8).map((r) => (
-              <li key={r.symbol}>
-                <Link
-                  to="/s/$symbol"
-                  params={{ symbol: r.symbol }}
-                  className="flex items-center justify-between rounded-sm px-1 py-1.5 hover:bg-bg"
-                >
-                  <span className="truncate text-[13px]">{r.symbol}</span>
-                  <span className={cn("ml-3 font-mono text-[13px] tabular", r.changePct >= 0 ? "text-up" : "text-down")}>
-                    {fmtPct(r.changePct)}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          {embeddedWatch.length ? (
+            <>
+              <ul className="mt-2 divide-y divide-border/70">
+                {(moreWatch ? embeddedWatch : embeddedWatch.slice(0, 8)).map((r) => (
+                  <li key={r.symbol}>
+                    <Link
+                      to="/s/$symbol"
+                      params={{ symbol: r.symbol }}
+                      className="flex items-center justify-between py-1.5 hover:text-chart"
+                    >
+                      <span className="truncate text-[13px]">
+                        <span className="font-medium">{r.symbol}</span>
+                        <span className="ml-2 text-subtle">{r.name}</span>
+                      </span>
+                      <span className="ml-3 font-mono text-[13px] tabular">
+                        {r.last != null ? fmtPx(r.last) : "—"}
+                        <span className={cn("ml-2", (r.chgPct ?? 0) >= 0 ? "text-up" : "text-down")}>
+                          {r.chgPct == null ? "" : fmtPct(r.chgPct)}
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              {embeddedWatch.length > 8 ? (
+                <button type="button" className="mt-2 text-[12px] text-chart" onClick={() => setMoreWatch((v) => !v)}>
+                  {moreWatch ? "Show less" : `Show all ${embeddedWatch.length} names`}
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <p className="mt-2 text-[13px] text-muted">This list is empty.</p>
+          )}
         </section>
       ) : null}
 
@@ -228,20 +335,37 @@ export function MarketOverview() {
         <h2 className="mb-2 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Sectors</h2>
         {sectors.length ? (
           <div className="mb-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-6">
-            {sectors.slice(0, 12).map((s) => (
-              <div
-                key={s.sector}
-                className={cn(
-                  "rounded-sm px-2 py-2 text-center",
-                  s.avg >= 0 ? "bg-up/20" : "bg-down/20",
-                )}
-              >
-                <div className="truncate text-[11px] font-medium">{s.sector}</div>
-                <div className={cn("font-mono text-[12px] tabular", s.avg >= 0 ? "text-up" : "text-down")}>
-                  {fmtPct(s.avg)}
+            {sectors.slice(0, 12).map((s) => {
+              const idx = sectorIndex(s.sector);
+              const body = (
+                <>
+                  <div className="truncate text-[11px] font-medium">{s.sector}</div>
+                  <div className={cn("font-mono text-[12px] tabular", s.avg >= 0 ? "text-up" : "text-down")}>{fmtPct(s.avg)}</div>
+                  <div className="truncate text-[10px] text-subtle">{idx ? idx.name : "No index"}</div>
+                </>
+              );
+              return idx ? (
+                <button
+                  key={s.sector}
+                  type="button"
+                  className={cn("rounded-sm px-2 py-2 text-center", s.avg >= 0 ? "bg-up/20" : "bg-down/20")}
+                  onClick={() => {
+                    setDeskSymbol(idx.symbol, idx.name);
+                    void nav({ to: "/markets", search: { view: "terminal" } });
+                  }}
+                >
+                  {body}
+                </button>
+              ) : (
+                <div
+                  key={s.sector}
+                  title="No matching sector index on file. Kosh does not substitute a different index."
+                  className={cn("rounded-sm px-2 py-2 text-center", s.avg >= 0 ? "bg-up/20" : "bg-down/20")}
+                >
+                  {body}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : null}
         <MarketHeat rows={liveRows} />

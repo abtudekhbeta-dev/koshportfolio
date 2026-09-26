@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from "lucide-react";
+import { GripVertical, Plus, Trash2 } from "lucide-react";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { cycleSort, sortEntities, sortGlyph, type SortDir } from "@/lib/kosh/kosh-table";
 import { universeName } from "@/lib/kosh/universe";
@@ -37,16 +37,20 @@ export function WatchPane({
   const deleteWatchList = useKosh((s) => s.deleteWatchList);
   const toggleWatch = useKosh((s) => s.toggleWatch);
   const moveWatch = useKosh((s) => s.moveWatch);
+  const watchSorts = useKosh((s) => s.watchSorts);
+  const setWatchSort = useKosh((s) => s.setWatchSort);
   const recents = useKosh((s) => s.recents);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [source, setSource] = useState<Source>({ kind: "watch", id: activeId });
   const [qtext, setQtext] = useState("");
-  const [sort, setSort] = useState<{ key: SortKey | null; dir: SortDir }>({ key: null, dir: null });
   const dragFrom = useRef<number | null>(null);
   const dragging = useRef(false);
   const qmap = useMemo(() => quoteMap(quotes), [quotes]);
 
+  const sortId = source.kind === "watch" ? source.id : "p:" + source.id;
+  const saved = watchSorts[sortId];
+  const sort = saved ? { key: saved.key as SortKey, dir: saved.dir as SortDir } : { key: null as SortKey | null, dir: null as SortDir };
   const port = source.kind === "port" ? ports.find((p) => p.id === source.id) : null;
   const rawRows =
     source.kind === "port"
@@ -89,11 +93,12 @@ export function WatchPane({
     }
     setActiveWatchId(v);
     setSource({ kind: "watch", id: v });
-    setSort({ key: null, dir: null });
   }
 
   function toggleCol(key: SortKey) {
-    setSort((s) => cycleSort(s, key));
+    const next = cycleSort(sort, key);
+    if (!next.key || !next.dir) setWatchSort(sortId, null);
+    else setWatchSort(sortId, { key: next.key, dir: next.dir });
   }
 
   const selectValue = source.kind === "port" ? "p:" + source.id : source.id;
@@ -165,7 +170,7 @@ export function WatchPane({
         <button
           type="button"
           className={cn("h-7 shrink-0 px-1.5 text-[10px] tracking-[0.06em] uppercase", customOrder ? "text-fg" : "text-muted hover:text-fg")}
-          onClick={() => setSort({ key: null, dir: null })}
+          onClick={() => setWatchSort(sortId, null)}
         >
           Custom order
         </button>
@@ -315,25 +320,7 @@ export function WatchPane({
                   </span>
                 </button>
                 {source.kind === "watch" ? (
-                  <span className="kosh-watch-ops flex items-center">
-                    <button
-                      type="button"
-                      aria-label="Move up"
-                      className="grid size-6 place-items-center text-subtle hover:text-fg disabled:opacity-30"
-                      disabled={r.i === 0 || !customOrder}
-                      onClick={() => moveWatch(r.i, r.i - 1)}
-                    >
-                      <ChevronUp className="size-3" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Move down"
-                      className="grid size-6 place-items-center text-subtle hover:text-fg disabled:opacity-30"
-                      disabled={r.i === rawRows.length - 1 || !customOrder}
-                      onClick={() => moveWatch(r.i, r.i + 1)}
-                    >
-                      <ChevronDown className="size-3" />
-                    </button>
+                  <span className="kosh-watch-ops flex items-center justify-end">
                     <button
                       type="button"
                       aria-label={`Remove ${r.k}`}

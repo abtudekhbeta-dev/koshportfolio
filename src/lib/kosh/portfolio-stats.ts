@@ -72,6 +72,7 @@ export type MixVsNifty = {
   divYield: number | null;
   niftyDiv: number | null;
   covered: number;
+  niftyCovered: number;
 };
 
 export function mixVsNifty(
@@ -106,6 +107,7 @@ export function mixVsNifty(
     }),
     niftyDiv: simpleAvg(n50.map((r) => (r.divYield != null && r.divYield >= 0 ? r.divYield : null))),
     covered,
+    niftyCovered: n50.filter((r) => (r.pe != null && r.pe > 0) || r.roe != null).length,
   };
 }
 

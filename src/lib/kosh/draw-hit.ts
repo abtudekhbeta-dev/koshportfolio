@@ -39,10 +39,13 @@ export function positionMetrics(s: DrawShape) {
   const stop = s.y2 ?? s.y0;
   const risk = Math.abs(entry - stop);
   const reward = Math.abs(target - entry);
-  const rr = risk > 0 ? reward / risk : 0;
+  const longOk = s.kind === "long" && stop < entry && entry < target;
+  const shortOk = s.kind === "short" && target < entry && entry < stop;
+  const valid = longOk || shortOk;
+  const rr = valid && risk > 0 ? reward / risk : null;
   const riskPct = entry ? ((stop - entry) / entry) * 100 : 0;
   const rewardPct = entry ? ((target - entry) / entry) * 100 : 0;
-  return { entry, target, stop, risk, reward, rr, riskPct, rewardPct };
+  return { entry, target, stop, risk, reward, rr, riskPct, rewardPct, valid };
 }
 
 export function shapePoints(

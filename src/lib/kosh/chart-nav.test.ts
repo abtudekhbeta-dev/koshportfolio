@@ -1,0 +1,101 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { atLatest, panBy, resetView, zoomAround } from "./chart-nav.ts";
+import { alignIndexed, applyHistoricalFx, indexTo100, indexedGap } from "./relative.ts";
+import { histPush, histRedo, histUndo, histInit } from "./draw-history.ts";
+import { sectorIndex } from "./benchmarks.ts";
+
+describe("chart viewport", () => {
+  it("keeps the candle under the cursor when zooming in", () => {
+    const next = zoomAround({ start: 100, count: 100 }, 400, 20, true);
+    assert.ok(next.count < 100);
+    const before = 100 + 20;
+    const frac = 20 / 100;
+    const afterAnchor = next.start + Math.round(frac * next.count);
+    assert.ok(Math.abs(afterAnchor - before) <= 2);
+  });
+
+  it("zoom out adds bars and stays inside the series", () => {
+    const next = zoomAround({ start: 50, count: 40 }, 200, 10, false);
+    assert.ok(next.count > 40);
+    assert.ok(next.start >= 0);
+    assert.ok(next.start + next.count <= 200);
+  });
+
+  it("pan moves history without changing the window size", () => {
+    const next = panBy({ start: 40, count: 30 }, 200, -10);
+    assert.equal(next.count, 30);
+    assert.equal(next.start, 30);
+  });
+
+  it("reset and latest put the newest bar on the right", () => {
+    const v = resetView(500, 180);
+    assert.equal(v.count, 180);
+    assert.equal(v.start, 320);
+    assert.equal(atLatest(v, 500), true);
+    assert.equal(atLatest({ start: 0, count: 180 }, 500), false);
+  });
+});
+
+describe("indexed benchmark and USD", () => {
+  it("rebases the first positive print to 100", () => {
+    assert.deepEqual(indexTo100([0, 50, 75]), [null, 100, 150]);
+  });
+
+  it("indexes stock and benchmark together on shared days", () => {
+    const stock = [
+      { t: 1_700_000_000, c: 100 },
+      { t: 1_700_086_400, c: 124 },
+    ];
+    const bench = [
+      { t: 1_700_000_000, c: 200 },
+      { t: 1_700_086_400, c: 224 },
+    ];
+    const rows = alignIndexed(stock, bench);
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].stock, 100);
+    assert.equal(rows[0].bench, 100);
+    assert.ok(Math.abs(rows[1].stock - 124) < 0.01);
+    assert.ok(Math.abs(indexedGap(rows)! - (124 - 112)) < 0.01);
+  });
+
+  it("returns nothing when the benchmark does not overlap", () => {
+    assert.equal(alignIndexed([{ t: 10, c: 1 }], []).length, 0);
+  });
+
+  it("uses the historical FX print and drops days with no rate", () => {
+    const bars = [
+      { t: 1_700_000_000, o: 830, h: 840, l: 820, c: 830 },
+      { t: 1_700_086_400, o: 900, h: 910, l: 890, c: 900 },
+    ];
+    const fx = [{ t: 1_700_086_400, c: 90 }];
+    const out = applyHistoricalFx(bars, fx);
+    assert.equal(out.missing, 1);
+    assert.equal(out.bars.length, 1);
+    assert.ok(Math.abs(out.bars[0].c - 10) < 0.001);
+  });
+});
+
+describe("sector index mapping", () => {
+  it("uses the real sector index and refuses a generic substitute", () => {
+    assert.equal(sectorIndex("IT")?.name, "Nifty IT");
+    assert.equal(sectorIndex("Healthcare")?.symbol, "^CNXPHARMA");
+    assert.equal(sectorIndex("Auto")?.name, "Nifty Auto");
+    assert.equal(sectorIndex("Chemicals"), null);
+    assert.equal(sectorIndex("Telecom"), null);
+    assert.notEqual(sectorIndex("Materials")?.name, "Nifty 500");
+  });
+});
+
+describe("drawing history", () => {
+  it("undo restores the previous state, redo puts it back", () => {
+    let h = histInit([{ id: "a" }]);
+    h = histPush(h, [{ id: "a" }, { id: "b" }]);
+    h = histPush(h, [{ id: "b" }]);
+    const u = histUndo(h);
+    assert.ok(u);
+    assert.deepEqual(u!.shapes.map((s) => s.id), ["a", "b"]);
+    const r = histRedo(u!.hist);
+    assert.deepEqual(r!.shapes.map((s) => s.id), ["b"]);
+  });
+});

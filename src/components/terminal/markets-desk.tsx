@@ -229,7 +229,7 @@ export function MarketsDesk() {
         <Group orientation="horizontal" className="min-h-0 flex-1" defaultLayout={DESK_SPLIT}>
           <Panel id="main" minSize="42%" className="min-h-0 overflow-y-auto">
             <div className="flex min-h-full flex-col">
-              <div className="h-[min(52vh,440px)] min-h-[280px] shrink-0">{workspace}</div>
+              <div className="h-[min(68vh,600px)] min-h-[420px] shrink-0">{workspace}</div>
               <div className="border-t border-border">{intel}</div>
             </div>
           </Panel>

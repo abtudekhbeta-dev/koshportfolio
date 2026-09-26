@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildValuation, buildValuationModels, earningsQualityRead, impliedGrowthFromPe, justifiedPb, reconstructPeHistory, reverseImpliedCagr, yearEndClose } from "./valuation.ts";
+import { buildValuation, buildValuationModels, earningsQualityRead, growthEvidence, impliedGrowthFromPe, justifiedPb, reconstructPeHistory, reverseImpliedCagr, yearEndClose } from "./valuation.ts";
 import type { Fundamentals } from "./types.ts";
 
 function fund(p: Partial<Fundamentals>): Fundamentals {
@@ -99,6 +99,18 @@ describe("valuation", () => {
     assert.equal(reverseImpliedCagr(100, null, 16), null);
     assert.equal(reverseImpliedCagr(100, 5, null), null);
   });
+
+  it("primary reverse valuation does not apply a 12% discount", () => {
+    assert.equal(reverseImpliedCagr(160, 10, 16, 5), 0);
+    const withDiscount = reverseImpliedCagr(160, 10, 16, 5, 0.12);
+    assert.ok(withDiscount != null && withDiscount > 0);
+    const v = buildValuation({ price: 160, fund: fund({ eps: 10, industryPe: 16, profitCagr5: 8 }) });
+    assert.equal(v.reverse.discount, 0);
+    assert.equal(v.reverse.impliedCagr, 0);
+    assert.match(v.reverse.body, /no discount rate/i);
+    assert.doesNotMatch(v.reverse.body, /12%/);
+    assert.equal(v.discount, 12);
+  });
 });
 
 describe("earnings quality", () => {
@@ -196,8 +208,9 @@ describe("A+ / C / D models", () => {
     });
     const c = pack.models.find((m) => m.id === "C")!;
     assert.equal(c.word, "Expensive");
-    assert.ok(/paying for/i.test(c.body));
+    assert.ok(/requires/i.test(c.body));
     assert.ok(/delivered/i.test(c.body));
+    assert.doesNotMatch(c.body, /12%/);
   });
 
   it("D uses justified P/B from ROE and stays blank without ROE", () => {
@@ -217,5 +230,42 @@ describe("A+ / C / D models", () => {
   it("C is Not enough data without an industry multiple", () => {
     const pack = buildValuationModels({ price: 100, fund: fund({ eps: 8, profitCagr5: 12 }) });
     assert.equal(pack.models.find((m) => m.id === "C")?.word, "Not enough data");
+  });
+});
+
+describe("growth evidence", () => {
+  it("does not invent a single growth number when prints are missing", () => {
+    const ev = growthEvidence(fund({}));
+    assert.equal(ev.tone, "Insufficient");
+    assert.ok(ev.items.every((i) => i.value == null));
+    assert.match(ev.body, /not a forecast/i);
+    assert.match(ev.body, /not treated as 0%/i);
+  });
+
+  it("keeps sales, profit, cash and returns as separate prints", () => {
+    const ev = growthEvidence(
+      fund({
+        salesCagr3: 14,
+        profitCagr3: 18,
+        profitCagr5: 12,
+        salesYoY: 11,
+        profitYoY: 9,
+        roce: 22,
+        roe: 16,
+        opm: 18,
+        cfoPat: 0.9,
+        de: 0.2,
+      }),
+    );
+    assert.equal(ev.tone, "Supportive");
+    assert.equal(ev.items.find((i) => i.label === "Sales CAGR 5Y")?.value, null);
+    assert.equal(ev.items.find((i) => i.label === "ROCE")?.value, "22.0%");
+    assert.equal(ev.items.find((i) => i.label === "Profit CAGR 5Y")?.value, "12.0%");
+    assert.match(ev.body, /not a forecast/i);
+  });
+
+  it("calls mixed evidence when growth prints disagree", () => {
+    const ev = growthEvidence(fund({ salesCagr3: 20, profitCagr5: -8, salesYoY: 4 }));
+    assert.equal(ev.tone, "Mixed");
   });
 });

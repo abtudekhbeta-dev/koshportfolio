@@ -9,7 +9,9 @@ export type Security = {
   isin: string | null;
   series: string;
   listedOn: string | null;
-  exchange: "NSE";
+  exchange: "NSE" | "BSE";
+  /** Present only when a source file printed a BSE code. Never invented. */
+  bseCode?: string | null;
   board: Board;
   active: boolean;
   kind: SecurityKind;
