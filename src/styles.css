@@ -350,7 +350,8 @@ html[data-theme="light"] {
   background: linear-gradient(to left, var(--k-bg-elevated), transparent);
 }
 @media (hover: hover) {
-  .kosh-marquee-wrap:hover .kosh-tape-track {
+  .kosh-marquee-wrap:hover .kosh-tape-track,
+  .kosh-marquee-wrap:focus-within .kosh-tape-track {
     animation-play-state: paused;
   }
 }

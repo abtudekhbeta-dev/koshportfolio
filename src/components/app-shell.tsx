@@ -2,14 +2,13 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { apiTape } from "@/lib/kosh/api";
-import { fmtPct } from "@/lib/kosh/engine";
 import { isIstSession } from "@/lib/kosh/market-hours";
 import { AddHoldings } from "@/components/add-holdings";
 import { AlertBanner } from "@/components/alert-banner";
 import { AuthSlot } from "@/components/auth-slot";
 import { BrandLink } from "@/components/mark";
 import { SearchBar } from "@/components/search-bar";
-import { canOpenStock } from "@/components/stock-link";
+import { TapeQuote } from "@/components/tape-quote";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useKosh } from "@/lib/store";
@@ -34,12 +33,6 @@ function navOn(to: string, pathname: string) {
   return pathname === to || pathname.startsWith(to + "/");
 }
 
-function fmtTape(n: number) {
-  if (!(n > 0)) return "—";
-  const digits = n >= 1000 ? 0 : 2;
-  return n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
-
 export function AppShell({ children, wide, full }: { children: ReactNode; wide?: boolean; full?: boolean }) {
   const tape = useQuery({
     queryKey: ["tape"],
@@ -58,32 +51,9 @@ export function AppShell({ children, wide, full }: { children: ReactNode; wide?:
           <div className="kosh-tape-track flex w-max items-center">
             {[0, 1].map((copy) => (
               <div key={copy} className="flex min-w-[100vw] shrink-0 items-center gap-8 pr-8">
-                {(tape.data || []).map((t) => {
-                  const inner = (
-                    <>
-                      <span className="font-semibold tracking-[0.04em] text-fg">{t.label}</span>
-                      <b className="font-mono font-medium text-fg tabular">{t.price ? fmtTape(t.price) : "—"}</b>
-                      {t.unit ? <span className="text-[10px] text-subtle">{t.unit}</span> : null}
-                      <span className={cn("font-mono tabular", t.changePct >= 0 ? "text-up" : "text-down")}>
-                        {t.changePct ? fmtPct(t.changePct) : ""}
-                      </span>
-                    </>
-                  );
-                  return canOpenStock(t.symbol) ? (
-                    <Link
-                      key={t.id + "-" + copy}
-                      to="/s/$symbol"
-                      params={{ symbol: t.symbol }}
-                      className="flex shrink-0 items-baseline gap-2 whitespace-nowrap hover:text-fg"
-                    >
-                      {inner}
-                    </Link>
-                  ) : (
-                    <span key={t.id + "-" + copy} className="flex shrink-0 items-baseline gap-2 whitespace-nowrap">
-                      {inner}
-                    </span>
-                  );
-                })}
+                {(tape.data || []).map((t) => (
+                  <TapeQuote key={t.id + "-" + copy} t={t} />
+                ))}
               </div>
             ))}
           </div>

@@ -633,7 +633,7 @@ export async function fetchDeepFundamentals(symbol: string): Promise<{ fund: Fun
 }
 
 export async function fetchDeepMany(symbols: string[]): Promise<{ funds: Record<string, Fundamentals>; sources: Record<string, string[]> }> {
-  const uniq = [...new Set(symbols.map((s) => s.replace(/\.(NS|BO)$/i, "").toUpperCase()))].slice(0, 24);
+  const uniq = [...new Set(symbols.map((s) => s.replace(/\.(NS|BO)$/i, "").toUpperCase()))].slice(0, 40);
   const funds: Record<string, Fundamentals> = {};
   const sources: Record<string, string[]> = {};
   await poolMap(uniq, 2, async (s) => {

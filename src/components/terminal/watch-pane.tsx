@@ -6,6 +6,7 @@ import { universeName } from "@/lib/kosh/universe";
 import type { Quote } from "@/lib/kosh/types";
 import { quoteMap } from "@/lib/kosh/market-data";
 import { bareSymbol, useKosh } from "@/lib/store";
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 type Source = { kind: "watch"; id: string } | { kind: "port"; id: string };
@@ -132,14 +133,16 @@ export function WatchPane({
             </optgroup>
           ) : null}
         </select>
-        <button
-          type="button"
-          aria-label="New list"
-          className="grid size-7 place-items-center text-muted hover:text-fg"
-          onClick={() => setCreating(true)}
-        >
-          <Plus className="size-3.5" />
-        </button>
+        <Tooltip content="New list">
+          <button
+            type="button"
+            aria-label="New list"
+            className="grid size-7 place-items-center text-muted hover:text-fg"
+            onClick={() => setCreating(true)}
+          >
+            <Plus className="size-3.5" />
+          </button>
+        </Tooltip>
       </div>
       {creating ? (
         <div className="flex gap-1 border-b border-border px-2 py-1.5">
@@ -175,17 +178,19 @@ export function WatchPane({
           Custom order
         </button>
         {source.kind === "watch" && lists.length > 1 ? (
-          <button
-            type="button"
-            className="grid size-7 place-items-center text-muted hover:text-down"
-            aria-label="Delete list"
-            onClick={() => {
-              const active = lists.find((l) => l.id === source.id);
-              if (active && window.confirm(`Delete ${active.name}?`)) deleteWatchList(active.id);
-            }}
-          >
-            <Trash2 className="size-3" />
-          </button>
+          <Tooltip content="Delete list">
+            <button
+              type="button"
+              className="grid size-7 place-items-center text-muted hover:text-down"
+              aria-label="Delete list"
+              onClick={() => {
+                const active = lists.find((l) => l.id === source.id);
+                if (active && window.confirm(`Delete ${active.name}?`)) deleteWatchList(active.id);
+              }}
+            >
+              <Trash2 className="size-3" />
+            </button>
+          </Tooltip>
         ) : null}
         {source.kind === "watch" ? (
           <button
@@ -321,14 +326,16 @@ export function WatchPane({
                 </button>
                 {source.kind === "watch" ? (
                   <span className="kosh-watch-ops flex items-center justify-end">
-                    <button
-                      type="button"
-                      aria-label={`Remove ${r.k}`}
-                      className="grid w-6 place-items-center text-subtle hover:text-down"
-                      onClick={() => toggleWatch(r.k)}
-                    >
-                      ×
-                    </button>
+                    <Tooltip content={`Remove ${r.k}`}>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${r.k}`}
+                        className="grid w-6 place-items-center text-subtle hover:text-down"
+                        onClick={() => toggleWatch(r.k)}
+                      >
+                        ×
+                      </button>
+                    </Tooltip>
                   </span>
                 ) : (
                   <span />

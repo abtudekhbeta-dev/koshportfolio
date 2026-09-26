@@ -4,13 +4,19 @@ import { MarketOverview } from "@/components/terminal/market-overview";
 import { MarketsDesk } from "@/components/terminal/markets-desk";
 import { MarketsSwitch } from "@/components/terminal/markets-switch";
 
-export type MarketsSearch = { view?: "terminal" | "overview" };
+export type MarketsSearch = { view?: "terminal" | "overview"; symbol?: string; name?: string };
 
 export const Route = createFileRoute("/markets")({
   ssr: false,
-  validateSearch: (s: Record<string, unknown>): MarketsSearch => ({
-    view: s.view === "overview" ? "overview" : "terminal",
-  }),
+  validateSearch: (s: Record<string, unknown>): MarketsSearch => {
+    const symbol = typeof s.symbol === "string" ? s.symbol.trim().slice(0, 32) : "";
+    const name = typeof s.name === "string" ? s.name.trim().slice(0, 80) : "";
+    return {
+      view: s.view === "overview" ? "overview" : "terminal",
+      ...(symbol ? { symbol } : {}),
+      ...(name ? { name } : {}),
+    };
+  },
   component: Markets,
 });
 

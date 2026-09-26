@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import type { ChartMark, OhlcBar } from "@/lib/kosh/types";
 import {
@@ -28,6 +29,7 @@ import { histInit, histPush, histRedo, histUndo, type DrawHist } from "@/lib/kos
 import { apiOhlc } from "@/lib/kosh/api";
 import { AdjustMenu } from "@/components/charts/adjust-menu";
 import { useChartFullscreen } from "@/components/charts/use-fullscreen";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Seg } from "@/components/seg";
 import { cn } from "@/lib/utils";
 import { bareSymbol, drawKey, newDrawId, useKosh, type DrawKind, type DrawShape } from "@/lib/store";
@@ -1771,38 +1773,46 @@ export function CandleChart({
               {playing ? "Pause" : "Play"}
             </button>
           ) : null}
-          <button
-            type="button"
-            title="Save chart"
-            onClick={saveChart}
-            className="inline-flex h-8 items-center rounded-sm bg-bg px-2.5 text-[11px] font-medium text-muted shadow-[var(--shadow-border)]"
-          >
-            <Download className="size-3.5" />
-          </button>
-          <button
-            type="button"
-            title="Shorter chart"
-            onClick={() => patchChartPrefs({ chartHeight: Math.max(360, chartHeight - 40) })}
-            className="inline-flex h-8 items-center rounded-sm bg-bg px-2 text-[11px] font-medium text-muted shadow-[var(--shadow-border)]"
-          >
-            −
-          </button>
-          <button
-            type="button"
-            title="Taller chart"
-            onClick={() => patchChartPrefs({ chartHeight: Math.min(900, chartHeight + 40) })}
-            className="inline-flex h-8 items-center rounded-sm bg-bg px-2 text-[11px] font-medium text-muted shadow-[var(--shadow-border)]"
-          >
-            +
-          </button>
-          <button
-            type="button"
-            title={fs ? "Exit fullscreen" : "Fullscreen"}
-            onClick={() => void toggleFs()}
-            className={cn("inline-flex h-8 items-center rounded-sm px-2.5 text-[11px] font-medium shadow-[var(--shadow-border)]", fs ? "bg-surface-2 text-fg" : "bg-bg text-muted")}
-          >
-            {fs ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
-          </button>
+          <Tooltip content="Save chart">
+            <button
+              type="button"
+              aria-label="Save chart"
+              onClick={saveChart}
+              className="inline-flex h-8 items-center rounded-sm bg-bg px-2.5 text-[11px] font-medium text-muted shadow-[var(--shadow-border)]"
+            >
+              <Download className="size-3.5" />
+            </button>
+          </Tooltip>
+          <Tooltip content="Decrease chart height">
+            <button
+              type="button"
+              aria-label="Decrease chart height"
+              onClick={() => patchChartPrefs({ chartHeight: Math.max(360, chartHeight - 40) })}
+              className="inline-flex h-8 items-center rounded-sm bg-bg px-2 text-[11px] font-medium text-muted shadow-[var(--shadow-border)]"
+            >
+              −
+            </button>
+          </Tooltip>
+          <Tooltip content="Increase chart height">
+            <button
+              type="button"
+              aria-label="Increase chart height"
+              onClick={() => patchChartPrefs({ chartHeight: Math.min(900, chartHeight + 40) })}
+              className="inline-flex h-8 items-center rounded-sm bg-bg px-2 text-[11px] font-medium text-muted shadow-[var(--shadow-border)]"
+            >
+              +
+            </button>
+          </Tooltip>
+          <Tooltip content={fs ? "Exit fullscreen" : "Fullscreen"}>
+            <button
+              type="button"
+              aria-label={fs ? "Exit fullscreen" : "Fullscreen"}
+              onClick={() => void toggleFs()}
+              className={cn("inline-flex h-8 items-center rounded-sm px-2.5 text-[11px] font-medium shadow-[var(--shadow-border)]", fs ? "bg-surface-2 text-fg" : "bg-bg text-muted")}
+            >
+              {fs ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+            </button>
+          </Tooltip>
         </div>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-1">
@@ -2093,6 +2103,7 @@ export function CandleChart({
       </div>
     </div>
   );
+  if (fallback && typeof document !== "undefined") return createPortal(card, document.body);
   return card;
 }
 

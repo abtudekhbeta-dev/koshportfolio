@@ -5,6 +5,7 @@ import { applyHoldingPatch, fillHoldings, mergeHoldings, mergeTradeLines, saniti
 import { samplePortfolio, SAMPLE_TRADES } from "@/lib/kosh/sample";
 import type { ScreenFilter, SkillRead } from "@/lib/kosh/screens";
 import { moveWatchSymbols, TERM_INTERVALS } from "@/lib/kosh/market-data";
+import { cleanHoldSort } from "@/lib/kosh/instrument-nav";
 
 export type IconId = "k-path" | "bowl" | "twin" | "ledger" | "coin" | "fold";
 export const ICON_IDS: IconId[] = ["k-path", "bowl", "twin", "ledger", "coin", "fold"];
@@ -73,6 +74,8 @@ export type ChartPrefs = {
   /** Benchmark key from BENCH, used when chartMode is bench. */
   chartBench: string;
   chartHeight: number;
+  /** Pixel height of the Terminal chart stack. */
+  termHeight: number;
   rev: number;
 };
 
@@ -92,6 +95,7 @@ export const DEFAULT_CHART_PREFS: ChartPrefs = {
   chartMode: "price",
   chartBench: "nifty",
   chartHeight: 580,
+  termHeight: 520,
   rev: 5,
 };
 
@@ -246,7 +250,7 @@ type KoshState = {
   chartPrefs: ChartPrefs;
   navPrefs: NavPrefs;
   watchSorts: Record<string, { key: "last" | "chg" | "chgPct"; dir: "asc" | "desc" }>;
-  overviewHoldSort: { key: "name" | "last" | "chg" | "chgPct" | "value" | "weight"; dir: "asc" | "desc" } | null;
+  overviewHoldSort: { key: "name" | "last" | "chg" | "chgPct"; dir: "asc" | "desc" } | null;
   overviewWatchSorts: Record<string, { key: "name" | "last" | "chg" | "chgPct"; dir: "asc" | "desc" }>;
   deepFunds: Record<string, DeepFundSnap>;
   hydrate: (ports: Portfolio[]) => void;
@@ -295,9 +299,7 @@ type KoshState = {
   patchChartPrefs: (p: Omit<Partial<ChartPrefs>, "inds"> & { inds?: Partial<IndFlags> }) => void;
   patchNavPrefs: (p: Partial<NavPrefs>) => void;
   setWatchSort: (id: string, sort: { key: "last" | "chg" | "chgPct"; dir: "asc" | "desc" } | null) => void;
-  setOverviewHoldSort: (
-    sort: { key: "name" | "last" | "chg" | "chgPct" | "value" | "weight"; dir: "asc" | "desc" } | null,
-  ) => void;
+  setOverviewHoldSort: (sort: { key: "name" | "last" | "chg" | "chgPct"; dir: "asc" | "desc" } | null) => void;
   setOverviewWatchSort: (
     id: string,
     sort: { key: "name" | "last" | "chg" | "chgPct"; dir: "asc" | "desc" } | null,
@@ -548,6 +550,7 @@ export const useKosh = create<KoshState>()(
             ...p,
             inds: p.inds ? { ...s.chartPrefs.inds, ...p.inds } : s.chartPrefs.inds,
             chartHeight: Math.max(360, Math.min(900, p.chartHeight ?? s.chartPrefs.chartHeight ?? 580)),
+            termHeight: Math.max(320, Math.min(880, p.termHeight ?? s.chartPrefs.termHeight ?? 520)),
             chartBench: p.chartBench ? p.chartBench : s.chartPrefs.chartBench,
           },
         })),
@@ -615,12 +618,13 @@ export const useKosh = create<KoshState>()(
               chartMode: old.chartMode === "bench" || old.chartMode === "usd" ? old.chartMode : "price",
               chartBench: old.chartBench || "nifty",
               chartHeight: Math.max(360, Math.min(900, old.chartHeight || 580)),
+              termHeight: Math.max(320, Math.min(880, old.termHeight || 520)),
               rev: 5,
             };
           })(),
           navPrefs: { ...DEFAULT_NAV_PREFS, ...(p.navPrefs || {}) },
           watchSorts: p.watchSorts || {},
-          overviewHoldSort: p.overviewHoldSort || null,
+          overviewHoldSort: cleanHoldSort(p.overviewHoldSort),
           overviewWatchSorts: p.overviewWatchSorts || {},
           deepFunds: p.deepFunds || {},
           portfolios: (p.portfolios?.length ? p.portfolios : current.portfolios).map((port) => ({

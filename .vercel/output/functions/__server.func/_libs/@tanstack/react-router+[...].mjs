@@ -5,6 +5,22 @@ import { r as parseHref } from "../tanstack__history.mjs";
 import { PassThrough, Readable } from "node:stream";
 import { ReadableStream as ReadableStream$1 } from "node:stream/web";
 //#region node_modules/@tanstack/router-core/dist/esm/not-found.js
+/**
+* Create a not-found error object recognized by TanStack Router.
+*
+* Throw this from loaders/actions to trigger the nearest `notFoundComponent`.
+* Use `routeId` to target a specific route's not-found boundary. If `throw`
+* is true, the error is thrown instead of returned.
+*
+* @param options Optional settings including `routeId`, `headers`, and `throw`.
+* @returns A not-found error object that can be thrown or returned.
+* @link https://tanstack.com/router/latest/docs/router/framework/react/api/router/notFoundFunction
+*/
+function notFound(options = {}) {
+	options.isNotFound = true;
+	if (options.throw) throw options;
+	return options;
+}
 /** Determine if a value is a TanStack Router not-found error. */
 function isNotFound(obj) {
 	return obj?.isNotFound === true;
@@ -3777,6 +3793,21 @@ var BaseRoute = class {
 		if (options?.id && options?.path) throw new Error(`Route cannot have both an 'id' and a 'path' option.`);
 	}
 };
+var BaseRouteApi = class {
+	constructor({ id }) {
+		this.notFound = (opts) => {
+			return notFound({
+				routeId: this.id,
+				...opts
+			});
+		};
+		this.redirect = (opts) => redirect({
+			from: this.id,
+			...opts
+		});
+		this.id = id;
+	}
+};
 var BaseRootRoute = class extends BaseRoute {
 	constructor(options) {
 		super(options);
@@ -4641,6 +4672,84 @@ var Link = import_react.forwardRef((props, ref) => {
 });
 //#endregion
 //#region node_modules/@tanstack/react-router/dist/esm/route.js
+/**
+* Returns a route-specific API that exposes type-safe hooks pre-bound
+* to a single route ID. Useful for consuming a route's APIs from files
+* where the route object isn't directly imported (e.g. code-split files).
+*
+* @param id Route ID string literal for the target route.
+* @returns A `RouteApi` instance bound to the given route ID.
+* @link https://tanstack.com/router/latest/docs/framework/react/api/router/getRouteApiFunction
+*/
+function getRouteApi(id) {
+	return new RouteApi({ id });
+}
+var RouteApi = class extends BaseRouteApi {
+	/**
+	* @deprecated Use the `getRouteApi` function instead.
+	*/
+	constructor({ id }) {
+		super({ id });
+		this.useMatch = (opts) => {
+			return useMatch({
+				select: opts?.select,
+				from: this.id,
+				structuralSharing: opts?.structuralSharing
+			});
+		};
+		this.useRouteContext = (opts) => {
+			return useRouteContext({
+				...opts,
+				from: this.id
+			});
+		};
+		this.useSearch = (opts) => {
+			return useSearch({
+				select: opts?.select,
+				structuralSharing: opts?.structuralSharing,
+				from: this.id
+			});
+		};
+		this.useParams = (opts) => {
+			return useParams({
+				select: opts?.select,
+				structuralSharing: opts?.structuralSharing,
+				from: this.id
+			});
+		};
+		this.useLoaderDeps = (opts) => {
+			return useLoaderDeps({
+				...opts,
+				from: this.id,
+				strict: false
+			});
+		};
+		this.useLoaderData = (opts) => {
+			return useLoaderData({
+				...opts,
+				from: this.id,
+				strict: false
+			});
+		};
+		this.useNavigate = () => {
+			return useNavigate({ from: useRouter().routesById[this.id].fullPath });
+		};
+		this.notFound = (opts) => {
+			return notFound({
+				routeId: this.id,
+				...opts
+			});
+		};
+		this.Link = import_react.forwardRef((props, ref) => {
+			const fullPath = useRouter().routesById[this.id].fullPath;
+			return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Link, {
+				ref,
+				from: fullPath,
+				...props
+			});
+		});
+	}
+};
 var Route = class extends BaseRoute {
 	/**
 	* @deprecated Use the `createRoute` function instead.
@@ -14593,4 +14702,4 @@ var renderRouterToStream = async ({ request, router, responseHeaders, children }
 	throw new Error("No renderToReadableStream or renderToPipeableStream found in react-dom/server. Ensure you are using a version of react-dom that supports streaming.");
 };
 //#endregion
-export { _getRenderedMatches as A, isNotFound as B, TSR_SCRIPT_BARRIER_ID as C, getStylesheetHref as D, getScriptPreloadAttrs as E, dehydrateSsrMatchId as F, isRedirect as I, isResolvedRedirect as L, invariant as M, createLRUCache as N, resolveManifestAssetLink as O, decodePath as P, parseRedirect as R, GLOBAL_TSR as S, createInlineCssStyleAsset as T, createRootRoute as _, isSsrResponse as a, useNavigate as b, stripSsrResponseBody as c, useRouterState as d, RouterProvider as f, createFileRoute as g, lazyRouteComponent as h, disposeSsrResponseDetached as i, executeRewriteInput as j, resolveManifestCssLink as k, Scripts as l, Outlet as m, bindSsrResponseToRequest as n, normalizeSsrResponse as o, createRouter as p, defineHandlerCallback as r, replaceSsrResponse as s, renderRouterToStream as t, HeadContent as u, Link as v, createInlineCssPlaceholderAsset as w, useRouter as x, Navigate as y, rootRouteId as z };
+export { resolveManifestCssLink as A, rootRouteId as B, GLOBAL_TSR as C, getScriptPreloadAttrs as D, createInlineCssStyleAsset as E, decodePath as F, dehydrateSsrMatchId as I, isRedirect as L, executeRewriteInput as M, invariant as N, getStylesheetHref as O, createLRUCache as P, isResolvedRedirect as R, useRouter as S, createInlineCssPlaceholderAsset as T, isNotFound as V, createRootRoute as _, isSsrResponse as a, Navigate as b, stripSsrResponseBody as c, useRouterState as d, RouterProvider as f, createFileRoute as g, lazyRouteComponent as h, disposeSsrResponseDetached as i, _getRenderedMatches as j, resolveManifestAssetLink as k, Scripts as l, Outlet as m, bindSsrResponseToRequest as n, normalizeSsrResponse as o, createRouter as p, defineHandlerCallback as r, replaceSsrResponse as s, renderRouterToStream as t, HeadContent as u, getRouteApi as v, TSR_SCRIPT_BARRIER_ID as w, useNavigate as x, Link as y, parseRedirect as z };

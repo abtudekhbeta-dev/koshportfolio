@@ -3,6 +3,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { Search } from "lucide-react";
 import { apiSearch } from "@/lib/kosh/api";
+import { terminalSearch } from "@/lib/kosh/instrument-nav";
 import { NIFTY50, searchNse } from "@/lib/kosh/universe";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -17,7 +18,6 @@ export function SearchBar() {
   const recents = useKosh((s) => s.recents);
   const watch = useKosh((s) => s.watch);
   const pushRecent = useKosh((s) => s.pushRecent);
-  const setDeskSymbol = useKosh((s) => s.setDeskSymbol);
   const timer = useRef<number>(0);
 
   useEffect(() => {
@@ -57,8 +57,7 @@ export function SearchBar() {
     setOpen(false);
     setQ("");
     if (pathname === "/markets" || pathname.startsWith("/markets/")) {
-      setDeskSymbol(s, name || s);
-      void nav({ to: "/markets", search: { view: "terminal" } });
+      void nav({ to: "/markets", search: terminalSearch(s, name || s) });
       return;
     }
     void nav({ to: "/s/$symbol", params: { symbol: s } });

@@ -7,8 +7,8 @@
       "status": 200,
       "title": "Kosh · Indian markets and portfolios",
       "hasCanvas": false,
-      "bodyTextLen": 4503,
-      "bodyTextHash": "de4ab210f449aae139b46d9d5d50d059596b3277401f5d92da6448e6dee59972",
+      "bodyTextLen": 4527,
+      "bodyTextHash": "f6852cbbd505dc7aaf70331b5cf2165e0e054cf27d62784f6826966aa22cbd06",
       "bodyTextPrefix": "Skip to content Kosh Markets Screener Portfolios Search any NSE ",
       "horizontalOverflow": false,
       "consoleErrors": [],
@@ -21,9 +21,9 @@
       "status": 200,
       "title": "Kosh · Indian markets and portfolios",
       "hasCanvas": false,
-      "bodyTextLen": 4467,
-      "bodyTextHash": "1b1437fec2ff50533c0f2a75801028cbf730622933af251bdd27d6775c7fe246",
-      "bodyTextPrefix": "Skip to content Kosh Search any NSE or BSE name… INDIAN STOCKS ·",
+      "bodyTextLen": 5714,
+      "bodyTextHash": "121e919c4460e54757a121a7fc446427790ddf30ecf4b71fd3edfad46c8cadfd",
+      "bodyTextPrefix": "Skip to content Kosh Search any NSE or BSE name… Sign in Create ",
       "horizontalOverflow": false,
       "consoleErrors": [],
       "pageErrors": [],
@@ -32,5 +32,9 @@
   },
   "brandWarnings": [],
   "authWarnings": [],
-  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json",
+  "divergesFromBaseline": true,
+  "baselineReasons": [
+    "baseline unreadable: ENOENT"
+  ]
 }

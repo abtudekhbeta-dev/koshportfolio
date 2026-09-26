@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type WheelEvent } from "react";
+import { createPortal } from "react-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   ArrowDownRight,
@@ -28,6 +29,7 @@ import { histInit, histPush, histRedo, histUndo, type DrawHist } from "@/lib/kos
 import { resolveBench } from "@/lib/kosh/benchmarks";
 import { AdjustMenu } from "@/components/charts/adjust-menu";
 import { useChartFullscreen } from "@/components/charts/use-fullscreen";
+import { Tooltip } from "@/components/ui/tooltip";
 import { bollinger, ema, fmtVol, macd, rsi, sma, vwap } from "@/lib/kosh/ohlc";
 import { isIstSession, istClock } from "@/lib/kosh/market-hours";
 import { applyDrag, channelOffFromThird, hitTest, positionMetrics, type HitMode } from "@/lib/kosh/draw-hit";
@@ -456,7 +458,7 @@ export function TermChart({
     return <polyline fill="none" stroke={color} strokeWidth="1.2" points={pts.join(" ")} />;
   }
 
-  return (
+  const card = (
     <section
       ref={shell}
       data-term-chart
@@ -481,17 +483,19 @@ export function TermChart({
             {status === "session" ? `● ${quoteStatusLabel(status)} · ${istClock()}` : quoteStatusLabel(status)}
           </span>
           {owned ? <span className="hidden rounded-sm bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted lg:inline">{owned}</span> : null}
-          <button
-            type="button"
-            aria-label={watched ? "Remove from watch" : "Add to watch"}
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleWatch(symbol);
-            }}
-            className={cn("grid size-7 place-items-center", watched ? "text-warn" : "text-subtle hover:text-fg")}
-          >
-            <Star className={cn("size-3.5", watched && "fill-current")} />
-          </button>
+          <Tooltip content={watched ? "Remove from watch" : "Add to watch"}>
+            <button
+              type="button"
+              aria-label={watched ? "Remove from watch" : "Add to watch"}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleWatch(symbol);
+              }}
+              className={cn("grid size-7 place-items-center", watched ? "text-warn" : "text-subtle hover:text-fg")}
+            >
+              <Star className={cn("size-3.5", watched && "fill-current")} />
+            </button>
+          </Tooltip>
         </div>
         <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
           {TERM_INTERVALS.map((t) => (
@@ -566,74 +570,82 @@ export function TermChart({
             {TOOLS.map((t) => {
               const Icon = t.icon;
               return (
-                <button
-                  key={t.id}
-                  type="button"
-                  aria-label={t.label}
-                  title={t.label}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setTool(t.id);
-                    setDraft(null);
-                    clicks.current = 0;
-                  }}
-                  className={cn(
-                    "grid size-7 place-items-center rounded-sm",
-                    tool === t.id ? "bg-surface text-fg shadow-[var(--shadow-border)]" : "text-muted hover:text-fg",
-                  )}
-                >
-                  <Icon className="size-3.5" />
-                </button>
+                <Tooltip key={t.id} content={t.label}>
+                  <button
+                    type="button"
+                    aria-label={t.label}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTool(t.id);
+                      setDraft(null);
+                      clicks.current = 0;
+                    }}
+                    className={cn(
+                      "grid size-7 place-items-center rounded-sm",
+                      tool === t.id ? "bg-surface text-fg shadow-[var(--shadow-border)]" : "text-muted hover:text-fg",
+                    )}
+                  >
+                    <Icon className="size-3.5" />
+                  </button>
+                </Tooltip>
               );
             })}
-            <button
-              type="button"
-              aria-label="Undo drawing"
-              className="grid size-7 place-items-center text-muted hover:text-fg"
-              onClick={(e) => {
-                e.stopPropagation();
-                undoDraw();
-              }}
-            >
-              <Undo2 className="size-3.5" />
-            </button>
-            <button
-              type="button"
-              aria-label="Redo drawing"
-              className="grid size-7 place-items-center text-muted hover:text-fg"
-              onClick={(e) => {
-                e.stopPropagation();
-                redoDraw();
-              }}
-            >
-              <RotateCcw className="size-3.5" />
-            </button>
-            <button
-              type="button"
-              aria-label="Delete selected drawing"
-              className="grid size-7 place-items-center text-muted hover:text-down"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (selectedId) {
-                  save(shapes.filter((s) => s.id !== selectedId));
-                  setSelectedId(null);
-                }
-              }}
-            >
-              <Trash2 className="size-3.5" />
-            </button>
-            <button
-              type="button"
-              aria-label="Clear drawings"
-              className="grid size-7 place-items-center text-muted hover:text-down"
-              onClick={(e) => {
-                e.stopPropagation();
-                save([]);
-                setDraft(null);
-              }}
-            >
-              <Trash2 className="size-3.5" />
-            </button>
+            <Tooltip content="Undo drawing">
+              <button
+                type="button"
+                aria-label="Undo drawing"
+                className="grid size-7 place-items-center text-muted hover:text-fg"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  undoDraw();
+                }}
+              >
+                <Undo2 className="size-3.5" />
+              </button>
+            </Tooltip>
+            <Tooltip content="Redo drawing">
+              <button
+                type="button"
+                aria-label="Redo drawing"
+                className="grid size-7 place-items-center text-muted hover:text-fg"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  redoDraw();
+                }}
+              >
+                <RotateCcw className="size-3.5" />
+              </button>
+            </Tooltip>
+            <Tooltip content="Delete selected drawing">
+              <button
+                type="button"
+                aria-label="Delete selected drawing"
+                className="grid size-7 place-items-center text-muted hover:text-down"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (selectedId) {
+                    save(shapes.filter((s) => s.id !== selectedId));
+                    setSelectedId(null);
+                  }
+                }}
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </Tooltip>
+            <Tooltip content="Clear drawings">
+              <button
+                type="button"
+                aria-label="Clear drawings"
+                className="grid size-7 place-items-center text-muted hover:text-down"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  save([]);
+                  setDraft(null);
+                }}
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </Tooltip>
           </div>
         ) : null}
         <span className="ml-auto text-[10px] text-subtle">
@@ -932,6 +944,8 @@ export function TermChart({
       </div>
     </section>
   );
+  if (fallback && typeof document !== "undefined") return createPortal(card, document.body);
+  return card;
 }
 
 function tToX(t: number, src: OhlcBar[], xAt: (i: number) => number) {
@@ -1211,7 +1225,7 @@ function IconBtn({
   children: ReactNode;
   disabled?: boolean;
 }) {
-  return (
+  const btn = (
     <button
       type="button"
       aria-label={label}
@@ -1225,4 +1239,5 @@ function IconBtn({
       {children}
     </button>
   );
+  return <Tooltip content={label}>{disabled ? <span className="inline-flex">{btn}</span> : btn}</Tooltip>;
 }

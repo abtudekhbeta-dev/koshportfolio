@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getRouteApi } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Columns2, LayoutGrid, Square } from "lucide-react";
+import { Columns2, LayoutGrid, Minus, Plus, Square } from "lucide-react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { apiQuotes } from "@/lib/kosh/api";
 import { isIstSession, istClock } from "@/lib/kosh/market-hours";
@@ -8,6 +9,7 @@ import { quoteMap, quoteStatus, quoteStatusLabel } from "@/lib/kosh/market-data"
 import type { PatternHit } from "@/lib/kosh/patterns";
 import type { Quote } from "@/lib/kosh/types";
 import { bareSymbol, useKosh, type DeskLayout } from "@/lib/store";
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { TermChart } from "./term-chart";
 import { WatchPane } from "./watch-pane";
@@ -47,11 +49,16 @@ function ownedNotes(
   return out;
 }
 
+const marketsRoute = getRouteApi("/markets");
+
 export function MarketsDesk() {
+  const { symbol: focusSymbol, name: focusName } = marketsRoute.useSearch();
   const desk = useKosh((s) => s.desk);
   const patchDesk = useKosh((s) => s.patchDesk);
   const setDeskPane = useKosh((s) => s.setDeskPane);
   const setDeskSymbol = useKosh((s) => s.setDeskSymbol);
+  const termHeight = useKosh((s) => s.chartPrefs.termHeight || 520);
+  const patchChartPrefs = useKosh((s) => s.patchChartPrefs);
   const watch = useKosh((s) => s.watch);
   const ports = useKosh((s) => s.portfolios);
   const [wide, setWide] = useState(true);
@@ -83,6 +90,20 @@ export function MarketsDesk() {
     m.addEventListener("change", fn);
     return () => m.removeEventListener("change", fn);
   }, []);
+
+  useEffect(() => {
+    if (!focusSymbol) return;
+    let cancel = false;
+    const apply = () => {
+      if (!cancel) setDeskSymbol(focusSymbol, focusName || focusSymbol);
+    };
+    if (useKosh.persist.hasHydrated()) apply();
+    const unsub = useKosh.persist.onFinishHydration(apply);
+    return () => {
+      cancel = true;
+      unsub();
+    };
+  }, [focusSymbol, focusName, setDeskSymbol]);
 
   const layout: DeskLayout = wide ? desk.layout : 1;
   const visible = desk.panes.slice(0, layout);
@@ -176,22 +197,45 @@ export function MarketsDesk() {
               [4, LayoutGrid, "4 charts"],
             ] as const
           ).map(([n, Icon, label]) => (
-            <button
-              key={n}
-              type="button"
-              data-layout={n}
-              disabled={!wide && n !== 1}
-              aria-label={label}
-              onClick={() => patchDesk({ layout: n, activePane: n === 1 ? 0 : desk.activePane < n ? desk.activePane : 0 })}
-              className={cn(
-                "grid size-8 place-items-center rounded-[6px]",
-                layout === n ? "bg-surface text-fg" : "text-muted hover:text-fg",
-                !wide && n !== 1 && "opacity-40",
-              )}
-            >
-              <Icon className="size-3.5" />
-            </button>
+            <Tooltip key={n} content={label}>
+              <button
+                type="button"
+                data-layout={n}
+                disabled={!wide && n !== 1}
+                aria-label={label}
+                onClick={() => patchDesk({ layout: n, activePane: n === 1 ? 0 : desk.activePane < n ? desk.activePane : 0 })}
+                className={cn(
+                  "grid size-8 place-items-center rounded-[6px]",
+                  layout === n ? "bg-surface text-fg" : "text-muted hover:text-fg",
+                  !wide && n !== 1 && "opacity-40",
+                )}
+              >
+                <Icon className="size-3.5" />
+              </button>
+            </Tooltip>
           ))}
+        </div>
+        <div className="flex items-center gap-0.5">
+          <Tooltip content="Decrease chart height">
+            <button
+              type="button"
+              aria-label="Decrease chart height"
+              onClick={() => patchChartPrefs({ termHeight: termHeight - 40 })}
+              className="grid size-8 place-items-center rounded-sm text-muted hover:text-fg"
+            >
+              <Minus className="size-3.5" />
+            </button>
+          </Tooltip>
+          <Tooltip content="Increase chart height">
+            <button
+              type="button"
+              aria-label="Increase chart height"
+              onClick={() => patchChartPrefs({ termHeight: termHeight + 40 })}
+              className="grid size-8 place-items-center rounded-sm text-muted hover:text-fg"
+            >
+              <Plus className="size-3.5" />
+            </button>
+          </Tooltip>
         </div>
         <button
           type="button"
@@ -229,7 +273,9 @@ export function MarketsDesk() {
         <Group orientation="horizontal" className="min-h-0 flex-1" defaultLayout={DESK_SPLIT}>
           <Panel id="main" minSize="42%" className="min-h-0 overflow-y-auto">
             <div className="flex min-h-full flex-col">
-              <div className="h-[min(68vh,600px)] min-h-[420px] shrink-0">{workspace}</div>
+              <div className="shrink-0" style={{ height: termHeight }} data-term-height={termHeight}>
+                {workspace}
+              </div>
               <div className="border-t border-border">{intel}</div>
             </div>
           </Panel>
@@ -240,7 +286,9 @@ export function MarketsDesk() {
         </Group>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
-          <div className="h-[min(42vh,320px)] min-h-[220px] shrink-0">{workspace}</div>
+          <div className="shrink-0" style={{ height: termHeight }} data-term-height={termHeight}>
+            {workspace}
+          </div>
           <div className="min-h-[280px] border-t border-border">{watchEl}</div>
           <div className="border-t border-border">{intel}</div>
         </div>

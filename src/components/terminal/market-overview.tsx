@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MarketHeat } from "@/components/charts/market-heat";
@@ -7,10 +7,10 @@ import { MacroBoard, MarketTempCard, EventCalendar } from "@/components/macro-bo
 import { MixNudge } from "@/components/mix-nudge";
 import { NewsBoard } from "@/components/news-board";
 import { PulseDesk } from "@/components/note-desk";
-import { canOpenStock } from "@/components/stock-link";
 import { apiNews, apiQuotes, apiScreener, apiTape } from "@/lib/kosh/api";
 import { sectorIndex } from "@/lib/kosh/benchmarks";
-import { fmtInr, fmtPct, fmtPx } from "@/lib/kosh/engine";
+import { fmtPct, fmtPx } from "@/lib/kosh/engine";
+import { instrumentKind, terminalSearch } from "@/lib/kosh/instrument-nav";
 import { overlayQuotes, pickLiveSymbols } from "@/lib/kosh/live-overlay";
 import { isIstSession } from "@/lib/kosh/market-hours";
 import { applyScreen, sectorPulse } from "@/lib/kosh/screens";
@@ -18,7 +18,7 @@ import { cycleSort, sortEntities, sortGlyph, type SortDir } from "@/lib/kosh/kos
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-type HoldKey = "name" | "last" | "chg" | "chgPct" | "value" | "weight";
+type HoldKey = "name" | "last" | "chg" | "chgPct";
 type WatchKey = "name" | "last" | "chg" | "chgPct";
 
 function SortTh({
@@ -63,8 +63,6 @@ export function MarketOverview() {
   const ports = useKosh((s) => s.portfolios);
   const watchlists = useKosh((s) => s.watchlists);
   const activeWatchId = useKosh((s) => s.activeWatchId);
-  const setDeskSymbol = useKosh((s) => s.setDeskSymbol);
-  const nav = useNavigate();
   const [bookId, setBookId] = useState("all");
   const [listId, setListId] = useState<string | null>(null);
   const [moreHold, setMoreHold] = useState(false);
@@ -123,14 +121,12 @@ export function MarketOverview() {
       const last = q && q.price > 0 ? q.price : screenRow && screenRow.price > 0 ? screenRow.price : null;
       const chg = last != null && q && q.previousClose > 0 ? last - q.previousClose : null;
       const chgPct = q && Number.isFinite(q.changePct) ? q.changePct : screenRow?.changePct ?? null;
-      const value = last != null && r.qty ? last * r.qty : null;
-      return { ...r, last, chg, chgPct, value };
+      return { ...r, last, chg, chgPct };
     });
-    const total = draft.reduce((s, r) => s + (r.value || 0), 0);
-    return draft.map((r) => ({ ...r, weight: r.value != null && total > 0 ? (r.value / total) * 100 : null }));
+    return draft;
   }, [bookId, ports, qBy, liveRows]);
   const sortedHold = useMemo(() => {
-    if (!holdSort) return sortEntities(holdRows, "value", "desc");
+    if (!holdSort) return sortEntities(holdRows, "chgPct", "desc");
     return sortEntities(holdRows, holdSort.key, holdSort.dir);
   }, [holdRows, holdSort]);
   const activeList = watchlists.find((l) => l.id === (listId || activeWatchId)) || watchlists[0];
@@ -206,16 +202,34 @@ export function MarketOverview() {
                 </div>
               </>
             );
-            return canOpenStock(t.symbol) ? (
-              <Link
-                key={t.id}
-                to="/s/$symbol"
-                params={{ symbol: t.symbol }}
-                className="rounded-lg bg-surface px-3 py-3 shadow-[var(--shadow-border)] hover:shadow-[var(--shadow-border-hover)]"
-              >
-                {inner}
-              </Link>
-            ) : (
+            if (instrumentKind(t.symbol) === "index") {
+              return (
+                <Link
+                  key={t.id}
+                  to="/markets"
+                  search={terminalSearch(t.symbol, t.label)}
+                  aria-label={`Open ${t.label} in Terminal`}
+                  className="rounded-lg bg-surface px-3 py-3 shadow-[var(--shadow-border)] hover:shadow-[var(--shadow-border-hover)]"
+                >
+                  {inner}
+                </Link>
+              );
+            }
+            if (instrumentKind(t.symbol) === "stock") {
+              const bare = t.symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
+              return (
+                <Link
+                  key={t.id}
+                  to="/s/$symbol"
+                  params={{ symbol: bare }}
+                  aria-label={`Open ${t.label}`}
+                  className="rounded-lg bg-surface px-3 py-3 shadow-[var(--shadow-border)] hover:shadow-[var(--shadow-border-hover)]"
+                >
+                  {inner}
+                </Link>
+              );
+            }
+            return (
               <div key={t.id} className="rounded-lg bg-surface px-3 py-3 shadow-[var(--shadow-border)]">
                 {inner}
               </div>
@@ -248,15 +262,13 @@ export function MarketOverview() {
           {sortedHold.length ? (
             <>
               <div className="mt-2 overflow-x-auto">
-                <table className="w-full min-w-[520px] text-left text-[12px]">
+                <table className="w-full text-left text-[12px]">
                   <thead className="text-[10px] tracking-[0.06em] text-subtle uppercase">
                     <tr>
                       <SortTh label="Name" on={holdSort?.key === "name"} dir={holdSort?.dir || null} onClick={() => cycleHold("name")} />
                       <SortTh label="Last" align="right" on={holdSort?.key === "last"} dir={holdSort?.dir || null} onClick={() => cycleHold("last")} />
                       <SortTh label="Chg" align="right" on={holdSort?.key === "chg"} dir={holdSort?.dir || null} onClick={() => cycleHold("chg")} />
                       <SortTh label="Chg %" align="right" on={holdSort?.key === "chgPct"} dir={holdSort?.dir || null} onClick={() => cycleHold("chgPct")} />
-                      <SortTh label="Value" align="right" on={holdSort?.key === "value"} dir={holdSort?.dir || null} onClick={() => cycleHold("value")} />
-                      <SortTh label="Weight" align="right" on={holdSort?.key === "weight"} dir={holdSort?.dir || null} onClick={() => cycleHold("weight")} />
                     </tr>
                   </thead>
                   <tbody>
@@ -275,8 +287,6 @@ export function MarketOverview() {
                         <td className={cn("py-1.5 text-right font-mono tabular", (r.chgPct ?? 0) >= 0 ? "text-up" : "text-down")}>
                           {r.chgPct == null ? "—" : fmtPct(r.chgPct)}
                         </td>
-                        <td className="py-1.5 text-right font-mono tabular">{r.value != null ? fmtInr(r.value) : "—"}</td>
-                        <td className="py-1.5 text-right font-mono tabular">{r.weight != null ? r.weight.toFixed(1) + "%" : "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -413,17 +423,15 @@ export function MarketOverview() {
                 </>
               );
               return idx ? (
-                <button
+                <Link
                   key={s.sector}
-                  type="button"
+                  to="/markets"
+                  search={terminalSearch(idx.symbol, idx.name)}
+                  aria-label={`Open ${idx.name} in Terminal`}
                   className={cn("rounded-sm px-2 py-2 text-center", s.avg >= 0 ? "bg-up/20" : "bg-down/20")}
-                  onClick={() => {
-                    setDeskSymbol(idx.symbol, idx.name);
-                    void nav({ to: "/markets", search: { view: "terminal" } });
-                  }}
                 >
                   {body}
-                </button>
+                </Link>
               ) : (
                 <div
                   key={s.sector}

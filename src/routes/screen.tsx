@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { EnrichButton } from "@/components/enrich-button";
 import { Button } from "@/components/ui/button";
 import { apiScreenBuild, apiScreener, apiScreenerDeep } from "@/lib/kosh/api";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
@@ -78,6 +79,8 @@ function ScreenPage() {
   const nStrict = mbScored.filter((x) => x.kind === "strict").length;
   const nFail = mbScored.filter((x) => x.kind === "fail").length;
   const nUnk = mbScored.filter((x) => x.kind === "unknown").length;
+  const gapSyms = shownAll.filter((r) => r.roce == null || r.opm == null).map((r) => r.symbol);
+  const gapNow = gapSyms.slice(0, 36);
 
   function head(key: SortKey, label: string) {
     const on = sort.key === key;
@@ -101,8 +104,12 @@ function ScreenPage() {
         <h1 className="text-[28px] font-semibold tracking-tight">Screener</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           Every NSE equity we can list. Company numbers and chart patterns fill in when the daily history is in. A blank
-          cell is missing, not a pass — and never a guess.
+          cell is missing, not a pass — and never a guess. Load more data reads filings for names on this page that are
+          still missing operating margin or return on capital. It does not invent a number.
         </p>
+        <div className="mt-3">
+          <EnrichButton symbols={gapNow} queued={Math.max(0, gapSyms.length - gapNow.length)} />
+        </div>
 
         <CustomBuilder
           onBuilt={(f) => {

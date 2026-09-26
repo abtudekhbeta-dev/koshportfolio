@@ -134,29 +134,9 @@ var Bell = createLucideIcon("bell", [["path", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
-var ChevronDown = createLucideIcon("chevron-down", [["path", {
-	d: "m6 9 6 6 6-6",
-	key: "qrunsl"
-}]]);
-/**
-* @license lucide-react v0.510.0 - ISC
-*
-* This source code is licensed under the ISC license.
-* See the LICENSE file in the root directory of this source tree.
-*/
 var ChevronRight = createLucideIcon("chevron-right", [["path", {
 	d: "m9 18 6-6-6-6",
 	key: "mthhwq"
-}]]);
-/**
-* @license lucide-react v0.510.0 - ISC
-*
-* This source code is licensed under the ISC license.
-* See the LICENSE file in the root directory of this source tree.
-*/
-var ChevronUp = createLucideIcon("chevron-up", [["path", {
-	d: "m18 15-6-6-6 6",
-	key: "153udz"
 }]]);
 /**
 * @license lucide-react v0.510.0 - ISC
@@ -834,4 +814,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { Copy as A, Mail as C, GripVertical as D, Layers as E, ChevronDown as F, Bell as I, ArrowUpRight as L, CircleHelp as M, ChevronUp as N, Download as O, ChevronRight as P, ArrowRight as R, Maximize2 as S, LayoutGrid as T, MousePointer2 as _, Trash2 as a, Minimize2 as b, Square as c, Search as d, RotateCcw as f, MoveRight as g, Pause as h, TriangleAlert as i, Columns2 as j, Crosshair as k, Spline as l, Play as m, UnfoldVertical as n, Sun as o, Plus as p, Undo2 as r, Star as s, X as t, Send as u, Moon as v, Magnet as w, MessageCircle as x, Minus as y, ArrowDownRight as z };
+export { Copy as A, Mail as C, GripVertical as D, Layers as E, ArrowUpRight as F, ArrowRight as I, ArrowDownRight as L, CircleHelp as M, ChevronRight as N, Download as O, Bell as P, Maximize2 as S, LayoutGrid as T, MousePointer2 as _, Trash2 as a, Minimize2 as b, Square as c, Search as d, RotateCcw as f, MoveRight as g, Pause as h, TriangleAlert as i, Columns2 as j, Crosshair as k, Spline as l, Play as m, UnfoldVertical as n, Sun as o, Plus as p, Undo2 as r, Star as s, X as t, Send as u, Moon as v, Magnet as w, MessageCircle as x, Minus as y };
