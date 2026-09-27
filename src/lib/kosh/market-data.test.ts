@@ -18,7 +18,7 @@ function bar(t: number, o: number, h: number, l: number, c: number, v = 10): Ohl
 describe("quoteStatus", () => {
   it("is session only when the cash session is open and a price exists", () => {
     assert.equal(quoteStatus({ session: true, price: 100 }), "session");
-    assert.equal(quoteStatusLabel("session"), "SESSION");
+    assert.equal(quoteStatusLabel("session"), "SESSION · DELAYED");
   });
 
   it("is last available after the session when a price exists", () => {

@@ -601,6 +601,28 @@ html.kosh-fs-lock {
   overflow: hidden;
 }
 
+.kosh-term-fs {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: var(--color-bg);
+}
+
+.kosh-ai-btn {
+  background: color-mix(in srgb, var(--color-chart) 12%, var(--color-surface));
+  color: var(--color-fg);
+  box-shadow: var(--shadow-border);
+}
+.kosh-ai-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-chart) 20%, var(--color-surface));
+}
+.kosh-ai-mark {
+  color: var(--color-chart);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

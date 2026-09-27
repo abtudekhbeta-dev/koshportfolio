@@ -39,6 +39,7 @@ import {
   validateQual,
   type SkillStatus,
 } from "./skill-engine";
+import { screenMetricGap } from "./evidence";
 import { metalKey, METALS } from "./commodities";
 
 const cache = new Map<string, { at: number; text: string }>();
@@ -271,11 +272,11 @@ One object per ticker in FACTS. fund and qual are EXACTLY two words. Capitalise 
 const SCREEN_BUILD = `You build a Kosh stock screener from the user's words and/or a screenshot of criteria.
 Kosh can filter these live fields on a Nifty-heavy universe:
 Price action: changePct, ret1m, ret3m, ret1y, offHigh (percent from 52w high, 0 = at high, -20 = 20% below), rsi (14), volRatio (today vs 20d avg), above50 (bool), above200 (bool), macdBull (bool, MACD histogram > 0), bbLow (bool, price in lower 20% of Bollinger).
-Fundamentals when on file: pe, pb, roe, de (debt/equity), mcapCr (₹ Cr), divYield (%), salesYoY (%).
+Fundamentals when on file: pe, pb, peg, roe, roce, opm, de (debt/equity), interestCover, cfoPat, mcapCr (₹ Cr), divYield (%), salesYoY (%), salesCagr3, profitCagr3, profitCagr5, promoters, pledge, fii, dii.
 Sectors: Financials, IT, Energy, Auto, FMCG, Healthcare, Telecom, Materials, Industrials, Consumer, Realty, Other, Commodities.
-If a requested metric is not in this list, map to the closest field and say so in hint.
+If a requested metric is not in this list, do not map it. Set "unsupported" to the metric name and "closest" to the nearest field above. Leave every filter null.
 Return STRICT JSON only:
-{"name":"short label","hint":"one sentence of what you built","changePctMin":null,"changePctMax":null,"ret1mMin":null,"ret1mMax":null,"ret3mMin":null,"ret3mMax":null,"ret1yMin":null,"ret1yMax":null,"offHighMin":null,"offHighMax":null,"rsiMin":null,"rsiMax":null,"volRatioMin":null,"above50":null,"above200":null,"peMin":null,"peMax":null,"pbMin":null,"pbMax":null,"roeMin":null,"roeMax":null,"deMin":null,"deMax":null,"mcapMin":null,"mcapMax":null,"divMin":null,"divMax":null,"salesYoYMin":null,"salesYoYMax":null,"macdBull":null,"bbLow":null,"sectors":[],"sort":"changePct","sortDir":"desc"}
+{"name":"short label","hint":"one sentence of what you built","unsupported":null,"closest":null,"changePctMin":null,"changePctMax":null,"ret1mMin":null,"ret1mMax":null,"ret3mMin":null,"ret3mMax":null,"ret1yMin":null,"ret1yMax":null,"offHighMin":null,"offHighMax":null,"rsiMin":null,"rsiMax":null,"volRatioMin":null,"above50":null,"above200":null,"peMin":null,"peMax":null,"pbMin":null,"pbMax":null,"roeMin":null,"roeMax":null,"deMin":null,"deMax":null,"mcapMin":null,"mcapMax":null,"divMin":null,"divMax":null,"salesYoYMin":null,"salesYoYMax":null,"macdBull":null,"bbLow":null,"sectors":[],"sort":"changePct","sortDir":"desc"}
 Use numbers or null. above50/above200/macdBull/bbLow: true, false, or null. sort is one of name,price,changePct,ret1m,ret3m,ret1y,offHigh,rsi,vol,pe,pb,roe,de,mcapCr,divYield,salesYoY.
 JSON only.`;
 
@@ -533,6 +534,26 @@ function fromParsed(kind: NoteKind, parsed: Record<string, unknown> | null, raw:
   return { text: readable, quality, spark, qualityBlock, sparkBlock, pulseBlock, mixBlock, fundBlock, qualBlock, structureBlock, pickNotes, notes };
 }
 
+function jsonKindOk(kind: string, parsed: Record<string, unknown> | null): boolean {
+  if (!parsed) return false;
+  const head = (v: unknown) => {
+    if (!v || typeof v !== "object") return false;
+    const h = (v as { headline?: unknown }).headline;
+    return typeof h === "string" && h.trim().length > 0;
+  };
+  if (kind === "pulse" || kind === "book" || kind === "quality" || kind === "spark") {
+    return typeof parsed.headline === "string" && parsed.headline.trim().length > 0;
+  }
+  if (kind === "structure") {
+    return typeof parsed.tag === "string" && parsed.tag.trim().length > 0 && typeof parsed.verdict === "string" && parsed.verdict.trim().length > 0;
+  }
+  if (kind === "desk") return head(parsed.quality) || head(parsed.spark);
+  if (kind === "picks" || kind === "holdings") return Array.isArray(parsed.notes) && parsed.notes.length > 0;
+  return true;
+}
+
+const JSON_KINDS = new Set(["quality", "spark", "pulse", "book", "desk", "holdings", "structure", "picks"]);
+
 export async function executeNote(input: NoteInput): Promise<NoteOk | { ok: false; error: string; skillStatus?: SkillStatus }> {
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) return { ok: false, error: "AI is not available in this environment" };
@@ -559,8 +580,8 @@ export async function executeNote(input: NoteInput): Promise<NoteOk | { ok: fals
           ? `${kind}:${(input.book?.names || [])
               .map((h) =>
                 kind === "improve"
-                  ? `${h.symbol}:${h.fundApproved || h.fundTag || ""}:${h.qualApproved || h.qualTag || ""}:${h.fundStatus || ""}:${h.qualStatus || ""}`
-                  : h.symbol,
+                  ? `${h.symbol}:${h.weight}:${h.fundApproved || h.fundTag || ""}:${h.qualApproved || h.qualTag || ""}:${h.fundStatus || ""}:${h.qualStatus || ""}`
+                  : `${h.symbol}:${h.weight}`,
               )
               .join(",")}:${day}`
           : kind === "pulse"
@@ -601,9 +622,9 @@ export async function executeNote(input: NoteInput): Promise<NoteOk | { ok: fals
     kind === "ask"
       ? `QUESTION:\n${question || "What matters on this name?"}\n\nCompany data:\n${blob}`
       : kind === "fund"
-        ? `Write the full equity-fundamental-analysis of ${name} (${ticker}) listed on NSE/BSE now. Do not describe a research process. Do not write a one-line status. The snapshot below is supplementary — research NSE/BSE filings, the company IR site, annual reports and quarterly results. If a figure is unavailable, say “Not reliably available.” Be direct: cut descriptive padding by at least half. Keep every required section, verdict label, factor, and number. One sentence of why per factor. Markdown tables only. Final verdict 3–6 sentences. Use exactly one approved verdict from the skill.\n\n${blob}`
+        ? `Write the full equity-fundamental-analysis of ${name} (${ticker}) listed on NSE/BSE now. Do not describe a research process. Do not write a one-line status. The snapshot below is supplementary — research NSE/BSE filings, the company IR site, annual reports and quarterly results. Cite a number only if it is in the snapshot or in a primary document you name (title, period, URL). Do not invent figures. Distinguish a reported fact, company guidance, a media interpretation, and a Kosh calculation. Do not present guidance as achieved performance. If a figure is unavailable, say “Not reliably available.” Be direct: cut descriptive padding by at least half. Keep every required section, verdict label, factor, and number. One sentence of why per factor. Markdown tables only. Final verdict 3–6 sentences. Use exactly one approved verdict from the skill.\n\n${blob}`
         : kind === "qual"
-          ? `Write the full qualitative-multibagger-catalyst analysis of ${name} (${ticker}) listed on NSE/BSE now. Do not describe a research process. Do not write a one-line status such as “Researching…”. Snapshot below is a supporting financial check — research primary filings and the company IR site. Be direct: cut descriptive padding by at least half. Keep every required section, verdict label, factor, and number. One sentence of why per factor. Markdown tables only. Final verdict 3–6 sentences. Use exactly one approved qualitative label and one financial classification.\n\n${blob}`
+          ? `Write the full qualitative-multibagger-catalyst analysis of ${name} (${ticker}) listed on NSE/BSE now. Do not describe a research process. Do not write a one-line status such as “Researching…”. Snapshot below is a supporting financial check — research primary filings and the company IR site. Distinguish reported fact, company guidance, and your interpretation. Do not invent a financial number. If a figure is unavailable, say “Not reliably available.” Be direct: cut descriptive padding by at least half. Keep every required section, verdict label, factor, and number. One sentence of why per factor. Markdown tables only. Final verdict 3–6 sentences. Use exactly one approved qualitative label and one financial classification.\n\n${blob}`
           : kind === "combine"
             ? `Connect the two skill outputs below. Do not rerun either skill. Be direct. Cut padding by half.\n\n${blob}`
             : kind === "improve"
@@ -647,6 +668,23 @@ export async function executeNote(input: NoteInput): Promise<NoteOk | { ok: fals
   if ((kind === "fund" || kind === "qual") && !skillOutputReady(kind, text)) {
     return { ok: false, error: "The analysis did not finish. Retry.", skillStatus: "Failed" };
   }
+  if (JSON_KINDS.has(kind)) {
+    let parsedTry = parseJson(text);
+    if (!jsonKindOk(kind, parsedTry)) {
+      try {
+        text = await run(
+          `The last reply was not valid JSON for this skill. Return only the required JSON object. Do not omit required fields. Do not invent missing numbers. Do not add a buy or sell.\n\n${user}`,
+        );
+        parsedTry = parseJson(text);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Analysis error";
+        return { ok: false, error: msg, skillStatus: classifySkillError(msg) };
+      }
+    }
+    if (!jsonKindOk(kind, parsedTry)) {
+      return { ok: false, error: "AI analysis unavailable", skillStatus: "Invalid" };
+    }
+  }
   cache.set(cacheKey, { at: Date.now(), text });
   const parsed = kind === "fund" || kind === "qual" || kind === "combine" || kind === "improve" ? null : parseJson(text);
   return { ok: true, cached: false, ...fromParsed(kind, parsed, text) };
@@ -655,21 +693,26 @@ export async function executeNote(input: NoteInput): Promise<NoteOk | { ok: fals
 export async function executeScreenBuild(input: {
   prompt: string;
   image?: string;
-}): Promise<{ ok: true; filter: ScreenFilter; cached: boolean } | { ok: false; error: string }> {
+}): Promise<
+  | { ok: true; filter: ScreenFilter; cached: boolean }
+  | { ok: false; error: string; unsupported?: { metric: string; closest: string } }
+> {
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) return { ok: false, error: "AI is not available in this environment" };
   const prompt = String(input.prompt || "").slice(0, 1200);
   const image = String(input.image || "");
   if (!prompt && !image) return { ok: false, error: "Describe the screen, or attach a screenshot" };
-  const cacheKey = `screen:${prompt}:${image.slice(0, 40)}:${image.length}`;
+  const gap = screenMetricGap(prompt);
+  if (gap) return { ok: false, error: gap.message, unsupported: { metric: gap.metric, closest: gap.closest } };
+  const cacheKey = `screen:v23:${prompt}:${image.slice(0, 40)}:${image.length}`;
   const hit = cache.get(cacheKey);
   if (hit && Date.now() - hit.at < DAY) {
     const parsed = parseJson(hit.text);
-    if (parsed) return { ok: true, filter: asFilter(parsed), cached: true };
+    if (parsed && !parsed.unsupported) return { ok: true, filter: asFilter(parsed), cached: true };
   }
   const userContent: unknown = image
     ? [
-        { type: "text", text: prompt || "Build a Kosh screener from this screenshot of criteria." },
+        { type: "text", text: prompt || "Build a Kosh screener from this screenshot of criteria. If a metric is unsupported, say so. Do not substitute it." },
         { type: "image_url", image_url: { url: image.slice(0, 900_000) } },
       ]
     : `USER CRITERIA:\n${prompt}`;
@@ -681,6 +724,15 @@ export async function executeScreenBuild(input: {
   }
   const parsed = parseJson(text);
   if (!parsed) return { ok: false, error: "Could not read a screen from that. Try a shorter sentence." };
+  if (typeof parsed.unsupported === "string" && parsed.unsupported.trim()) {
+    const metric = parsed.unsupported.trim().slice(0, 80);
+    const closest = String(parsed.closest || "a listed field").slice(0, 40);
+    return {
+      ok: false,
+      error: `${metric} is not currently a supported screening field. Closest available: ${closest}. Use ${closest} instead?`,
+      unsupported: { metric, closest },
+    };
+  }
   cache.set(cacheKey, { at: Date.now(), text });
   return { ok: true, filter: asFilter(parsed), cached: false };
 }

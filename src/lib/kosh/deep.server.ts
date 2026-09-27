@@ -6,6 +6,8 @@ import { fetchFundamentals } from "./fundamentals.server.ts";
 import { pickPeg } from "./portfolio-stats.ts";
 import { fillFundamentals } from "./fund-merge.ts";
 import { parsePeriod } from "./fin-series.ts";
+import { allowedFilingUrl } from "./guard.ts";
+import { noteDerived, reconcileFundamentals } from "./evidence.ts";
 export { fillFundamentals } from "./fund-merge.ts";
 
 const UA =
@@ -66,6 +68,7 @@ async function nseJson(path: string): Promise<unknown> {
 }
 
 async function fetchXml(url: string): Promise<string | null> {
+  if (!allowedFilingUrl(url)) return null;
   const hit = xmlCache.get(url);
   if (hit && Date.now() - hit.at < XML_TTL) return hit.xml;
   try {
@@ -608,7 +611,17 @@ export async function fetchDeepFundamentals(symbol: string): Promise<{ fund: Fun
     /* keep card */
   }
 
-  let fund = fillFundamentals(base, extra);
+  let fund = reconcileFundamentals(base, extra, {
+    card: base.searchId ? "Company card" : "Structured provider",
+    filing: "NSE filing",
+  });
+  const before = {
+    cfoPat: fund.cfoPat,
+    salesCagr3: fund.salesCagr3,
+    profitCagr3: fund.profitCagr3,
+    profitCagr5: fund.profitCagr5,
+    peg: fund.peg,
+  };
   const lastCfo = fund.cfo.at(-1)?.value;
   const lastPat = fund.profits.at(-1)?.value;
   if (fund.cfoPat == null && lastCfo != null && lastPat != null && lastPat !== 0) {
@@ -622,7 +635,26 @@ export async function fetchDeepFundamentals(symbol: string): Promise<{ fund: Fun
   if (fund.peg == null && picked) {
     fund.peg = picked.peg;
     fund.pegVia = picked.via;
+  } else if (picked && fund.peg != null && fund.peg === picked.peg) {
+    fund.pegVia = picked.via;
   }
+  const derived: Partial<Record<string, string>> = {};
+  if (before.cfoPat == null && fund.cfoPat != null) {
+    derived.cfoPat = "Kosh-derived: latest annual CFO / PAT on file. Not a company-reported ratio.";
+  }
+  if (before.salesCagr3 == null && fund.salesCagr3 != null) {
+    derived.salesCagr3 = "Kosh-derived: 3-year CAGR from annual revenue points.";
+  }
+  if (before.profitCagr3 == null && fund.profitCagr3 != null) {
+    derived.profitCagr3 = "Kosh-derived: 3-year CAGR from annual profit points.";
+  }
+  if (before.profitCagr5 == null && fund.profitCagr5 != null) {
+    derived.profitCagr5 = "Kosh-derived: 5-year CAGR from annual profit points.";
+  }
+  if (before.peg == null && fund.peg != null) {
+    derived.peg = `Kosh-derived PEG using ${fund.pegVia || "profit growth"}. Not a vendor PEG.`;
+  }
+  if (Object.keys(derived).length) fund = noteDerived(fund, derived);
   fund.retrievedAt = Date.now();
   if (!fund.searchId && !fund.sales.length && !fund.profits.length && fund.promoters == null && !fund.cfo.length) {
     deepCache.set(bare, { at: Date.now(), fund: null, sources });

@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getRouteApi } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Columns2, LayoutGrid, Minus, Plus, Square } from "lucide-react";
+import { Columns2, LayoutGrid, Maximize2, Minimize2, Minus, Plus, Square } from "lucide-react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { apiQuotes } from "@/lib/kosh/api";
 import { isIstSession, istClock } from "@/lib/kosh/market-hours";
-import { quoteMap, quoteStatus, quoteStatusLabel } from "@/lib/kosh/market-data";
+import { MARKET_PROVIDER, quoteMap, quoteStatus, quoteStatusLabel } from "@/lib/kosh/market-data";
 import type { PatternHit } from "@/lib/kosh/patterns";
 import type { Quote } from "@/lib/kosh/types";
 import { bareSymbol, useKosh, type DeskLayout } from "@/lib/store";
 import { Tooltip } from "@/components/ui/tooltip";
+import { useChartFullscreen } from "@/components/charts/use-fullscreen";
 import { cn } from "@/lib/utils";
 import { TermChart } from "./term-chart";
 import { WatchPane } from "./watch-pane";
@@ -62,6 +63,10 @@ export function MarketsDesk() {
   const watch = useKosh((s) => s.watch);
   const ports = useKosh((s) => s.portfolios);
   const [wide, setWide] = useState(true);
+  const [watchOpen, setWatchOpen] = useState(true);
+  const deskRef = useRef<HTMLDivElement>(null);
+  const dragH = useRef<{ y: number; h: number } | null>(null);
+  const { fs, fallback, toggle: toggleFs } = useChartFullscreen(deskRef);
   const [hits, setHits] = useState<PatternHit[]>([]);
   const onHits = useCallback((next: PatternHit[]) => {
     setHits((prev) => {
@@ -186,8 +191,52 @@ export function MarketsDesk() {
     />
   );
 
+  const chartBox = (
+    <div
+      className={cn("min-h-0", fs ? "min-h-[240px] flex-1" : "shrink-0")}
+      style={fs ? undefined : { height: termHeight }}
+      data-term-height={termHeight}
+    >
+      {workspace}
+    </div>
+  );
+
+  const heightHandle = !fs ? (
+    <div
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="Drag chart height"
+      title="Drag chart height"
+      className="h-1.5 shrink-0 cursor-ns-resize bg-border hover:bg-fg/30"
+      onPointerDown={(e) => {
+        dragH.current = { y: e.clientY, h: termHeight };
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }}
+      onPointerMove={(e) => {
+        if (!dragH.current) return;
+        patchChartPrefs({ termHeight: dragH.current.h + (e.clientY - dragH.current.y) });
+      }}
+      onPointerUp={() => {
+        dragH.current = null;
+      }}
+    />
+  ) : null;
+
+  const mainCol = (
+    <div className={cn("flex min-h-0 flex-col", fs ? "h-full" : "min-h-full")}>
+      {chartBox}
+      {heightHandle}
+      <div className={cn("border-t border-border", fs && "max-h-[34%] overflow-y-auto")}>{intel}</div>
+    </div>
+  );
+
   return (
-    <div data-markets-desk className="flex min-h-0 flex-1 flex-col bg-bg">
+    <div
+      ref={deskRef}
+      data-markets-desk
+      data-term-fs={fs ? "1" : "0"}
+      className={cn("flex min-h-0 flex-1 flex-col bg-bg", fs && "h-dvh", fallback && "kosh-term-fs")}
+    >
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-2 py-1.5 sm:px-3">
         <div className="flex items-center gap-0.5 rounded-sm bg-bg-elevated p-0.5">
           {(
@@ -220,8 +269,9 @@ export function MarketsDesk() {
             <button
               type="button"
               aria-label="Decrease chart height"
+              disabled={fs}
               onClick={() => patchChartPrefs({ termHeight: termHeight - 40 })}
-              className="grid size-8 place-items-center rounded-sm text-muted hover:text-fg"
+              className="grid size-8 place-items-center rounded-sm text-muted hover:text-fg disabled:opacity-40"
             >
               <Minus className="size-3.5" />
             </button>
@@ -230,13 +280,37 @@ export function MarketsDesk() {
             <button
               type="button"
               aria-label="Increase chart height"
+              disabled={fs}
               onClick={() => patchChartPrefs({ termHeight: termHeight + 40 })}
-              className="grid size-8 place-items-center rounded-sm text-muted hover:text-fg"
+              className="grid size-8 place-items-center rounded-sm text-muted hover:text-fg disabled:opacity-40"
             >
               <Plus className="size-3.5" />
             </button>
           </Tooltip>
+          <Tooltip content="Reset chart height">
+            <button
+              type="button"
+              aria-label="Reset chart height"
+              onClick={() => patchChartPrefs({ termHeight: 520 })}
+              className="h-8 rounded-sm px-2 text-[11px] font-medium text-muted hover:text-fg"
+            >
+              Fit
+            </button>
+          </Tooltip>
         </div>
+        <Tooltip content={watchOpen ? "Close watchlist" : "Open watchlist"}>
+          <button
+            type="button"
+            aria-label={watchOpen ? "Close watchlist" : "Open watchlist"}
+            onClick={() => setWatchOpen((v) => !v)}
+            className={cn(
+              "h-8 rounded-sm px-2 text-[11px] font-medium",
+              watchOpen ? "bg-surface text-fg shadow-[var(--shadow-border)]" : "text-muted hover:text-fg",
+            )}
+          >
+            Watchlist
+          </button>
+        </Tooltip>
         <button
           type="button"
           data-sync-tf
@@ -261,36 +335,39 @@ export function MarketsDesk() {
             "rounded-sm px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em]",
             tapeStatus === "session" ? "bg-up/15 text-up" : tapeStatus === "last" ? "bg-surface-2 text-muted" : "bg-down/15 text-down",
           )}
-          title="Latest print Kosh has. Refreshes during the cash session."
+          title={`${MARKET_PROVIDER.note} ${MARKET_PROVIDER.name}.`}
         >
           {tapeStatus === "session"
             ? `● ${quoteStatusLabel(tapeStatus)} · ${istClock()}`
             : quoteStatusLabel(tapeStatus)}
         </span>
+        <Tooltip content={fs ? "Exit fullscreen" : "Fullscreen"}>
+          <button
+            type="button"
+            aria-label={fs ? "Exit fullscreen" : "Fullscreen"}
+            data-term-fullscreen
+            onClick={() => void toggleFs()}
+            className="ml-auto grid size-8 place-items-center rounded-sm text-muted hover:text-fg"
+          >
+            {fs ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+          </button>
+        </Tooltip>
       </div>
 
-      {wide ? (
+      {wide && watchOpen ? (
         <Group orientation="horizontal" className="min-h-0 flex-1" defaultLayout={DESK_SPLIT}>
-          <Panel id="main" minSize="42%" className="min-h-0 overflow-y-auto">
-            <div className="flex min-h-full flex-col">
-              <div className="shrink-0" style={{ height: termHeight }} data-term-height={termHeight}>
-                {workspace}
-              </div>
-              <div className="border-t border-border">{intel}</div>
-            </div>
+          <Panel id="main" minSize="42%" className={cn("min-h-0", fs ? "overflow-hidden" : "overflow-y-auto")}>
+            {mainCol}
           </Panel>
           <Separator className="w-px bg-border hover:bg-fg/30" />
-          <Panel id="watch" minSize="18%" className="min-h-0">
+          <Panel id="watch" minSize="18%" className="min-h-0 overflow-hidden">
             {watchEl}
           </Panel>
         </Group>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
-          <div className="shrink-0" style={{ height: termHeight }} data-term-height={termHeight}>
-            {workspace}
-          </div>
-          <div className="min-h-[280px] border-t border-border">{watchEl}</div>
-          <div className="border-t border-border">{intel}</div>
+        <div className={cn("flex min-h-0 flex-1 flex-col", fs ? "overflow-hidden" : "overflow-x-hidden overflow-y-auto")}>
+          {mainCol}
+          {!wide && watchOpen ? <div className="min-h-[280px] border-t border-border">{watchEl}</div> : null}
         </div>
       )}
     </div>

@@ -3,7 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { EnrichButton } from "@/components/enrich-button";
+import { RowComplete } from "@/components/row-complete";
 import { Button } from "@/components/ui/button";
+import { AIButton } from "@/components/ui/ai-button";
 import { apiScreenBuild, apiScreener, apiScreenerDeep } from "@/lib/kosh/api";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { fmtVol } from "@/lib/kosh/ohlc";
@@ -26,6 +28,19 @@ import {
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
+const EXTRA_COLS: { key: SortKey; label: string }[] = [
+  { key: "peg", label: "PEG" },
+  { key: "eps", label: "EPS" },
+  { key: "book", label: "Book" },
+  { key: "interestCover", label: "Int. cover" },
+  { key: "cfoPat", label: "CFO/PAT" },
+  { key: "pledge", label: "Pledge" },
+  { key: "salesCagr3", label: "Sales 3Y" },
+  { key: "profitCagr5", label: "Profit 5Y" },
+  { key: "fii", label: "FII" },
+  { key: "dii", label: "DII" },
+];
+
 export const Route = createFileRoute("/screen")({ ssr: false, component: ScreenPage });
 
 function ScreenPage() {
@@ -37,6 +52,7 @@ function ScreenPage() {
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "mcapCr", dir: "desc" });
   const [qtext, setQtext] = useState("");
   const [limit, setLimit] = useState(150);
+  const [cols, setCols] = useState<Record<string, boolean>>({});
   const saved = useKosh((s) => s.customScreens);
   const saveCustomScreen = useKosh((s) => s.saveCustomScreen);
   const removeCustomScreen = useKosh((s) => s.removeCustomScreen);
@@ -103,9 +119,9 @@ function ScreenPage() {
       <div className="kosh-page">
         <h1 className="text-[28px] font-semibold tracking-tight">Screener</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Every NSE equity we can list. Company numbers and chart patterns fill in when the daily history is in. A blank
-          cell is missing, not a pass — and never a guess. Load more data reads filings for names on this page that are
-          still missing operating margin or return on capital. It does not invent a number.
+          Every NSE equity we can list. Company numbers fill in from the company card, then from filings when you complete a row.
+          A blank cell is missing, not a pass — and never a guess. Complete & verify data reads filings for names on this page
+          that are still missing operating margin or return on capital. It does not invent a number.
         </p>
         <div className="mt-3">
           <EnrichButton symbols={gapNow} queued={Math.max(0, gapSyms.length - gapNow.length)} />
@@ -207,6 +223,22 @@ function ScreenPage() {
             </button>
           ) : null}
         </div>
+        <div className="mt-3 flex flex-wrap gap-1">
+          <span className="mr-1 self-center text-[11px] tracking-[0.08em] text-subtle uppercase">Columns</span>
+          {EXTRA_COLS.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => setCols((s) => ({ ...s, [c.key]: !s[c.key] }))}
+              className={cn(
+                "h-7 rounded-sm px-2 text-[11px] shadow-[var(--shadow-border)]",
+                cols[c.key] ? "bg-surface text-fg" : "text-muted hover:text-fg",
+              )}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
 
         {id === "soundmb" || id === "turnmb" || id === "qgrowth" ? (
           <div className="mt-4 rounded-lg border-l-[4px] border-l-chart bg-surface p-4 text-[13px] leading-relaxed text-muted shadow-[var(--shadow-border)]">
@@ -266,6 +298,7 @@ function ScreenPage() {
                       {head("salesYoY", "Sales 1Y")}
                       {head("profitYoY", "Profit 1Y")}
                       {head("divYield", "Div yield")}
+                      {EXTRA_COLS.filter((c) => cols[c.key]).map((c) => head(c.key, c.label))}
                       {head("ret3m", "3M")}
                       {head("ret1y", "1Y")}
                       {head("offHigh", "vs 52w high")}
@@ -293,6 +326,7 @@ function ScreenPage() {
                             {r.passCount != null ? ` · ${matchLabel(r)}` : ""}
                           </div>
                         </Link>
+                        <RowComplete row={r} />
                       </td>
                       <td className="px-3 py-2 font-mono tabular">{fmtPx(r.price)}</td>
                       <td className={cn("px-3 py-2 font-mono tabular", r.changePct >= 0 ? "text-up" : "text-down")}>
@@ -332,6 +366,9 @@ function ScreenPage() {
                           <Cell n={r.salesYoY} />
                           <Cell n={r.profitYoY} />
                           <Num n={r.divYield} d={1} suffix="%" />
+                          {EXTRA_COLS.filter((c) => cols[c.key]).map((c) => (
+                            <Num key={c.key} n={typeof r[c.key] === "number" ? (r[c.key] as number) : null} d={2} />
+                          ))}
                           <Cell n={r.ret3m} />
                           <Cell n={r.ret1y} />
                           <Cell n={r.offHigh} />
@@ -436,6 +473,7 @@ function ScreenPage() {
                       <div className="truncate text-[11px] text-muted">{read ? `${read.fundTag || "—"} · ${read.qualTag || "—"}` : "—"}</div>
                     </div>
                   </div>
+                  <RowComplete row={r} />
                 </article>
               );
             })}
@@ -488,6 +526,7 @@ function CustomBuilder({ onBuilt }: { onBuilt: (f: ScreenFilter) => void }) {
   const [image, setImage] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [closest, setClosest] = useState("");
 
   async function fileToData(file: File) {
     if (file.size > 900_000) throw new Error("Crop the screenshot — keep it under about 0.7 MB.");
@@ -499,13 +538,16 @@ function CustomBuilder({ onBuilt }: { onBuilt: (f: ScreenFilter) => void }) {
     });
   }
 
-  async function build() {
+  async function build(text = prompt) {
     setBusy(true);
     setErr("");
+    setClosest("");
     try {
-      const r = await apiScreenBuild({ prompt, image: image || undefined });
-      if (!r.ok) setErr(r.error);
-      else onBuilt(r.filter);
+      const r = await apiScreenBuild({ prompt: text, image: image || undefined });
+      if (!r.ok) {
+        setErr(r.error);
+        if (r.unsupported?.closest) setClosest(r.unsupported.closest);
+      } else onBuilt(r.filter);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not build that screen.");
     } finally {
@@ -518,7 +560,7 @@ function CustomBuilder({ onBuilt }: { onBuilt: (f: ScreenFilter) => void }) {
       <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Build your own</h2>
       <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">
         Type it in plain words — “ROE above 15, debt under 1, RSI under 40” — or attach a screenshot of the criteria.
-        We map it to live prices and company fundamentals. A blank cell means the number is missing, not a guess.
+        Unsupported metrics are named. They are not swapped for a nearby field unless you accept that field.
       </p>
       <textarea
         className="mt-3 min-h-20 w-full rounded-sm bg-bg-elevated px-3 py-2 text-sm shadow-[var(--shadow-border)] outline-none"
@@ -550,11 +592,24 @@ function CustomBuilder({ onBuilt }: { onBuilt: (f: ScreenFilter) => void }) {
             </button>
           </span>
         ) : null}
-        <Button size="sm" disabled={busy || (!prompt.trim() && !image)} onClick={() => void build()}>
-          {busy ? "Building…" : "Build screen"}
-        </Button>
+        <AIButton busy={busy} disabled={!prompt.trim() && !image} onClick={() => void build()}>
+          Build screen
+        </AIButton>
       </div>
       {err ? <p className="mt-2 text-[13px] text-down">{err}</p> : null}
+      {closest ? (
+        <button
+          type="button"
+          className="mt-2 text-[13px] font-medium text-chart hover:underline"
+          onClick={() => {
+            const next = `${prompt} — use ${closest} instead`;
+            setPrompt(next);
+            void build(next);
+          }}
+        >
+          Use {closest} instead
+        </button>
+      ) : null}
     </div>
   );
 }

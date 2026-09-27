@@ -498,6 +498,8 @@ export type Fundamentals = {
   retrievedAt?: number | null;
   /** Promoter shares pledged, as % of total equity. Blank if the filing has no number. */
   pledge?: number | null;
+  /** Field-level source, period, and conflict. Missing means the number has not been reconciled. */
+  provenance?: import("./fact-types.ts").Provenance;
 };
 
 export type ScreenRow = {
@@ -540,6 +542,9 @@ export type ScreenRow = {
   salesCagr3: number | null;
   profitCagr3: number | null;
   profitCagr5: number | null;
+  interestCover?: number | null;
+  cfoPat?: number | null;
+  pledge?: number | null;
   retest: boolean | null;
   retestLevel: number | null;
   athRetest: boolean | null;

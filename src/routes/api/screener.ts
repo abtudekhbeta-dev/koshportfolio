@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { fetchScreener, fetchScreenerOne, fetchScreenerUniverse } from "@/lib/kosh/live.server";
 import { getNiftySnapshot } from "@/lib/kosh/nifty-snap";
 import { mergeScreenRows } from "@/lib/kosh/screens";
+import { clientKey, rateLimit } from "@/lib/kosh/guard";
 
 async function hydrate(symbols: string[]) {
   const out: Awaited<ReturnType<typeof fetchScreenerOne>>[] = [];
@@ -23,6 +24,10 @@ export const Route = createFileRoute("/api/screener")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        const ip = clientKey(request);
+        if (!rateLimit("screen:" + ip, 30, 10 * 60 * 1000)) {
+          return Response.json({ error: "Too many screener requests. Try again in a few minutes." }, { status: 429 });
+        }
         const url = new URL(request.url);
         const add = url.searchParams.get("add") || "";
         const depth = url.searchParams.get("depth") || "";

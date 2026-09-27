@@ -19,10 +19,18 @@ export function quoteStatus(input: {
 }
 
 export function quoteStatusLabel(status: QuoteStatus): string {
-  if (status === "session") return "SESSION";
+  if (status === "session") return "SESSION · DELAYED";
   if (status === "last") return "LAST AVAILABLE";
   return "UNAVAILABLE";
 }
+
+/** Quotes are delayed. Do not describe this feed as live. */
+export const MARKET_PROVIDER = {
+  id: "yahoo",
+  name: "Yahoo Finance",
+  delay: "delayed" as const,
+  note: "Delayed print. Not a licensed live Indian feed.",
+};
 
 export type TermInterval = {
   id: string;

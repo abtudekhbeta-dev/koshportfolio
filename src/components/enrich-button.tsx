@@ -45,7 +45,7 @@ export function EnrichButton({ symbols, queued = 0 }: { symbols: string[]; queue
           });
           const already = eq.length - todo.length;
           if (!todo.length) {
-            toast.success("All supported data is already covered.");
+            toast.success("Supported fields already have a status.");
             return;
           }
           const rows: Record<string, { fund: Fundamentals; at: number; sources: string[] }> = {};
@@ -93,7 +93,7 @@ export function EnrichButton({ symbols, queued = 0 }: { symbols: string[]; queue
             failed ? `${failed} names could not be read this pass.` : "",
             queued ? `${queued} more names are still queued. Run again to continue.` : "",
           ].filter(Boolean);
-          toast.success(`Loaded ${Object.keys(rows).length} of ${todo.length}`, { description: bits.join(" ") });
+          toast.success(`Verified ${Object.keys(rows).length} of ${todo.length}`, { description: bits.join(" ") });
         } catch (e) {
           toast.error(e instanceof Error ? e.message : "Could not load filings");
         } finally {
@@ -101,7 +101,7 @@ export function EnrichButton({ symbols, queued = 0 }: { symbols: string[]; queue
         }
       }}
     >
-      {busy ? "Loading more data…" : "Load more data"}
+      {busy ? "Verifying…" : "Complete & verify data"}
     </Button>
   );
 }

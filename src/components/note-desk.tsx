@@ -7,7 +7,7 @@ import type { BookBrief, NoteKind } from "@/lib/kosh/ai-kinds";
 import { asFund, asMix, asPulse, asQual, asQuality, asSpark, skillOutputReady } from "@/lib/kosh/note-shape";
 import { MixView, ProseNote, PulseView, QualityView, SparkView } from "@/components/note-view";
 import { AnalysisSkeleton, CombinedView, FundamentalView, QualitativeView } from "@/components/analysis-view";
-import { Button } from "@/components/ui/button";
+import { AIButton } from "@/components/ui/ai-button";
 import { skillReadFrom } from "@/lib/kosh/screens";
 import { sectorOf } from "@/lib/kosh/sectors";
 import { universeName } from "@/lib/kosh/universe";
@@ -249,7 +249,8 @@ export function NoteDesk({ symbol, compact }: { symbol: string; compact?: boolea
             Profitability, balance sheet, growth, valuation, ownership. The full fundamental read.
           </p>
           <span className="mt-5 inline-flex h-10 items-center gap-2 rounded-sm bg-accent px-4 text-[13px] font-medium text-accent-fg group-hover:opacity-90">
-            {busy === "fund" ? "Reading…" : open === "fund" ? "Hide" : "Read the business"}
+            <span className="kosh-ai-mark">✦ AI</span>
+            {busy === "fund" ? "Reading…" : open === "fund" ? "Hide" : "Read this stock"}
             <ArrowRight className="size-3.5" />
           </span>
         </button>
@@ -268,6 +269,7 @@ export function NoteDesk({ symbol, compact }: { symbol: string; compact?: boolea
             Management, industry, brand, and an explicit multi-bagger potential — High, Moderate, Low, or Unlikely.
           </p>
           <span className="mt-5 inline-flex h-10 items-center gap-2 rounded-sm bg-accent px-4 text-[13px] font-medium text-accent-fg group-hover:opacity-90">
+            <span className="kosh-ai-mark">✦ AI</span>
             {busy === "qual" ? "Reading…" : open === "qual" ? "Hide" : "Read the story"}
             <ArrowRight className="size-3.5" />
           </span>
@@ -284,9 +286,9 @@ export function NoteDesk({ symbol, compact }: { symbol: string; compact?: boolea
       {open === "fund" && fundBlock ? (
         <div className="mt-4">
           <div className="mb-2 flex justify-end">
-            <Button size="sm" variant="ghost" disabled={busy === "fund"} onClick={() => void runFull("fund")}>
+            <AIButton busy={busy === "fund"} onClick={() => void runFull("fund")}>
               Refresh analysis
-            </Button>
+            </AIButton>
           </div>
           <FundamentalView block={fundBlock} />
         </div>
@@ -294,9 +296,9 @@ export function NoteDesk({ symbol, compact }: { symbol: string; compact?: boolea
       {open === "qual" && qualBlock ? (
         <div className="mt-4">
           <div className="mb-2 flex justify-end">
-            <Button size="sm" variant="ghost" disabled={busy === "qual"} onClick={() => void runFull("qual")}>
+            <AIButton busy={busy === "qual"} onClick={() => void runFull("qual")}>
               Refresh analysis
-            </Button>
+            </AIButton>
           </div>
           <QualitativeView block={qualBlock} />
         </div>
@@ -320,9 +322,9 @@ export function NoteDesk({ symbol, compact }: { symbol: string; compact?: boolea
                 Uses the two analyses above — where they agree, where they pull apart, and one final verdict. Not a
                 third independent read.
               </p>
-              <Button className="mt-4" disabled={combineBusy} onClick={() => void runCombine()}>
-                {combineBusy ? "Connecting…" : "Combined verdict"}
-              </Button>
+              <AIButton className="mt-4 h-10" busy={combineBusy} onClick={() => void runCombine()}>
+                Combined verdict
+              </AIButton>
             </div>
           )}
           {combineRes && !combineRes.ok ? <p className="mt-3 text-[13px] text-down">{combineRes.error}</p> : null}
@@ -353,16 +355,15 @@ export function PulseDesk() {
               advice.
             </p>
           </div>
-          <Button
-            size="sm"
-            disabled={pulse.isFetching || d.busy}
+          <AIButton
+            busy={pulse.isFetching || d.busy}
             onClick={() => {
               if (pulse.data) void pulse.refetch();
               else void d.run("pulse");
             }}
           >
-            {pulse.isFetching || d.busy ? "Run Pulse…" : "Run Pulse"}
-          </Button>
+            Run Pulse
+          </AIButton>
         </div>
         {pulse.isPending ? <p className="mt-3 text-[13px] text-muted">Reading Pulse…</p> : null}
         {pulse.data && !pulse.data.ok ? <p className="mt-3 text-[13px] text-down">{pulse.data.error}</p> : null}
@@ -385,9 +386,9 @@ export function PortfolioDesk({ brief }: { brief: BookBrief }) {
               Sends today’s weights and the public prices — not quantities or cost.
             </p>
           </div>
-          <Button size="sm" disabled={d.busy} onClick={() => void d.run("book", { book: brief })}>
-            {d.busy ? "Reading…" : "Read this portfolio"}
-          </Button>
+          <AIButton busy={d.busy} onClick={() => void d.run("book", { book: brief })}>
+            Read this portfolio
+          </AIButton>
         </div>
         {d.err ? <p className="mt-3 text-[13px] text-down">{d.err}</p> : null}
       </div>

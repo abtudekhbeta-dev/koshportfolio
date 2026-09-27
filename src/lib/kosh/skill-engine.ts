@@ -4,11 +4,11 @@
 export const FUND_SKILL_ID = "2ce5b3ca20a078a93f616258e9abb21a";
 export const QUAL_SKILL_ID = "5c920931dd356a8f67ecfd21271fc017";
 
-export const SKILL_ENGINE_VERSION = "1";
+export const SKILL_ENGINE_VERSION = "2";
 export const SKILL_PROVIDER = "xai";
 export const SKILL_MODEL = "grok-4.5";
 export const SKILL_SOURCE_METHOD = "search1";
-export const SKILL_CACHE_PREFIX = "v22";
+export const SKILL_CACHE_PREFIX = "v23";
 
 export const FUND_VERDICTS = [
   "High-Conviction Multi-Bagger Candidate",

@@ -1,13 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Star } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { AskAi } from "@/components/ask-ai";
 import { CandleChart, fetchSpec } from "@/components/charts/candle-chart";
 import { NavChart } from "@/components/charts/nav-chart";
 import { FinancialSnapshot, OwnershipBlock } from "@/components/analysis-view";
-import { SnapshotCard, ValuationModels, CoverageLine } from "@/components/kosh-snapshot";
+import { SnapshotCard, ValuationModels, CoverageLine, FieldCoverage } from "@/components/kosh-snapshot";
 import { AddToPortfolio } from "@/components/add-to-portfolio";
 import { EnrichButton } from "@/components/enrich-button";
 import { AttentionStrip } from "@/components/attention-strip";
@@ -18,7 +18,7 @@ import { StructureDesk } from "@/components/structure-desk";
 import { Button } from "@/components/ui/button";
 import { BenchPicker } from "@/components/bench-picker";
 import { Kpi, toneOf } from "@/components/kpi";
-import { apiFundamentals, apiHistory, apiMacro, apiNews, apiOhlc, apiScreener } from "@/lib/kosh/api";
+import { apiFundamentals, apiEnrich, apiHistory, apiMacro, apiNews, apiOhlc, apiScreener } from "@/lib/kosh/api";
 import { resolveBench } from "@/lib/kosh/benchmarks";
 import { businessView } from "@/lib/kosh/business";
 import { dash, fmtPct, fmtPx, mixCagr, pathFromBars, riskMetrics, sliceNav, windowReturn, ytdReturn } from "@/lib/kosh/engine";
@@ -28,7 +28,8 @@ import { pickPeers, peerInsight } from "@/lib/kosh/peers";
 import { universeName } from "@/lib/kosh/universe";
 import { skillOf, pickScreenRow } from "@/lib/kosh/screens";
 import { buildSnapshot } from "@/lib/kosh/snapshot";
-import { fillFundamentals } from "@/lib/kosh/fund-merge";
+import { isCommodity } from "@/lib/kosh/commodities";
+import { reconcileFundamentals } from "@/lib/kosh/evidence";
 import { buildValuationModels, earningsQualityRead } from "@/lib/kosh/valuation";
 import { buildCoverage, peDiscrepancy } from "@/lib/kosh/coverage";
 import { bareSymbol, isWatched, useKosh, type AlertKind } from "@/lib/store";
@@ -141,9 +142,45 @@ function StockBody({
   const reads = useKosh((s) => s.skillReads);
   const listed = pack.firstTrade ? new Date(pack.firstTrade * 1000).toISOString().slice(0, 4) : "—";
   const bare = symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
+  const setDeepFunds = useKosh((s) => s.setDeepFunds);
   const deepSnap = useKosh((s) => s.deepFunds[bare]);
+  const [updating, setUpdating] = useState(false);
+  const [updateNote, setUpdateNote] = useState("");
+  const started = useRef("");
+  useEffect(() => {
+    if (!bare || isCommodity(bare)) return;
+    if (started.current === bare) return;
+    const snap = useKosh.getState().deepFunds[bare];
+    const fresh = Boolean(snap && Date.now() - snap.at < 12 * 60 * 60 * 1000 && snap.fund?.provenance?.searched);
+    if (fresh) return;
+    started.current = bare;
+    let cancel = false;
+    setUpdating(true);
+    setUpdateNote("");
+    apiEnrich([bare])
+      .then((part) => {
+        if (cancel) return;
+        const got = part.funds?.[bare];
+        if (got) setDeepFunds({ [bare]: { fund: got, at: Date.now(), sources: part.sources?.[bare] || [] } });
+        else setUpdateNote("No additional filing data for this name.");
+      })
+      .catch(() => {
+        if (!cancel) setUpdateNote("Background verify did not finish. Use Complete & verify data to retry.");
+      })
+      .finally(() => {
+        if (!cancel) setUpdating(false);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [bare, setDeepFunds]);
   const fundData = useMemo(() => {
-    if (fund.data && deepSnap?.fund) return fillFundamentals(fund.data, deepSnap.fund);
+    if (fund.data && deepSnap?.fund) {
+      return reconcileFundamentals(fund.data, deepSnap.fund, {
+        card: "Company card",
+        filing: "Verified record",
+      });
+    }
     return fund.data || deepSnap?.fund || null;
   }, [fund.data, deepSnap]);
   const sector = sectorOf(symbol);
@@ -248,10 +285,9 @@ function StockBody({
             Price {priceAsOf || "—"}
             {finPeriod ? ` · Financials ${finPeriod}` : " · Financials period unavailable"}
             {shPeriod ? ` · Shareholding ${shPeriod}` : " · Shareholding period unavailable"}
-            {fundData?.retrievedAt
-              ? ` · Card ${new Date(fundData.retrievedAt).toISOString().slice(0, 10)}`
-              : ""}
-            {deepSnap?.fund ? " · Full company data loaded" : ""}
+            {fundData?.retrievedAt ? ` · Retrieved ${new Date(fundData.retrievedAt).toISOString().slice(0, 10)}` : ""}
+            {updating ? " · Updating data…" : ""}
+            {updateNote ? ` · ${updateNote}` : ""}
           </p>
             </div>
           </div>
@@ -293,6 +329,7 @@ function StockBody({
       ) : null}
       <SnapshotCard snap={snap} simple={models.simple} />
       <CoverageLine cov={cov} />
+      <FieldCoverage fund={fundData} />
       <ValuationModels pack={models} fund={fundData} />
 
       <nav className="flex flex-wrap gap-1" role="tablist" aria-label="Stock sections">

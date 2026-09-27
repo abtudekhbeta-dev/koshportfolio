@@ -31,7 +31,15 @@ export type SortKey =
   | "vcpLastPct"
   | "vcpDays"
   | "vcpN"
-  | "vcpVolX";
+  | "vcpVolX"
+  | "peg"
+  | "eps"
+  | "book"
+  | "interestCover"
+  | "cfoPat"
+  | "pledge"
+  | "salesCagr3"
+  | "profitCagr5";
 
 export type ScreenId =
   | "all"
@@ -182,6 +190,11 @@ const BLANK_FUND = [
   "profitCagr5",
   "fii",
   "dii",
+  "peg",
+  "book",
+  "interestCover",
+  "cfoPat",
+  "pledge",
 ] as const;
 
 /** Fill a screener row from a cached company card. Never replace a number with a blank. */
@@ -196,6 +209,33 @@ export function fillBlankScreenFund<T extends ScreenRow>(row: T, fund: Partial<F
     }
   }
   return next;
+}
+
+const SCREEN_FACT_LABELS: { key: keyof ScreenRow; label: string }[] = [
+  { key: "pe", label: "P/E" },
+  { key: "pb", label: "P/B" },
+  { key: "peg", label: "PEG" },
+  { key: "roe", label: "ROE" },
+  { key: "roce", label: "ROCE" },
+  { key: "opm", label: "OPM" },
+  { key: "de", label: "D/E" },
+  { key: "interestCover", label: "Interest coverage" },
+  { key: "divYield", label: "Dividend yield" },
+  { key: "promoters", label: "Promoter holding" },
+  { key: "pledge", label: "Pledge" },
+  { key: "fii", label: "FII" },
+  { key: "dii", label: "DII" },
+  { key: "cfoPat", label: "CFO/PAT" },
+  { key: "salesCagr3", label: "Sales CAGR 3Y" },
+  { key: "profitCagr5", label: "Profit CAGR 5Y" },
+];
+
+/** Labels still blank on this row. A blank is missing, never a pass. */
+export function missingScreenFacts(row: ScreenRow) {
+  return SCREEN_FACT_LABELS.filter((f) => {
+    const v = row[f.key];
+    return !(typeof v === "number" && Number.isFinite(v));
+  }).map((f) => f.label);
 }
 
 export function filterSector(rows: ScreenRow[], sector: string) {

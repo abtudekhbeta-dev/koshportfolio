@@ -158,11 +158,33 @@ export async function apiFundamentals(symbol: string, deep = false) {
 
 export async function apiEnrich(symbols: string[]) {
   if (!symbols.length) return { funds: {} as Record<string, Fundamentals>, sources: {} as Record<string, string[]> };
-  return json<{ funds: Record<string, Fundamentals>; sources: Record<string, string[]> }>("/api/enrich", {
+  const first = await json<{
+    jobId?: string;
+    status?: string;
+    funds?: Record<string, Fundamentals>;
+    sources?: Record<string, string[]>;
+    done?: number;
+    total?: number;
+    failed?: string[];
+    error?: string;
+  }>("/api/enrich", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ symbols }),
   });
+  if (first.error && !first.funds) throw new Error(first.error);
+  if (!first.jobId) {
+    return { funds: first.funds || {}, sources: first.sources || {} };
+  }
+  let cur = first;
+  for (let i = 0; i < 48 && cur.status !== "complete" && cur.status !== "failed"; i++) {
+    cur = await json<typeof first>("/api/enrich?job=" + encodeURIComponent(first.jobId));
+    if (cur.error && !cur.jobId) throw new Error(cur.error);
+  }
+  if (cur.status !== "complete" && cur.status !== "failed") {
+    throw new Error("Verification is still running. Open the stock again in a moment.");
+  }
+  return { funds: cur.funds || {}, sources: cur.sources || {} };
 }
 
 export async function apiMacro() {
@@ -206,7 +228,10 @@ export async function apiNote(body: {
 }
 
 export async function apiScreenBuild(body: { prompt: string; image?: string }) {
-  return json<{ ok: true; filter: ScreenFilter; cached: boolean } | { ok: false; error: string }>("/api/screen-build", {
+  return json<
+    | { ok: true; filter: ScreenFilter; cached: boolean }
+    | { ok: false; error: string; unsupported?: { metric: string; closest: string } }
+  >("/api/screen-build", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",

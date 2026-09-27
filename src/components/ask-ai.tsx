@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { apiNote } from "@/lib/kosh/api";
-import { Button } from "@/components/ui/button";
+import { AIButton } from "@/components/ui/ai-button";
 import { ProseNote } from "@/components/note-view";
 
 export function AskAi({ symbol }: { symbol: string }) {
@@ -44,9 +44,9 @@ export function AskAi({ symbol }: { symbol: string }) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <Button type="submit" size="sm" variant="secondary" disabled={busy || !q.trim()}>
-          {busy ? "Asking…" : "Ask AI"}
-        </Button>
+        <AIButton type="submit" busy={busy} disabled={!q.trim()}>
+          Ask
+        </AIButton>
       </form>
       {err ? <p className="mt-2 text-[13px] text-down">{err}</p> : null}
       {text ? <ProseNote text={text} /> : null}

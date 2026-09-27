@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type WheelEvent } from "react";
-import { createPortal } from "react-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   ArrowDownRight,
@@ -7,7 +6,6 @@ import {
   Columns2,
   Crosshair,
   Layers,
-  Maximize2,
   Minimize2,
   Minus,
   MousePointer2,
@@ -28,7 +26,6 @@ import { adjustOhlcToBenchmark, applyHistoricalFx } from "@/lib/kosh/relative";
 import { histInit, histPush, histRedo, histUndo, type DrawHist } from "@/lib/kosh/draw-history";
 import { resolveBench } from "@/lib/kosh/benchmarks";
 import { AdjustMenu } from "@/components/charts/adjust-menu";
-import { useChartFullscreen } from "@/components/charts/use-fullscreen";
 import { Tooltip } from "@/components/ui/tooltip";
 import { bollinger, ema, fmtVol, macd, rsi, sma, vwap } from "@/lib/kosh/ohlc";
 import { isIstSession, istClock } from "@/lib/kosh/market-hours";
@@ -195,8 +192,6 @@ export function TermChart({
   const shapes = drawings[dKey] || EMPTY_SHAPES;
 
   const wrap = useRef<HTMLDivElement>(null);
-  const shell = useRef<HTMLElement>(null);
-  const { fs, fallback, toggle: toggleFs } = useChartFullscreen(shell);
   const hoverRaf = useRef(0);
   const vLine = useRef<HTMLDivElement>(null);
   const hLine = useRef<HTMLDivElement>(null);
@@ -460,11 +455,10 @@ export function TermChart({
 
   const card = (
     <section
-      ref={shell}
       data-term-chart
       data-active={active ? "1" : "0"}
       onClick={onActivate}
-      className={cn("flex h-full min-h-0 min-w-0 flex-col bg-bg", active && "ring-1 ring-inset ring-accent/50", fallback && "kosh-chart-fs", fs && "kosh-fs-live")}
+      className={cn("flex h-full min-h-0 min-w-0 flex-col bg-bg", active && "ring-1 ring-inset ring-accent/50")}
     >
       <header className="flex shrink-0 flex-col gap-1 border-b border-border px-2 py-1.5 sm:flex-row sm:items-center sm:gap-2">
         <div className="flex min-w-0 flex-1 items-baseline gap-2">
@@ -871,21 +865,7 @@ export function TermChart({
         <div ref={vLine} className="kosh-cross-v" style={{ display: "none", bottom: 0 }} />
         <div ref={hLine} className="kosh-cross-h" style={{ display: "none", left: PAD.l, right: PAD.r }} />
         <div ref={priceTag} className="kosh-px-tag" style={{ display: "none" }} />
-        <div
-          ref={dateTag}
-          className="kosh-date-tag"
-          style={{ display: "none" }}
-        />
-        <div className="absolute right-2 top-2 z-[6]">
-          <IconBtn
-            label="Fullscreen"
-            onClick={() => {
-              void toggleFs();
-            }}
-          >
-            {fs ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
-          </IconBtn>
-        </div>
+        <div ref={dateTag} className="kosh-date-tag" style={{ display: "none" }} />
       </div>
 
       <div className="flex shrink-0 items-center gap-1 border-t border-border px-2 py-1" data-testid="chart-nav">
@@ -905,7 +885,7 @@ export function TermChart({
         <IconBtn label="Reset view" onClick={latest}>
           <RotateCcw className="size-3.5" />
         </IconBtn>
-        <IconBtn label="Fit" onClick={fit}>
+        <IconBtn label="Fit chart" onClick={fit}>
           <Minimize2 className="size-3.5" />
         </IconBtn>
       </div>
@@ -944,7 +924,6 @@ export function TermChart({
       </div>
     </section>
   );
-  if (fallback && typeof document !== "undefined") return createPortal(card, document.body);
   return card;
 }
 

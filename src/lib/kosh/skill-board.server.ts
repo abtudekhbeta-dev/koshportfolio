@@ -7,6 +7,9 @@ import { skillReadFrom, type SkillRead } from "./screens.ts";
 
 export type SkillBoardSnap = {
   status: "idle" | "running" | "done" | "error";
+  /** Continuous Nifty 500 AI coverage is not running. */
+  autoScan: "disabled";
+  note: string;
   total: number;
   done: number;
   error: string;
@@ -39,6 +42,8 @@ function sleep(ms: number) {
 function snap(): SkillBoardSnap {
   return {
     status,
+    autoScan: "disabled",
+    note: "Automatic Nifty 500 AI coverage is off. Analysis runs when you ask for a name.",
     total: UNIVERSE.length,
     done: reads.size,
     error,

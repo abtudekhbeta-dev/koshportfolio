@@ -26,16 +26,26 @@ export function useChartFullscreen(ref: RefObject<HTMLElement | null>) {
 
   useEffect(() => {
     if (!fallback) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFallback(false);
-    };
     document.documentElement.classList.add("kosh-fs-lock");
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.documentElement.classList.remove("kosh-fs-lock");
-      window.removeEventListener("keydown", onKey);
-    };
+    return () => document.documentElement.classList.remove("kosh-fs-lock");
   }, [fallback]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const el = ref.current;
+      if (el && fullscreenEl() === el) {
+        const exit =
+          document.exitFullscreen?.bind(document) ||
+          (document as Document & { webkitExitFullscreen?: () => Promise<void> }).webkitExitFullscreen?.bind(document);
+        if (exit) void exit().catch(() => {});
+        return;
+      }
+      if (fallback) setFallback(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [ref, fallback]);
 
   async function toggle() {
     const el = ref.current;

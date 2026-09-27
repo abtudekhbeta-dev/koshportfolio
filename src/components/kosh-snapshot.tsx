@@ -4,6 +4,7 @@ import type { KoshSnapshot } from "@/lib/kosh/snapshot";
 import { growthEvidence, type ValModel, type ValueWord, type ValuationModelsPack } from "@/lib/kosh/valuation";
 import type { Fundamentals } from "@/lib/kosh/types";
 import { coverageLabel, type CoverageCard as CoverageModel } from "@/lib/kosh/coverage";
+import { buildFieldReport, type FieldLine } from "@/lib/kosh/evidence";
 
 export function CoverageCard({ cov }: { cov: CoverageModel }) {
   return (
@@ -11,7 +12,7 @@ export function CoverageCard({ cov }: { cov: CoverageModel }) {
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Data coverage</div>
         <div className="font-mono text-[13px] tabular">
-          {coverageLabel(cov.level)} · {cov.pct}% · {cov.nOk}/{cov.nAll}
+          {coverageLabel(cov.level)} · {cov.nOk}/{cov.nAll} sections
         </div>
       </div>
       <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
@@ -37,6 +38,67 @@ export function CoverageLine({ cov }: { cov: CoverageModel }) {
     <p className="text-[12px] text-muted">
       Still missing: {missing.map((b) => b.label).join(", ")}. Blank is missing, not a pass.
     </p>
+  );
+}
+
+const STATUS_WORD: Record<FieldLine["status"], string> = {
+  verified: "Verified",
+  derived: "Derived",
+  conflicting: "Conflict",
+  unavailable: "Not found",
+  not_applicable: "N/A",
+};
+
+export function FieldCoverage({ fund }: { fund: Fundamentals | null | undefined }) {
+  const report = buildFieldReport(fund);
+  const groups = ["financials", "quality", "valuation", "ownership"] as const;
+  return (
+    <details className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
+      <summary className="cursor-pointer text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">
+        Data coverage
+        <span className="ml-2 font-mono text-[11px] font-normal normal-case tracking-normal text-subtle">
+          {report.counts.verified} verified · {report.counts.derived} derived · {report.counts.conflicting} conflicting ·{" "}
+          {report.counts.unavailable} not found
+        </span>
+      </summary>
+      <p className="mt-2 text-[12px] text-subtle">
+        Each line is a status, not a score. Verified means a source was selected. Derived means Kosh calculated it.
+        Not found means the supported sources did not have it.
+      </p>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        {groups.map((g) => (
+          <div key={g}>
+            <div className="text-[11px] font-semibold tracking-[0.08em] text-subtle uppercase">{g}</div>
+            <ul className="mt-1">
+              {report.lines
+                .filter((l) => l.group === g)
+                .map((l) => (
+                  <li key={l.id} className="flex items-baseline justify-between gap-3 border-b border-border/50 py-1 text-[12px]">
+                    <span className="text-muted">
+                      {l.status === "verified" ? "✓" : l.status === "derived" ? "◇" : l.status === "conflicting" ? "⚠" : "✗"} {l.label}
+                    </span>
+                    <span className="text-right">
+                      <span className="font-medium">{STATUS_WORD[l.status]}</span>
+                      {l.value != null ? (
+                        <span className="ml-2 font-mono tabular text-subtle">
+                          {l.value.toFixed(l.unit === "x" || l.unit === "₹" ? 2 : 1)}
+                          {l.unit === "%" ? "%" : ""}
+                        </span>
+                      ) : null}
+                      {l.sourceName ? <span className="mt-0.5 block text-[10px] text-subtle">{l.sourceName}{l.period ? ` · ${l.period}` : ""}</span> : null}
+                      {l.alt != null ? (
+                        <span className="block text-[10px] text-subtle">
+                          Also {l.altSource}: {l.alt}
+                        </span>
+                      ) : null}
+                    </span>
+                  </li>
+                ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
