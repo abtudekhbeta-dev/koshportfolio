@@ -8,7 +8,8 @@ import {
   normalizeSectorLabel,
   tickerFromIsin,
 } from "./names.ts";
-import { baseSym } from "./sectors.ts";
+import { baseSym, preferSymbol, storedSymbol } from "./sectors.ts";
+import { resolveSymbol, type SymbolBook } from "./symbol-map.ts";
 
 const SYM_KEYS = [
   "tradingsymbol",
@@ -513,7 +514,7 @@ export function guessTicker(raw: string, name?: string, isin?: string): string {
   }
   const fromName = lookupName(raw) || (name ? lookupName(name) : "") || lookupName(cleaned);
   if (fromName) return fromName;
-  if (/^[A-Z][A-Z0-9._]{0,21}$/.test(cleaned) && cleaned.length <= 22 && !/LTD|LIMITED/.test(cleaned)) {
+  if (/^[A-Z][A-Z0-9.&_-]{0,21}$/.test(cleaned) && cleaned.length <= 22 && !/LTD|LIMITED/.test(cleaned)) {
     return cleaned.replace(/\.+$/, "");
   }
   return cleaned;
@@ -1109,29 +1110,33 @@ export function parseVoice(text: string): Holding[] {
 }
 
 export function mergeHoldings(existing: Holding[], incoming: Holding[]): Holding[] {
-  const map = new Map(existing.map((h) => [baseSym(h.symbol), { ...h, symbol: baseSym(h.symbol) }]));
-  for (const h of incoming) {
-    const k = baseSym(h.symbol);
+  const map = new Map<string, Holding>();
+  for (const h of [...existing, ...incoming]) {
+    const stored = storedSymbol(h.symbol);
+    const k = baseSym(stored);
     const cur = map.get(k);
-    if (!cur) map.set(k, { ...h, symbol: k, name: displayName({ symbol: k, name: h.name }) });
-    else {
-      const q = cur.qty + h.qty;
-      const avg = cur.avg && h.avg ? (cur.avg * cur.qty + h.avg * h.qty) / q : cur.avg || h.avg;
-      const name = displayName({ symbol: k, name: h.name || cur.name });
-      map.set(k, {
-        ...cur,
-        qty: q,
-        avg,
-        name,
-        date: h.date || cur.date,
-        boughtAt: h.boughtAt || cur.boughtAt,
-        isin: h.isin || cur.isin,
-        sector: h.sector || cur.sector,
-        kind: h.kind || cur.kind,
-        unit: h.unit || cur.unit,
-        lots: [...(cur.lots || []), ...(h.lots || [])],
-      });
+    if (!cur) {
+      map.set(k, { ...h, symbol: stored, name: displayName({ symbol: stored, name: h.name }) });
+      continue;
     }
+    const q = cur.qty + h.qty;
+    const avg = cur.avg && h.avg ? (cur.avg * cur.qty + h.avg * h.qty) / q : cur.avg || h.avg;
+    const symbol = preferSymbol(cur.symbol, stored);
+    map.set(k, {
+      ...cur,
+      symbol,
+      qty: q,
+      avg,
+      name: displayName({ symbol, name: h.name || cur.name }),
+      date: h.date || cur.date,
+      boughtAt: h.boughtAt || cur.boughtAt,
+      isin: h.isin || cur.isin,
+      sector: h.sector || cur.sector,
+      kind: h.kind || cur.kind,
+      unit: h.unit || cur.unit,
+      lots: [...(cur.lots || []), ...(h.lots || [])],
+      updatedAt: Math.max(cur.updatedAt || 0, h.updatedAt || 0) || undefined,
+    });
   }
   return [...map.values()];
 }
@@ -1145,7 +1150,7 @@ function asTradeLine(t: TradeLine): TradeLine {
   const id = tradeBrokerId(t) || undefined;
   return {
     ...t,
-    symbol: baseSym(t.symbol),
+    symbol: storedSymbol(t.symbol),
     name: t.name || t.symbol,
     qty: t.qty,
     price: t.price > 0 ? t.price : 0,
@@ -1302,7 +1307,7 @@ export function fillHoldings(existing: Holding[], incoming: Holding[], opts: Fil
   const doDates = opts.dates !== false;
   const doPrices = opts.prices !== false;
   const addNew = Boolean(opts.addNew);
-  const map = new Map(existing.map((h) => [baseSym(h.symbol), { ...h, symbol: baseSym(h.symbol) }]));
+  const map = new Map(existing.map((h) => [baseSym(h.symbol), { ...h, symbol: storedSymbol(h.symbol) }]));
   const byStem = new Map<string, string>();
   const byName = new Map<string, string>();
   for (const h of existing) {
@@ -1320,24 +1325,21 @@ export function fillHoldings(existing: Holding[], incoming: Holding[], opts: Fil
     const cur = map.get(key);
     if (!cur) {
       if (!addNew) continue;
-      const next = { ...h, symbol: k, name: displayName({ symbol: k, name: h.name }) };
+      const next = { ...h, symbol: storedSymbol(h.symbol), name: displayName({ symbol: storedSymbol(h.symbol), name: h.name }) };
       map.set(k, next);
       byStem.set(stemSym(k), k);
       byName.set(normName(next.name), k);
       continue;
     }
-    const cleaner =
-      stemSym(h.symbol) === stemSym(cur.symbol) && h.symbol.replace(/[-_]/g, "").length <= cur.symbol.replace(/[-_]/g, "").length
-        ? baseSym(h.symbol)
-        : cur.symbol;
+    const symbol = preferSymbol(cur.symbol, storedSymbol(h.symbol));
     map.set(key, {
       ...cur,
-      symbol: cleaner,
+      symbol,
       date: doDates ? cur.date || h.date : cur.date,
       boughtAt: doDates ? cur.boughtAt || h.boughtAt : cur.boughtAt,
       avg: doPrices ? (cur.avg != null && cur.avg > 0 ? cur.avg : h.avg) : cur.avg,
       isin: cur.isin || h.isin,
-      name: cur.name || displayName({ symbol: cleaner, name: h.name }),
+      name: cur.name || displayName({ symbol, name: h.name }),
     });
   }
   return [...map.values()];
@@ -1360,11 +1362,11 @@ export function upsertHoldings(existing: Holding[], incoming: Holding[]): Holdin
   });
 }
 
-/** Strip series suffixes (BEMHY-X → BEMHY) and merge duplicates after a persist rehydrate. */
-export function sanitizeHoldings(rows: Holding[]): Holding[] {
+/** Strip series suffixes and apply a confirmed alias. Never turn GMRP&UI into GMRP_UI. */
+export function sanitizeHoldings(rows: Holding[], book?: SymbolBook | null): Holding[] {
   const cleaned = (rows || []).map((h) => {
     if (h.kind === "commodity") return { ...h, symbol: String(h.symbol || "").toUpperCase() };
-    const symbol = guessTicker(h.symbol, h.name, h.isin);
+    const symbol = resolveSymbol(guessTicker(h.symbol, h.name, h.isin), book);
     return { ...h, symbol };
   });
   return mergeHoldings([], cleaned);

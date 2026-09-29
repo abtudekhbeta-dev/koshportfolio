@@ -345,7 +345,42 @@ export function TermChart({
       setView(zoomAround(view, bars.length, i, e.deltaY < 0));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    let pinch = 0;
+    const dist = (e: TouchEvent) => {
+      const a = e.touches[0];
+      const b = e.touches[1];
+      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) pinch = dist(e);
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || bars.length < 20) return;
+      e.preventDefault();
+      const next = dist(e);
+      if (!pinch) {
+        pinch = next;
+        return;
+      }
+      const ratio = next / pinch;
+      if (ratio > 1.04 || ratio < 0.96) {
+        const i = idxAt((e.touches[0].clientX + e.touches[1].clientX) / 2);
+        setView(zoomAround(view, bars.length, i, ratio > 1));
+        pinch = next;
+      }
+    };
+    const onTouchEnd = () => {
+      pinch = 0;
+    };
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
   }, [bars, view]);
 
   function fit() {

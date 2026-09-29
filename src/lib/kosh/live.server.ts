@@ -405,6 +405,47 @@ export async function fetchScreenerUniverse(): Promise<ScreenRow[]> {
   return uniInflight;
 }
 
+const MARKET_KEYS = [
+  "ret1m",
+  "ret3m",
+  "ret1y",
+  "offHigh",
+  "rsi",
+  "vol",
+  "volAvg",
+  "volRatio",
+  "vcp",
+  "vcpBreak",
+  "vcpN",
+  "vcpLastPct",
+  "vcpDays",
+  "vcpVolX",
+  "vcpPivot",
+  "above50",
+  "above200",
+] as const;
+
+/** Keep a freshly calculated row on the in-memory screener so the next load is not quote-only. */
+export function rememberScreenRow(row: ScreenRow) {
+  for (const key of ["uni-v10", "deep-v9"]) {
+    const hit = screenCache.get(key);
+    if (!hit) continue;
+    const i = hit.data.findIndex((r) => r.symbol === row.symbol);
+    if (i < 0) {
+      hit.data.push(row);
+      continue;
+    }
+    const prev = hit.data[i];
+    const next = { ...prev };
+    for (const k of MARKET_KEYS) {
+      const v = row[k];
+      if (v != null) (next as Record<string, unknown>)[k] = v;
+    }
+    if (row.depth === "full") next.depth = "full";
+    hit.data[i] = next;
+  }
+}
+
 export async function fetchScreenerOne(symbol: string): Promise<ScreenRow | null> {
   const bare = symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
   if (!bare) return null;
@@ -413,7 +454,11 @@ export async function fetchScreenerOne(symbol: string): Promise<ScreenRow | null
       fetchOhlc(bare, "2y", "1d"),
       fetchFundamentals(bare).catch(() => null),
     ]);
-    if (!pack.missing && pack.price > 0) return toRow(pack, bare, fund);
+    if (!pack.missing && pack.price > 0) {
+      const row = toRow(pack, bare, fund);
+      rememberScreenRow(row);
+      return row;
+    }
     const quotes = await fetchQuotes([bare]).catch(() => []);
     const q = quotes.find((x) => x.price > 0);
     if (!q) return null;

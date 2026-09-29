@@ -7,6 +7,10 @@ import type { ScreenFilter, SkillRead } from "@/lib/kosh/screens";
 import { moveWatchSymbols, TERM_INTERVALS } from "@/lib/kosh/market-data";
 import { snapTermHeight } from "@/lib/kosh/term-height";
 import { cleanHoldSort } from "@/lib/kosh/instrument-nav";
+import { baseSym, storedSymbol } from "@/lib/kosh/sectors";
+import type { SymbolBook } from "@/lib/kosh/symbol-map";
+import { loadTradeBooks, saveTradeBook } from "@/lib/kosh/trade-book";
+import { unionCloudTrades } from "@/lib/kosh/cloud-state";
 
 export type IconId = "k-path" | "bowl" | "twin" | "ledger" | "coin" | "fold";
 export const ICON_IDS: IconId[] = ["k-path", "bowl", "twin", "ledger", "coin", "fold"];
@@ -254,6 +258,13 @@ type KoshState = {
   overviewHoldSort: { key: "name" | "last" | "chg" | "chgPct"; dir: "asc" | "desc" } | null;
   overviewWatchSorts: Record<string, { key: "name" | "last" | "chg" | "chgPct"; dir: "asc" | "desc" }>;
   deepFunds: Record<string, DeepFundSnap>;
+  symbolAliases: Record<string, string>;
+  symbolSkips: string[];
+  tradeCounts: Record<string, number>;
+  tradeError: string | null;
+  tradesReady: boolean;
+  confirmSymbol: (from: string, to: string, name?: string) => void;
+  skipSymbol: (symbol: string) => void;
   hydrate: (ports: Portfolio[]) => void;
   setIconId: (id: IconId) => void;
   setTheme: (t: ThemeId) => void;
@@ -284,6 +295,8 @@ type KoshState = {
     journal: JournalEntry[];
     bookNotes: Record<string, BookNoteSnap>;
     deepFunds: Record<string, DeepFundSnap>;
+    symbolAliases?: Record<string, string>;
+    symbolSkips?: string[];
   }) => void;
   toggleWatch: (symbol: string) => void;
   addWatchList: (name: string) => string;
@@ -319,6 +332,18 @@ type KoshState = {
   ) => void;
 };
 
+function bookFrom(s: { symbolAliases?: Record<string, string>; symbolSkips?: string[] }): SymbolBook {
+  return { aliases: s.symbolAliases || {}, skips: s.symbolSkips || [] };
+}
+
+function saveBook(id: string, trades: TradeLine[]) {
+  void saveTradeBook(id, trades).catch(() => {
+    useKosh.setState({
+      tradeError: "The trade book could not be saved. It is still open and the previous save was not wiped.",
+    });
+  });
+}
+
 export const useKosh = create<KoshState>()(
   persist(
     (set, get) => ({
@@ -345,12 +370,17 @@ export const useKosh = create<KoshState>()(
       overviewHoldSort: null,
       overviewWatchSorts: {},
       deepFunds: {},
+      symbolAliases: {},
+      symbolSkips: [],
+      tradeCounts: {},
+      tradeError: null,
+      tradesReady: false,
       hydrate: (ports) => {
         if (ports.length)
           set({
             portfolios: ports.map((p) => ({
               ...p,
-              holdings: sanitizeHoldings(p.holdings || []),
+              holdings: sanitizeHoldings(p.holdings || [], bookFrom(get())),
               trades: sanitizeTrades(p.trades),
             })),
           });
@@ -364,7 +394,7 @@ export const useKosh = create<KoshState>()(
             {
               id,
               name: name || "Main",
-              holdings: sanitizeHoldings(holdings),
+              holdings: sanitizeHoldings(holdings, bookFrom(get())),
               bench,
               includeCommodities: true,
               trades: sanitizeTrades(trades),
@@ -391,26 +421,32 @@ export const useKosh = create<KoshState>()(
       addHoldings: (id, incoming) =>
         set({
           portfolios: get().portfolios.map((p) =>
-            p.id === id ? { ...p, holdings: mergeHoldings(p.holdings, sanitizeHoldings(incoming)) } : p,
+            p.id === id ? { ...p, holdings: mergeHoldings(p.holdings, sanitizeHoldings(incoming, bookFrom(get()))), updatedAt: Date.now() } : p,
           ),
         }),
       fillHoldings: (id, incoming, opts) =>
         set({
           portfolios: get().portfolios.map((p) =>
-            p.id === id ? { ...p, holdings: fillHoldings(sanitizeHoldings(p.holdings), incoming, opts) } : p,
+            p.id === id ? { ...p, holdings: fillHoldings(sanitizeHoldings(p.holdings, bookFrom(get())), incoming, opts), updatedAt: Date.now() } : p,
           ),
         }),
       upsertHoldings: (id, incoming) =>
         set({
           portfolios: get().portfolios.map((p) =>
-            p.id === id ? { ...p, holdings: upsertHoldings(sanitizeHoldings(p.holdings), incoming) } : p,
+            p.id === id ? { ...p, holdings: upsertHoldings(sanitizeHoldings(p.holdings, bookFrom(get())), incoming), updatedAt: Date.now() } : p,
           ),
         }),
       updateHolding: (id, symbol, patch) =>
         set({
           portfolios: get().portfolios.map((p) =>
             p.id === id
-              ? { ...p, holdings: p.holdings.map((h) => (h.symbol === symbol ? applyHoldingPatch(h, patch) : h)) }
+              ? {
+                  ...p,
+                  updatedAt: Date.now(),
+                  holdings: p.holdings.map((h) =>
+                    h.symbol === symbol ? applyHoldingPatch({ ...h, updatedAt: Date.now() }, patch) : h,
+                  ),
+                }
               : p,
           ),
         }),
@@ -422,16 +458,27 @@ export const useKosh = create<KoshState>()(
         }),
       replaceHoldings: (id, holdings) =>
         set({ portfolios: get().portfolios.map((p) => (p.id === id ? { ...p, holdings } : p)) }),
-      setTrades: (id, trades) =>
+      setTrades: (id, trades) => {
+        const next = sanitizeTrades(trades);
         set({
-          portfolios: get().portfolios.map((p) => (p.id === id ? { ...p, trades: sanitizeTrades(trades) } : p)),
-        }),
-      mergeTrades: (id, trades) =>
+          tradeError: null,
+          tradeCounts: { ...get().tradeCounts, [id]: next.length },
+          portfolios: get().portfolios.map((p) => (p.id === id ? { ...p, trades: next, updatedAt: Date.now() } : p)),
+        });
+        saveBook(id, next);
+      },
+      mergeTrades: (id, trades) => {
+        const portfolios = get().portfolios.map((p) =>
+          p.id === id ? { ...p, trades: mergeTradeLines(p.trades || [], sanitizeTrades(trades)), updatedAt: Date.now() } : p,
+        );
+        const next = portfolios.find((p) => p.id === id)?.trades || [];
         set({
-          portfolios: get().portfolios.map((p) =>
-            p.id === id ? { ...p, trades: mergeTradeLines(p.trades || [], sanitizeTrades(trades)) } : p,
-          ),
-        }),
+          portfolios,
+          tradeError: null,
+          tradeCounts: { ...get().tradeCounts, [id]: next.length },
+        });
+        saveBook(id, next);
+      },
       setDeepFund: (symbol, snap) =>
         set({
           deepFunds: { ...get().deepFunds, [bareSymbol(symbol)]: snap },
@@ -444,14 +491,20 @@ export const useKosh = create<KoshState>()(
         const lists = withDefaultLists(doc.watchlists?.length ? doc.watchlists : get().watchlists, get().watch);
         const activeWatchId = lists.some((l) => l.id === doc.activeWatchId) ? doc.activeWatchId : lists[0].id;
         const watch = (lists.find((l) => l.id === activeWatchId) || lists[0]).symbols;
+        const portfolios = doc.portfolios?.length
+          ? doc.portfolios.map((p) => ({
+              ...p,
+              holdings: sanitizeHoldings(p.holdings || [], bookFrom(doc)),
+              trades: sanitizeTrades(p.trades),
+            }))
+          : get().portfolios;
+        const tradeCounts = { ...get().tradeCounts };
+        for (const p of portfolios) tradeCounts[p.id] = Math.max(tradeCounts[p.id] || 0, p.trades?.length || 0);
         set({
-          portfolios: doc.portfolios?.length
-            ? doc.portfolios.map((p) => ({
-                ...p,
-                holdings: sanitizeHoldings(p.holdings || []),
-                trades: sanitizeTrades(p.trades),
-              }))
-            : get().portfolios,
+          portfolios,
+          tradeCounts,
+          symbolAliases: doc.symbolAliases || get().symbolAliases,
+          symbolSkips: doc.symbolSkips || get().symbolSkips,
           watchlists: lists,
           activeWatchId,
           watch,
@@ -468,6 +521,32 @@ export const useKosh = create<KoshState>()(
           bookNotes: doc.bookNotes || get().bookNotes,
           deepFunds: (doc.deepFunds || get().deepFunds) as KoshState["deepFunds"],
         });
+        const incoming = portfolios.filter((p) => p.id !== "sample");
+        void (async () => {
+          try {
+            const books = await loadTradeBooks();
+            const merged = incoming.map((p) => {
+              const trades = unionCloudTrades(books[p.id], p.trades);
+              return trades.length ? { ...p, trades } : p;
+            });
+            if (merged.some((p, i) => (p.trades?.length || 0) !== (incoming[i]?.trades?.length || 0))) {
+              useKosh.setState((s) => ({
+                portfolios: s.portfolios.map((p) => merged.find((m) => m.id === p.id) || p),
+                tradeCounts: {
+                  ...s.tradeCounts,
+                  ...Object.fromEntries(merged.map((p) => [p.id, p.trades?.length || s.tradeCounts[p.id] || 0])),
+                },
+              }));
+            }
+            for (const p of merged) {
+              if (p.trades?.length) await saveTradeBook(p.id, p.trades);
+            }
+          } catch {
+            useKosh.setState({
+              tradeError: "The trade book could not be saved. It is still open and the previous save was not wiped.",
+            });
+          }
+        })();
       },
       toggleWatch: (symbol) => {
         const n = bareSymbol(symbol);
@@ -612,9 +691,76 @@ export const useKosh = create<KoshState>()(
           else next[id] = sort;
           return { overviewWatchSorts: next };
         }),
+      confirmSymbol: (from, to, name) => {
+        const target = storedSymbol(to);
+        const source = storedSymbol(from);
+        if (!target || !source) return;
+        const aliases = { ...get().symbolAliases, [source]: target, [baseSym(source)]: target };
+        const portfolios = get().portfolios.map((p) => ({
+          ...p,
+          updatedAt: Date.now(),
+          holdings: p.holdings.map((h) =>
+            h.symbol === source || baseSym(h.symbol) === baseSym(source)
+              ? { ...h, symbol: target, name: name || h.name, updatedAt: Date.now() }
+              : h,
+          ),
+          trades: (p.trades || []).map((t) =>
+            t.symbol === source || baseSym(t.symbol) === baseSym(source) ? { ...t, symbol: target, name: name || t.name } : t,
+          ),
+        }));
+        set({
+          symbolAliases: aliases,
+          symbolSkips: get().symbolSkips.filter((s) => s !== source && s !== baseSym(source)),
+          portfolios,
+        });
+        for (const p of portfolios) saveBook(p.id, p.trades || []);
+      },
+      skipSymbol: (symbol) => {
+        const key = storedSymbol(symbol);
+        if (!key || get().symbolSkips.includes(key)) return;
+        set({ symbolSkips: [...get().symbolSkips, key] });
+      },
     }),
     {
       name: "kosh-v2",
+      partialize: (state) => {
+        const { tradeError: _tradeError, tradesReady: _tradesReady, ...rest } = state;
+        return {
+          ...rest,
+          portfolios: state.portfolios.map((p) => ({ ...p, trades: [] as TradeLine[] })),
+        };
+      },
+      onRehydrateStorage: () => (state) => {
+        const seeded = state?.portfolios || [];
+        void (async () => {
+          try {
+            const books = await loadTradeBooks();
+            for (const p of seeded) {
+              if (p.id !== "sample" && p.trades?.length && !books[p.id]?.length) await saveTradeBook(p.id, p.trades);
+            }
+            const again = await loadTradeBooks();
+            useKosh.setState((s) => ({
+              tradesReady: true,
+              tradeError: null,
+              portfolios: s.portfolios.map((p) => {
+                const extra = again[p.id];
+                if (!extra?.length) return p;
+                if (p.trades?.length) return p;
+                return { ...p, trades: sanitizeTrades(extra) };
+              }),
+              tradeCounts: {
+                ...s.tradeCounts,
+                ...Object.fromEntries(Object.entries(again).map(([id, rows]) => [id, rows.length])),
+              },
+            }));
+          } catch {
+            useKosh.setState({
+              tradesReady: true,
+              tradeError: "Could not read the saved trade book. Nothing was cleared.",
+            });
+          }
+        })();
+      },
       merge: (persisted, current) => {
         const p = (persisted || {}) as Partial<KoshState>;
         const watchlists = withDefaultLists(
@@ -669,12 +815,18 @@ export const useKosh = create<KoshState>()(
           overviewHoldSort: cleanHoldSort(p.overviewHoldSort),
           overviewWatchSorts: p.overviewWatchSorts || {},
           deepFunds: p.deepFunds || {},
+          symbolAliases: p.symbolAliases || {},
+          symbolSkips: p.symbolSkips || [],
+          tradeCounts: p.tradeCounts || {},
+          tradeError: null,
+          tradesReady: false,
           portfolios: (p.portfolios?.length ? p.portfolios : current.portfolios).map((port) => ({
             ...port,
-            holdings: sanitizeHoldings(port.holdings || []),
-            trades: sanitizeTrades(
-              port.trades?.length ? port.trades : port.id === "sample" ? SAMPLE_TRADES : [],
-            ),
+            holdings: sanitizeHoldings(port.holdings || [], {
+              aliases: p.symbolAliases || {},
+              skips: p.symbolSkips || [],
+            }),
+            trades: sanitizeTrades(port.trades?.length ? port.trades : port.id === "sample" ? SAMPLE_TRADES : []),
           })),
         };
       },

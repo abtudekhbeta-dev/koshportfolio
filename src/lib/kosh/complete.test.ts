@@ -103,6 +103,25 @@ describe("completion plan", () => {
     assert.equal(fund.provenance?.fields.salesCagr3?.status, "derived");
   });
 
+  it("uses annual observations attached to a CAGR label and still calculates the rate", () => {
+    const fund = applyResearchToFund(blankFund("HDFCBANK"), [
+      item({
+        metric: "Sales CAGR 3Y",
+        status: "inputs_only",
+        value: 99,
+        inputs: [
+          { name: "FY23", value: 100, unit: "Cr" },
+          { name: "FY24", value: 110, unit: "Cr" },
+          { name: "FY25", value: 121, unit: "Cr" },
+          { name: "FY26", value: 133.1, unit: "Cr" },
+        ],
+      }),
+    ]);
+    assert.notEqual(fund.salesCagr3, 99);
+    assert.ok(fund.salesCagr3 != null && fund.salesCagr3 > 0);
+    assert.equal(fund.provenance?.fields.salesCagr3?.status, "derived");
+  });
+
   it("counts only displayed blanks", () => {
     const row = { pe: 12, pb: null, roe: 20 };
     const gaps = missingDisplayed(row, SCREEN_FUND_FIELDS);

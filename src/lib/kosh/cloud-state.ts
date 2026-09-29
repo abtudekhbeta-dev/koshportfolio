@@ -1,8 +1,9 @@
 /** What leaves the browser for a signed-in account, and how two devices merge. */
 
-import type { JournalEntry, Portfolio, TradeLine, Fundamentals } from "./types.ts";
+import type { JournalEntry, Portfolio, TradeLine, Fundamentals, Holding } from "./types.ts";
 import type { ScreenFilter } from "./screens.ts";
 import { sanitizePortfolio } from "./sanitize.ts";
+import { baseSym, preferSymbol } from "./sectors.ts";
 
 export type SyncPolicy = "CLOUD_SYNC" | "LOCAL_ONLY" | "NEVER_SYNC";
 
@@ -16,6 +17,8 @@ export const SYNC_POLICY = {
   journal: "CLOUD_SYNC",
   bookNotes: "CLOUD_SYNC",
   deepFunds: "CLOUD_SYNC",
+  symbolAliases: "CLOUD_SYNC",
+  symbolSkips: "CLOUD_SYNC",
   drawings: "LOCAL_ONLY",
   skillReads: "LOCAL_ONLY",
   recents: "LOCAL_ONLY",
@@ -45,6 +48,10 @@ export type CloudDoc = {
   journal: JournalEntry[];
   bookNotes: Record<string, CloudNote>;
   deepFunds: Record<string, { fund: Fundamentals; at: number; sources: string[] }>;
+  symbolAliases: Record<string, string>;
+  symbolSkips: string[];
+  deviceId?: string;
+  savedAt?: number;
 };
 
 export function emptyCloud(): CloudDoc {
@@ -59,6 +66,8 @@ export function emptyCloud(): CloudDoc {
     journal: [],
     bookNotes: {},
     deepFunds: {},
+    symbolAliases: {},
+    symbolSkips: [],
   };
 }
 
@@ -78,6 +87,10 @@ export function sanitizeForCloud(input: {
   journal?: JournalEntry[];
   bookNotes?: Record<string, CloudNote>;
   deepFunds?: CloudDoc["deepFunds"];
+  symbolAliases?: Record<string, string>;
+  symbolSkips?: string[];
+  deviceId?: string;
+  savedAt?: number;
 }): CloudDoc {
   const funds: CloudDoc["deepFunds"] = {};
   for (const [sym, snap] of Object.entries(input.deepFunds || {})) {
@@ -105,15 +118,39 @@ export function sanitizeForCloud(input: {
     journal: (input.journal || []).slice(0, 200),
     bookNotes: input.bookNotes || {},
     deepFunds: funds,
+    symbolAliases: input.symbolAliases || {},
+    symbolSkips: input.symbolSkips || [],
+    deviceId: input.deviceId || thisDevice(),
+    savedAt: input.savedAt || Date.now(),
   };
 }
 
-function mergeTrades(a: TradeLine[] | undefined, b: TradeLine[] | undefined) {
+function thisDevice(): string | undefined {
+  if (typeof localStorage === "undefined") return undefined;
+  try {
+    const key = "kosh-device";
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id = globalThis.crypto?.randomUUID?.() || `dev-${Date.now()}`;
+      localStorage.setItem(key, id);
+    }
+    return id;
+  } catch {
+    return undefined;
+  }
+}
+
+function tradeKey(t: TradeLine) {
+  return [t.symbol, t.date || "", t.side, t.qty, t.price, t.boughtAt || "", t.src ?? ""].join("|");
+}
+
+/** Union of two trade books. A failed or empty write must not erase the other side. */
+export function unionCloudTrades(a: TradeLine[] | undefined, b: TradeLine[] | undefined) {
   const out: TradeLine[] = [];
   const seen = new Set<string>();
   for (const t of [...(a || []), ...(b || [])]) {
     if (!(t.qty > 0)) continue;
-    const key = [t.symbol, t.date || "", t.side, t.qty, t.price, t.boughtAt || "", t.src ?? ""].join("|");
+    const key = tradeKey(t);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(t);
@@ -121,8 +158,29 @@ function mergeTrades(a: TradeLine[] | undefined, b: TradeLine[] | undefined) {
   return out;
 }
 
+function mergeTrades(a: TradeLine[] | undefined, b: TradeLine[] | undefined) {
+  return unionCloudTrades(a, b);
+}
+
 function isSample(ports: Portfolio[]) {
   return ports.length === 1 && ports[0]?.id === "sample";
+}
+
+function mergeHoldingLists(remote: Holding[] | undefined, local: Holding[] | undefined): Holding[] {
+  const map = new Map<string, Holding>();
+  for (const h of remote || []) map.set(baseSym(h.symbol), h);
+  for (const h of local || []) {
+    const key = baseSym(h.symbol);
+    const prev = map.get(key);
+    if (!prev) {
+      map.set(key, h);
+      continue;
+    }
+    const symbol = preferSymbol(prev.symbol, h.symbol);
+    if ((h.updatedAt || 0) > (prev.updatedAt || 0)) map.set(key, { ...prev, ...h, symbol });
+    else map.set(key, { ...prev, symbol });
+  }
+  return [...map.values()];
 }
 
 /** Union Path trades. A stale device must not erase a newer tradebook. */
@@ -140,12 +198,14 @@ export function mergeCloud(local: CloudDoc, remote: CloudDoc): { doc: CloudDoc; 
     }
     const trades = mergeTrades(prev.trades, p.trades);
     if ((p.trades?.length || 0) > (prev.trades?.length || 0)) notes.push(`Merged Path trades for ${p.name}`);
-    const holdKeys = new Set((prev.holdings || []).map((h) => h.symbol));
-    const holdings = [...(prev.holdings || [])];
-    for (const h of p.holdings || []) {
-      if (!holdKeys.has(h.symbol)) holdings.push(h);
-    }
-    byId.set(p.id, { ...prev, ...p, holdings, trades, id: p.id });
+    const holdings = mergeHoldingLists(prev.holdings, p.holdings);
+    const localNewer = (p.updatedAt || 0) >= (prev.updatedAt || 0);
+    byId.set(p.id, {
+      ...(localNewer ? { ...prev, ...p } : { ...p, ...prev }),
+      holdings,
+      trades,
+      id: p.id,
+    });
   }
   const funds = { ...(remote.deepFunds || {}) };
   for (const [sym, snap] of Object.entries(local.deepFunds || {})) {
@@ -179,6 +239,12 @@ export function mergeCloud(local: CloudDoc, remote: CloudDoc): { doc: CloudDoc; 
     journal: localFresh ? remote.journal || [] : local.journal?.length ? local.journal : remote.journal || [],
     bookNotes: { ...(remote.bookNotes || {}), ...(localFresh ? {} : local.bookNotes || {}) },
     deepFunds: funds,
+    symbolAliases: localFresh
+      ? { ...(local.symbolAliases || {}), ...(remote.symbolAliases || {}) }
+      : { ...(remote.symbolAliases || {}), ...(local.symbolAliases || {}) },
+    symbolSkips: [...new Set([...(remote.symbolSkips || []), ...(local.symbolSkips || [])])],
+    deviceId: local.deviceId || remote.deviceId,
+    savedAt: Math.max(local.savedAt || 0, remote.savedAt || 0) || Date.now(),
   };
   const dirty = JSON.stringify(doc) !== JSON.stringify(remote);
   return { doc, dirty, notes };

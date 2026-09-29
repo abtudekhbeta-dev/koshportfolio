@@ -50,13 +50,13 @@ export async function loadCompanyFunds(symbols: string[]): Promise<Map<string, C
   return out;
 }
 
-/** Upsert one company at a time. Never a bulk wipe. */
+/** Upsert one company at a time. Never a bulk wipe. Returns false when the write did not land. */
 export async function upsertCompanyFunds(
   funds: Record<string, Fundamentals | null | undefined>,
   sources: Record<string, string[] | undefined> = {},
-): Promise<void> {
+): Promise<boolean> {
   const entries = Object.entries(funds).filter(([, f]) => f && typeof f === "object") as [string, Fundamentals][];
-  if (!entries.length) return;
+  if (!entries.length) return false;
   try {
     const sql = await getSql();
     for (const [sym, fund] of entries) {
@@ -70,7 +70,8 @@ export async function upsertCompanyFunds(
         [key, JSON.stringify(fund), JSON.stringify(src)],
       );
     }
+    return true;
   } catch {
-    /* keep the live response even if the cache write fails */
+    return false;
   }
 }

@@ -187,6 +187,10 @@ export async function apiEnrich(symbols: string[]) {
   return { funds: cur.funds || {}, sources: cur.sources || {} };
 }
 
+export function researchPayload(symbol: string, missing: string[]) {
+  return { research: { symbol, missing: [...missing] } };
+}
+
 export async function apiResearch(symbol: string, missing: string[]) {
   return json<{
     ok: boolean;
@@ -194,7 +198,7 @@ export async function apiResearch(symbol: string, missing: string[]) {
     symbol?: string;
     items?: {
       metric: string;
-      status: "researched" | "not_found" | "inputs_only";
+      status: "researched" | "not_found" | "inputs_only" | "conflicting";
       value: number | null;
       unit: string;
       period: string | null;
@@ -207,7 +211,23 @@ export async function apiResearch(symbol: string, missing: string[]) {
   }>("/api/enrich", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ research: { symbol, missing: missing.slice(0, 8) } }),
+    body: JSON.stringify(researchPayload(symbol, missing)),
+  });
+}
+
+export async function apiMarketRows(symbols: string[]) {
+  return json<{ rows?: ScreenRow[]; error?: string }>("/api/enrich", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ market: symbols }),
+  });
+}
+
+export async function apiCommitFund(symbol: string, fund: Fundamentals) {
+  return json<{ ok: boolean; error?: string; fund?: Fundamentals }>("/api/enrich", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ commit: { symbol, fund } }),
   });
 }
 

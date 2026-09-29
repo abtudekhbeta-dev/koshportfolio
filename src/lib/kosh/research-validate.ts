@@ -21,6 +21,20 @@ export type ResearchPack = {
 
 const STATUSES = new Set(["researched", "not_found", "inputs_only", "conflicting"]);
 
+/** A quoted ratio that is not the metric we asked for. */
+const SUBSTITUTES: { metric: RegExp; reject: RegExp }[] = [
+  { metric: /interest coverage/i, reject: /financial charges coverage|dscr|debt service/i },
+];
+
+export function evidenceFitsMetric(metric: string, text: string): boolean {
+  const blob = text || "";
+  for (const rule of SUBSTITUTES) {
+    if (!rule.metric.test(metric)) continue;
+    if (rule.reject.test(blob)) return false;
+  }
+  return true;
+}
+
 function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
@@ -60,6 +74,8 @@ export function validateResearch(raw: unknown, requested: string[]): { ok: true;
         return { ok: false, error: "AI research unavailable" };
       }
     }
+    const quote = `${evidence} ${String(o.methodology || "")} ${sourceName}`;
+    const substituted = status === "researched" && !evidenceFitsMetric(metric, quote);
     if (status === "conflicting") {
       if (evidence.length < 8 || !sourceName) return { ok: false, error: "AI research unavailable" };
       if (value != null && !sourceUrl.startsWith("http")) return { ok: false, error: "AI research unavailable" };
@@ -68,13 +84,15 @@ export function validateResearch(raw: unknown, requested: string[]): { ok: true;
     if (status === "not_found" && value != null) return { ok: false, error: "AI research unavailable" };
     out.push({
       metric: metric.slice(0, 80),
-      status: status as ResearchItem["status"],
-      value: status === "not_found" ? null : value,
+      status: substituted ? "not_found" : (status as ResearchItem["status"]),
+      value: status === "not_found" || substituted ? null : value,
       unit: String(o.unit || "").slice(0, 24),
       period,
       sourceName: sourceName.slice(0, 120),
       sourceUrl: sourceUrl.slice(0, 400),
-      evidence: evidence.slice(0, 400),
+      evidence: substituted
+        ? "The source names a different ratio. It was not stored as the requested metric."
+        : evidence.slice(0, 400),
       methodology: String(o.methodology || "").slice(0, 240),
       inputs,
     });

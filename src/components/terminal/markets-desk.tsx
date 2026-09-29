@@ -15,7 +15,7 @@ import { useChartFullscreen } from "@/components/charts/use-fullscreen";
 import { cn } from "@/lib/utils";
 import { TermChart } from "./term-chart";
 import { WatchPane } from "./watch-pane";
-import { IntelPanel } from "./intel-panel";
+import { IntelPanel, INTEL_TABS } from "./intel-panel";
 
 const DESK_SPLIT = { main: 74, watch: 26 };
 
@@ -65,6 +65,7 @@ export function MarketsDesk() {
   const ports = useKosh((s) => s.portfolios);
   const [wide, setWide] = useState(true);
   const [watchOpen, setWatchOpen] = useState(true);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const deskRef = useRef<HTMLDivElement>(null);
   const { fs, fallback, toggle: toggleFs } = useChartFullscreen(deskRef);
   const [hits, setHits] = useState<PatternHit[]>([]);
@@ -193,18 +194,52 @@ export function MarketsDesk() {
 
   const chartBox = (
     <div
-      className={cn("min-h-0", fs ? "min-h-[240px] flex-1" : "shrink-0")}
-      style={fs ? undefined : { height: termHeight }}
+      className={cn("min-h-0 shrink-0", fs && "min-h-[240px] flex-1")}
+      style={fs ? undefined : { height: termHeight, maxHeight: "calc(100% - 2.75rem)" }}
       data-term-height={termHeight}
     >
       {workspace}
     </div>
   );
 
+  const tabRow = (
+    <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-t border-border px-2" data-term-tabs>
+      {INTEL_TABS.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          data-term-tab={t.id}
+          aria-pressed={detailsOpen && desk.intelTab === t.id}
+          onClick={() => {
+            if (detailsOpen && desk.intelTab === t.id) setDetailsOpen(false);
+            else {
+              patchDesk({ intelTab: t.id });
+              setDetailsOpen(true);
+            }
+          }}
+          className={cn(
+            "h-10 shrink-0 px-2.5 text-[12px] font-medium",
+            detailsOpen && desk.intelTab === t.id ? "border-b-2 border-fg text-fg" : "text-muted hover:text-fg",
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+
   const mainCol = (
-    <div className={cn("flex min-h-0 flex-col", fs ? "h-full" : "min-h-full")}>
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden" data-term-workspace>
       {chartBox}
-      <div className={cn("border-t border-border", fs && "max-h-[34%] overflow-y-auto")}>{intel}</div>
+      {tabRow}
+      {detailsOpen ? (
+        <div
+          data-term-details
+          className="absolute inset-x-0 bottom-10 z-20 max-h-[min(420px,46%)] overflow-y-auto border-t border-border bg-bg shadow-[var(--shadow-border)]"
+        >
+          {intel}
+        </div>
+      ) : null}
     </div>
   );
 
@@ -325,7 +360,7 @@ export function MarketsDesk() {
 
       {wide && watchOpen ? (
         <Group orientation="horizontal" className="min-h-0 flex-1" defaultLayout={DESK_SPLIT}>
-          <Panel id="main" minSize="42%" className={cn("min-h-0", fs ? "overflow-hidden" : "overflow-y-auto")}>
+          <Panel id="main" minSize="42%" className="min-h-0 overflow-hidden">
             {mainCol}
           </Panel>
           <Separator className="w-px bg-border hover:bg-fg/30" />
@@ -334,7 +369,7 @@ export function MarketsDesk() {
           </Panel>
         </Group>
       ) : (
-        <div className={cn("flex min-h-0 flex-1 flex-col", fs ? "overflow-hidden" : "overflow-x-hidden overflow-y-auto")}>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {mainCol}
           {!wide && watchOpen ? <div className="min-h-[280px] border-t border-border">{watchEl}</div> : null}
         </div>

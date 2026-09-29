@@ -16,17 +16,18 @@ export function UnresolvedHoldings({
   missing: string[];
   holdings: Holding[];
 }) {
-  const updateHolding = useKosh((s) => s.updateHolding);
+  const confirmSymbol = useKosh((s) => s.confirmSymbol);
+  const skipSymbol = useKosh((s) => s.skipSymbol);
+  const skips = useKosh((s) => s.symbolSkips);
   const [picks, setPicks] = useState<Record<string, Pick[]>>({});
-  const [skip, setSkip] = useState<Record<string, boolean>>({});
 
   const names = useMemo(() => {
     const map = new Map(holdings.map((h) => [h.symbol, h]));
     return missing.filter((s) => {
       const h = map.get(s);
-      return h?.kind !== "commodity" && !skip[s];
+      return h?.kind !== "commodity" && !skips.includes(s) && !skips.includes(s.replace(/&/g, "_").replace(/-/g, "_"));
     });
-  }, [missing, holdings, skip]);
+  }, [missing, holdings, skips]);
 
   useEffect(() => {
     let on = true;
@@ -67,7 +68,7 @@ export function UnresolvedHoldings({
   if (!names.length) return null;
 
   return (
-    <section className="mb-5 rounded-lg border-l-[4px] border-l-warn bg-surface p-4 shadow-[var(--shadow-border)]">
+    <section className="mb-5 rounded-lg border-l-[4px] border-l-warn bg-surface p-4 shadow-[var(--shadow-border)]" data-portfolio={portfolioId}>
       <div className="text-[11px] font-semibold tracking-[0.14em] text-warn uppercase">Couldn’t match these names</div>
       <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted">
         They load when you open them alone, but the portfolio used a different ticker. Pick the listed name so they are
@@ -88,13 +89,13 @@ export function UnresolvedHoldings({
                     key={p.symbol}
                     size="sm"
                     variant="secondary"
-                    onClick={() => updateHolding(portfolioId, s, { symbol: p.symbol, name: p.name || h?.name })}
+                    onClick={() => confirmSymbol(s, p.symbol, p.name || h?.name)}
                   >
                     Use {p.symbol}
                     {p.name && p.name !== p.symbol ? ` — ${p.name}` : ""}
                   </Button>
                 ))}
-                <Button size="sm" variant="ghost" onClick={() => setSkip((x) => ({ ...x, [s]: true }))}>
+                <Button size="sm" variant="ghost" onClick={() => skipSymbol(s)}>
                   Skip
                 </Button>
               </div>

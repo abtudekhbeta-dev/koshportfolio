@@ -1,11 +1,32 @@
 import { N500_SECTORS } from "./nse-sectors.ts";
 
-export function baseSym(s: string): string {
+const SERIES_SFX = /-(T|BE|SM|EQ|BL|PP|Q|Z|TB|XT|SG|X|GC|ST|IL|BT|BZ|A|B)$/i;
+
+/** Ticker kept on the book. Strips an exchange suffix, keeps `&` and a real hyphen such as BAJAJ-AUTO. */
+export function storedSymbol(s: string): string {
   return String(s || "")
+    .trim()
     .toUpperCase()
+    .replace(/^(NSE:|BSE:|IND:)/, "")
     .replace(/\.(NS|BO)$/i, "")
-    .replace(/-/g, "_")
-    .replace(/&/g, "_");
+    .replace(SERIES_SFX, "");
+}
+
+/** Lookup key only. Do not store this over a canonical ticker — `&` in GMRP&UI must survive. */
+export function baseSym(s: string): string {
+  return storedSymbol(s).replace(/-/g, "_").replace(/&/g, "_");
+}
+
+/** When two spellings are the same name, keep the one with `&` or a hyphen. */
+export function preferSymbol(a: string, b: string): string {
+  const A = storedSymbol(a);
+  const B = storedSymbol(b);
+  if (!A) return B;
+  if (!B) return A;
+  if (A === B) return A;
+  if (A.includes("&") !== B.includes("&")) return A.includes("&") ? A : B;
+  if (A.includes("-") !== B.includes("-")) return A.includes("-") ? A : B;
+  return A;
 }
 
 const SECTORS: Record<string, string> = {

@@ -6,7 +6,8 @@ import { CompleteMissing } from "@/components/complete-missing";
 import { Button } from "@/components/ui/button";
 import { AIButton } from "@/components/ui/ai-button";
 import { apiScreenBuild, apiScreener, apiScreenerDeep } from "@/lib/kosh/api";
-import { missingDisplayed, SCREEN_FUND_FIELDS } from "@/lib/kosh/complete";
+import { displayedFields } from "@/lib/kosh/screen-contract";
+import { missingDisplayed } from "@/lib/kosh/complete";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { fmtVol } from "@/lib/kosh/ohlc";
 import {
@@ -25,6 +26,7 @@ import {
   type ScreenId,
   type SortKey,
 } from "@/lib/kosh/screens";
+import type { ScreenRow } from "@/lib/kosh/types";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +55,8 @@ function ScreenPage() {
   const [qtext, setQtext] = useState("");
   const [limit, setLimit] = useState(150);
   const [cols, setCols] = useState<Record<string, boolean>>({});
+  const [marketRows, setMarketRows] = useState<Record<string, ScreenRow>>({});
+  const [marketChecked, setMarketChecked] = useState<Record<string, string[]>>({});
   const saved = useKosh((s) => s.customScreens);
   const saveCustomScreen = useKosh((s) => s.saveCustomScreen);
   const removeCustomScreen = useKosh((s) => s.removeCustomScreen);
@@ -60,13 +64,21 @@ function ScreenPage() {
   const deepFunds = useKosh((s) => s.deepFunds);
   const rows = useMemo(() => {
     const merged = mergeScreenRows(q.data?.rows || [], deep.data?.rows || []);
-    const keys = Object.keys(deepFunds);
-    if (!keys.length) return merged;
     return merged.map((r) => {
       const fund = deepFunds[r.symbol]?.fund;
-      return fund ? fillBlankScreenFund(r, fund) : r;
+      const withFund = fund ? fillBlankScreenFund(r, fund) : r;
+      const market = marketRows[r.symbol];
+      if (!market) return withFund;
+      const next = { ...withFund };
+      const fill = new Set(["ret3m", "ret1y", "offHigh", "rsi", "volRatio", "vol", "volAvg", "vcpN", "vcpLastPct", "vcpDays", "vcpVolX", "vcpPivot", "fiiDelta", "diiDelta", "fii", "dii"]);
+      for (const [k, v] of Object.entries(market)) {
+        if (!fill.has(k) || typeof v !== "number" || !Number.isFinite(v)) continue;
+        const cur = (next as Record<string, unknown>)[k];
+        if (cur == null || (cur === 0 && (k === "vol" || k === "volAvg"))) (next as Record<string, unknown>)[k] = v;
+      }
+      return next;
     });
-  }, [q.data, deep.data, deepFunds]);
+  }, [q.data, deep.data, deepFunds, marketRows]);
   const sectors = useMemo(() => ["All", ...[...new Set(rows.map((r) => r.sector))].sort()], [rows]);
   const needle = qtext.trim().toUpperCase();
   const searched = useMemo(() => {
@@ -95,22 +107,14 @@ function ScreenPage() {
   const nStrict = mbScored.filter((x) => x.kind === "strict").length;
   const nFail = mbScored.filter((x) => x.kind === "fail").length;
   const nUnk = mbScored.filter((x) => x.kind === "unknown").length;
-  const fields =
-    id === "stake"
-      ? [
-          { key: "fii", label: "FII" },
-          { key: "dii", label: "DII" },
-        ]
-      : id === "vcp" || id === "vcpbo"
-        ? []
-        : [
-            ...SCREEN_FUND_FIELDS,
-            ...EXTRA_COLS.filter((c) => cols[c.key]),
-          ];
+  const fields = displayedFields(id === "custom" ? "all" : id, cols);
   const completionJobs = shownAll
     .map((r) => ({
       symbol: r.symbol,
-      missing: missingDisplayed(r as unknown as Record<string, unknown>, fields).map((f) => f.label),
+      missing: missingDisplayed(r as unknown as Record<string, unknown>, fields)
+        .filter((f) => !(marketChecked[r.symbol] || []).includes(f.key))
+        .map((f) => f.label),
+      fields,
     }))
     .filter((j) => j.missing.length);
 
@@ -140,7 +144,19 @@ function ScreenPage() {
           The screen is applied again to the filled numbers.
         </p>
         <div className="mt-3">
-          <CompleteMissing jobs={completionJobs} />
+          <CompleteMissing
+            jobs={completionJobs}
+            onMarket={(got) =>
+              setMarketRows((cur) => {
+                const next = { ...cur };
+                for (const row of got) next[row.symbol] = row;
+                return next;
+              })
+            }
+            onMarketChecked={(symbol, keys) =>
+              setMarketChecked((cur) => ({ ...cur, [symbol]: [...new Set([...(cur[symbol] || []), ...keys])] }))
+            }
+          />
         </div>
 
         <CustomBuilder

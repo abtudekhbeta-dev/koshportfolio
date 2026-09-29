@@ -4,7 +4,7 @@ import { apiResearch } from "@/lib/kosh/api";
 
 type Item = {
   metric: string;
-  status: "researched" | "not_found" | "inputs_only";
+  status: "researched" | "not_found" | "inputs_only" | "conflicting";
   value: number | null;
   unit: string;
   period: string | null;
@@ -23,7 +23,7 @@ export function ResearchMissing({
   jobs: { symbol: string; missing: string[] }[];
   label?: string;
 }) {
-  const queue = jobs.filter((j) => j.symbol && j.missing.length).slice(0, 3);
+  const queue = jobs.filter((j) => j.symbol && j.missing.length);
   const [busy, setBusy] = useState(false);
   const [rows, setRows] = useState<{ symbol: string; items: Item[]; error?: string }[]>([]);
   if (!queue.length) return null;

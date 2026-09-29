@@ -94,6 +94,8 @@ export type Holding = {
   kind?: "equity" | "commodity";
   unit?: string;
   lots?: Lot[];
+  /** Milliseconds. Newer edit wins a cloud quantity conflict. */
+  updatedAt?: number;
 };
 
 /** One dated buy or sell from a trade file. side 1 = buy, -1 = sell. */
@@ -122,6 +124,7 @@ export type Portfolio = {
   bench: string;
   includeCommodities?: boolean;
   trades?: TradeLine[];
+  updatedAt?: number;
 };
 
 export type NavPoint = {

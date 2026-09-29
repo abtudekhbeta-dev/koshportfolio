@@ -238,6 +238,14 @@ export function researchPlan(fund: Fundamentals, missing: string[]): { ask: stri
       if (!seriesReady(fund[seriesName], 1)) ask.add(SERIES_ASK[seriesName]);
       continue;
     }
+    if (/^(fii|dii) change$/i.test(label.trim())) {
+      local.push(label);
+      continue;
+    }
+    if (/^(3m|1y|rsi 14|vol vs 20d avg|vs 52w high|contractions|last contraction|volume multiple|pivot)$/i.test(label.trim())) {
+      local.push(label);
+      continue;
+    }
     const key = fieldKey(label);
     if (!key) {
       ask.add(label);
@@ -336,8 +344,8 @@ export function seedCompletion(
 function seriesOfMetric(metric: string): "sales" | "profits" | "cfo" | null {
   const m = metric.toLowerCase().trim();
   if (SERIES_LABEL[m]) return SERIES_LABEL[m];
-  if (/annual sales|revenue history|sales history|revenue from operations/.test(m)) return "sales";
-  if (/annual profit|profit history|pat history|net profit/.test(m)) return "profits";
+  if (/annual sales|revenue history|sales history|revenue from operations|sales cagr|revenue cagr/.test(m)) return "sales";
+  if (/annual profit|profit history|pat history|net profit|profit cagr/.test(m)) return "profits";
   if (/cash from operations|operating cash|cfo history/.test(m)) return "cfo";
   return null;
 }
@@ -349,7 +357,7 @@ function pointsFrom(item: ResearchItem): FinPoint[] {
       return period ? { period, value: row.value } : null;
     })
     .filter((x): x is FinPoint => Boolean(x));
-  if (item.status === "researched" && item.value != null) {
+  if (item.status === "researched" && item.value != null && !/cagr/i.test(item.metric)) {
     const period = periodOf(item.period || "");
     if (period) pts.push({ period, value: item.value });
   }
@@ -493,6 +501,24 @@ export function explainGaps(fund: Fundamentals, missing: string[]): Gap[] {
 /** Path prices come from the market history, never from a model reply. */
 export function usablePathPrice(_item: ResearchItem | null): number | null {
   return null;
+}
+
+/** What a model may be asked when a Path name did not match a listed ticker. Never a price or a return. */
+export function pathIdentityAsk(symbol: string): string {
+  return `listed NSE or BSE symbol for ${symbol}`;
+}
+
+/**
+ * Server company cache. Numbers already on file win.
+ * Incoming researched facts fill blanks and keep AI-researched provenance.
+ */
+export function commitFund(
+  cached: Fundamentals | null | undefined,
+  incoming: Fundamentals,
+  symbol: string,
+): Fundamentals {
+  if (!cached) return applyFormulas({ ...incoming, symbol: incoming.symbol || symbol });
+  return seedCompletion(incoming, cached, symbol);
 }
 export async function pool<T, R>(items: T[], concurrency: number, worker: (item: T, index: number) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);

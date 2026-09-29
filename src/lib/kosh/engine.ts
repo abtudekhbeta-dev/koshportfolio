@@ -261,87 +261,78 @@ export type WindowObs = {
   observed: string | null;
   status: "available" | "unavailable";
   reason: string | null;
+  source: string | null;
+  calculation: string | null;
 };
 
 function dayFromUnix(t: number) {
   return new Date(t * 1000).toISOString().slice(0, 10);
 }
 
+const WINDOW_SOURCE = "Adjusted close history";
+const WINDOW_CALC = "Last trading session at or before the target date, versus the latest session. A later start is not borrowed.";
+
+function unavailable(reason: string, target: string | null, observed: string | null = null): WindowObs {
+  return { pct: null, target, observed, status: "unavailable", reason, source: WINDOW_SOURCE, calculation: WINDOW_CALC };
+}
+
 /** Calendar window. Uses the last session at or before the target. Does not borrow a later start date. */
 export function observeWindow(nav: NavPoint[], days: number, label: string): WindowObs {
-  if (!nav || nav.length < 2) {
-    return { pct: null, target: null, observed: null, status: "unavailable", reason: `insufficient price history for ${label}` };
-  }
+  if (!nav || nav.length < 2) return unavailable(`insufficient price history for ${label}`, null);
   const last = nav[nav.length - 1];
   const targetSec = last.t - days * 86400;
   const target = dayFromUnix(targetSec);
   let first: NavPoint | null = null;
   for (const p of nav) if (p.t <= targetSec) first = p;
-  if (!first) {
-    return { pct: null, target, observed: null, status: "unavailable", reason: `insufficient price history for ${label}` };
-  }
+  if (!first) return unavailable(`insufficient price history for ${label}`, target);
   if (targetSec - first.t > 12 * 86400) {
-    return {
-      pct: null,
-      target,
-      observed: first.day,
-      status: "unavailable",
-      reason: `${label}: no trading session within 12 days of ${target}`,
-    };
+    return unavailable(`${label}: no trading session within 12 days of ${target}`, target, first.day);
   }
   const pct = first.port > 0 && last.port > 0 ? (last.port / first.port - 1) * 100 : null;
-  return {
-    pct,
-    target,
-    observed: first.day,
-    status: pct == null ? "unavailable" : "available",
-    reason: pct == null ? `${label}: price was not usable` : null,
-  };
+  if (pct == null) return unavailable(`${label}: price was not usable`, target, first.day);
+  return { pct, target, observed: first.day, status: "available", reason: null, source: WINDOW_SOURCE, calculation: WINDOW_CALC };
 }
 
 /** Year to date from the first session of the last point's calendar year. No later start is borrowed. */
 export function observeYtd(nav: NavPoint[]): WindowObs {
-  if (!nav || nav.length < 2) {
-    return { pct: null, target: null, observed: null, status: "unavailable", reason: "insufficient price history for YTD" };
-  }
+  if (!nav || nav.length < 2) return unavailable("insufficient price history for YTD", null);
   const last = nav[nav.length - 1];
   const y = last.day.slice(0, 4);
   const target = `${y}-01-01`;
   const first = nav.find((p) => p.day.startsWith(y)) || null;
-  if (!first) {
-    return { pct: null, target, observed: null, status: "unavailable", reason: "YTD: no session in the current year" };
-  }
-  if (last.t - first.t < 5 * 86400) {
-    return { pct: null, target, observed: first.day, status: "unavailable", reason: "YTD: not enough sessions this year" };
-  }
+  if (!first) return unavailable("YTD: no session in the current year", target);
+  if (last.t - first.t < 5 * 86400) return unavailable("YTD: not enough sessions this year", target, first.day);
   const pct = first.port > 0 && last.port > 0 ? (last.port / first.port - 1) * 100 : null;
+  if (pct == null) return unavailable("YTD: price was not usable", target, first.day);
   return {
     pct,
     target,
     observed: first.day,
-    status: pct == null ? "unavailable" : "available",
-    reason: pct == null ? "YTD: price was not usable" : null,
+    status: "available",
+    reason: null,
+    source: WINDOW_SOURCE,
+    calculation: "First session of the latest point's calendar year versus the latest session.",
   };
 }
 
 /** CAGR across the whole path. Short series stay unavailable instead of a compressed rate. */
 export function observeCagr(nav: NavPoint[]): WindowObs {
-  if (!nav || nav.length < 2) {
-    return { pct: null, target: null, observed: null, status: "unavailable", reason: "CAGR: insufficient price history" };
-  }
+  if (!nav || nav.length < 2) return unavailable("CAGR: insufficient price history", null);
   const a = nav[0];
   const b = nav[nav.length - 1];
   const pct = mixCagr(nav);
   if (pct == null) {
-    return {
-      pct: null,
-      target: a.day,
-      observed: b.day,
-      status: "unavailable",
-      reason: "CAGR: series shorter than about two months, or a price was not usable",
-    };
+    return unavailable("CAGR: series shorter than about two months, or a price was not usable", a.day, b.day);
   }
-  return { pct, target: a.day, observed: b.day, status: "available", reason: null };
+  return {
+    pct,
+    target: a.day,
+    observed: b.day,
+    status: "available",
+    reason: null,
+    source: WINDOW_SOURCE,
+    calculation: "Compound annual growth from the first session to the last. Kosh calculates it. A model does not.",
+  };
 }
 
 export function windowReturn(nav: NavPoint[], days: number): WindowPair {

@@ -7,6 +7,10 @@ import { PathDesk } from "@/components/path-desk";
 import { PathUpload } from "@/components/path-upload";
 import { observeWindow, observeYtd, observeCagr, fmtInr, fmtPct } from "@/lib/kosh/engine";
 import { pathToChartNav } from "@/lib/kosh/path";
+import { apiResearch } from "@/lib/kosh/api";
+import { pathIdentityAsk, usablePathPrice } from "@/lib/kosh/complete";
+import { AIButton } from "@/components/ui/ai-button";
+import { useKosh } from "@/lib/store";
 import type { NavPoint } from "@/lib/kosh/types";
 
 export const Route = createFileRoute("/p/$id/path")({ component: PathPage });
@@ -24,6 +28,9 @@ function PathPage() {
     mixValue > 0 && pathNow > 0 ? Math.abs(pathNow - mixValue) / Math.max(mixValue, pathNow) < 0.015 : false;
   const chartNav = hasPath && path ? pathToChartNav(path) : [];
   const qc = useQueryClient();
+  const tradeError = useKosh((s) => s.tradeError);
+  const tradesReady = useKosh((s) => s.tradesReady);
+  const tradeCount = useKosh((s) => s.tradeCounts[portfolio.id] || 0);
   const [checking, setChecking] = useState(false);
   const [checkNote, setCheckNote] = useState("");
   const windows = hasPath && path ? pathWindows(path.nav) : [];
@@ -58,29 +65,53 @@ function PathPage() {
             unavailable; historical closing price used. Add prices in the file if you want the exact cash you paid.
           </p>
         ) : null}
+        {tradeError ? <p className="mb-3 text-[13px] text-down">{tradeError}</p> : null}
+        {!tradesReady && tradeCount > trades.length ? (
+          <p className="mb-3 text-[13px] text-muted">Loading the saved trade book… {tradeCount.toLocaleString("en-IN")} lines.</p>
+        ) : null}
         {trades.length ? (
           <div className="mb-3 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              disabled={checking}
-              className="h-8 rounded-sm bg-surface px-2.5 text-[13px] font-medium shadow-[var(--shadow-border)] disabled:opacity-50"
+            <AIButton
+              busy={checking}
+              busyLabel="Checking Path…"
               onClick={() => {
                 setChecking(true);
                 setCheckNote("");
-                void qc.invalidateQueries({ queryKey: ["book"] }).finally(() => {
-                  setChecking(false);
-                  const missing = path?.missing || [];
+                const missing = (book.missing || []).filter(Boolean);
+                void (async () => {
+                  await qc.invalidateQueries({ queryKey: ["book"] });
+                  const notes: string[] = [];
+                  for (const symbol of missing) {
+                    try {
+                      const res = await apiResearch(symbol, [pathIdentityAsk(symbol)]);
+                      const item = res.items?.[0];
+                      if (usablePathPrice(item ? { ...item, inputs: item.inputs || [] } : null) != null) {
+                        notes.push(`${symbol}: a price in the reply was ignored.`);
+                        continue;
+                      }
+                      if (item?.status === "researched") {
+                        notes.push(`${symbol}: ${item.sourceName}. ${item.evidence} Confirm the listed name in the prompt. No price was stored from the model.`);
+                      } else {
+                        notes.push(`${symbol}: still unresolved. ${item?.evidence || "No listed symbol with a source."}`);
+                      }
+                    } catch (err) {
+                      notes.push(`${symbol}: ${err instanceof Error ? err.message : "AI research unavailable"}`);
+                    }
+                  }
                   setCheckNote(
                     missing.length
-                      ? `Price history checked again. Still missing a print for ${missing.join(", ")}. Prices were not guessed.`
-                      : "Price history checked again. No prices were guessed.",
+                      ? notes.join(" ")
+                      : "Price history checked again. No unresolved security needed a model. Prices were not guessed.",
                   );
-                });
+                  setChecking(false);
+                })();
               }}
             >
-              {checking ? "Checking price history…" : "Complete missing Path data"}
-            </button>
-            <p className="text-[12px] text-muted">Refetches market history. A model is not asked for prices or returns.</p>
+              · Complete Path data
+            </AIButton>
+            <p className="max-w-xl text-[12px] leading-relaxed text-muted">
+              Refetches market history and calculates the windows. AI is asked only for an unresolved listed symbol, never for a price or a return.
+            </p>
             {checkNote ? <p className="text-[12px] text-muted">{checkNote}</p> : null}
           </div>
         ) : null}
@@ -95,6 +126,8 @@ function PathPage() {
                     ? `Target ${w.obs.target} · observed ${w.obs.observed}`
                     : w.obs.reason}
                 </div>
+                {w.obs.source ? <div className="text-[10px] text-subtle">{w.obs.source}</div> : null}
+                {w.obs.calculation ? <div className="text-[10px] leading-snug text-subtle">{w.obs.calculation}</div> : null}
               </li>
             ))}
           </ul>

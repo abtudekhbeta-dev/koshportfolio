@@ -2,8 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { fetchFundamentals } from "@/lib/kosh/fundamentals.server";
 import { fetchDeepFundamentals } from "@/lib/kosh/deep.server";
 import { loadCompanyFunds } from "@/lib/kosh/company-cache.server";
-import { fillFundamentals } from "@/lib/kosh/fund-merge";
-import { stampCard } from "@/lib/kosh/evidence";
+import { seedCompletion } from "@/lib/kosh/complete";
 import { clientKey, rateLimit } from "@/lib/kosh/guard";
 
 export const Route = createFileRoute("/api/fundamentals")({
@@ -27,12 +26,9 @@ export const Route = createFileRoute("/api/fundamentals")({
           loadCompanyFunds([symbol]),
         ]);
         const cached = cache.get(symbol.replace(/\.(NS|BO)$/i, "").toUpperCase());
-        if (live && cached?.fund) {
-          return Response.json({ fund: stampCard(fillFundamentals(live, cached.fund)), sources: cached.sources });
-        }
-        if (live) return Response.json({ fund: stampCard(live) });
-        if (cached?.fund) return Response.json({ fund: stampCard(cached.fund), sources: cached.sources });
-        return Response.json({ fund: null });
+        if (!live && !cached?.fund) return Response.json({ fund: null });
+        const fund = seedCompletion(cached?.fund, live, symbol);
+        return Response.json({ fund, sources: cached?.sources || [] });
       },
     },
   },

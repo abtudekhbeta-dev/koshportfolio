@@ -17,7 +17,7 @@ import { bareSymbol, useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import type { Fundamentals, NewsItem, Quote } from "@/lib/kosh/types";
 
-const TABS = [
+export const INTEL_TABS = [
   { id: "overview", label: "Overview" },
   { id: "fundamentals", label: "Fundamentals" },
   { id: "valuation", label: "Valuation" },
@@ -26,6 +26,8 @@ const TABS = [
   { id: "news", label: "News" },
   { id: "view", label: "Kosh View" },
 ] as const;
+
+const TABS = INTEL_TABS;
 
 function n(v: number | null | undefined, f: (x: number) => string) {
   return v != null && Number.isFinite(v) ? f(v) : "—";
