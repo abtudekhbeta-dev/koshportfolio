@@ -255,20 +255,105 @@ export function withDrawdown(indexed: ReturnType<typeof toIndexed>) {
   });
 }
 
-export function windowReturn(nav: NavPoint[], days: number): WindowPair {
-  if (nav.length < 2) return { port: null, bench: null };
-  const last = nav[nav.length - 1];
-  const cut = last.t - days * 86400;
-  let first: NavPoint | null = null;
-  for (const p of nav) if (p.t <= cut) first = p;
-  if (!first) {
-    const span = last.t - nav[0].t;
-    if (span < days * 86400 * 0.7) return { port: null, bench: null };
-    first = nav[0];
+export type WindowObs = {
+  pct: number | null;
+  target: string | null;
+  observed: string | null;
+  status: "available" | "unavailable";
+  reason: string | null;
+};
+
+function dayFromUnix(t: number) {
+  return new Date(t * 1000).toISOString().slice(0, 10);
+}
+
+/** Calendar window. Uses the last session at or before the target. Does not borrow a later start date. */
+export function observeWindow(nav: NavPoint[], days: number, label: string): WindowObs {
+  if (!nav || nav.length < 2) {
+    return { pct: null, target: null, observed: null, status: "unavailable", reason: `insufficient price history for ${label}` };
   }
-  const port = first.port ? (last.port / first.port - 1) * 100 : null;
+  const last = nav[nav.length - 1];
+  const targetSec = last.t - days * 86400;
+  const target = dayFromUnix(targetSec);
+  let first: NavPoint | null = null;
+  for (const p of nav) if (p.t <= targetSec) first = p;
+  if (!first) {
+    return { pct: null, target, observed: null, status: "unavailable", reason: `insufficient price history for ${label}` };
+  }
+  if (targetSec - first.t > 12 * 86400) {
+    return {
+      pct: null,
+      target,
+      observed: first.day,
+      status: "unavailable",
+      reason: `${label}: no trading session within 12 days of ${target}`,
+    };
+  }
+  const pct = first.port > 0 && last.port > 0 ? (last.port / first.port - 1) * 100 : null;
+  return {
+    pct,
+    target,
+    observed: first.day,
+    status: pct == null ? "unavailable" : "available",
+    reason: pct == null ? `${label}: price was not usable` : null,
+  };
+}
+
+/** Year to date from the first session of the last point's calendar year. No later start is borrowed. */
+export function observeYtd(nav: NavPoint[]): WindowObs {
+  if (!nav || nav.length < 2) {
+    return { pct: null, target: null, observed: null, status: "unavailable", reason: "insufficient price history for YTD" };
+  }
+  const last = nav[nav.length - 1];
+  const y = last.day.slice(0, 4);
+  const target = `${y}-01-01`;
+  const first = nav.find((p) => p.day.startsWith(y)) || null;
+  if (!first) {
+    return { pct: null, target, observed: null, status: "unavailable", reason: "YTD: no session in the current year" };
+  }
+  if (last.t - first.t < 5 * 86400) {
+    return { pct: null, target, observed: first.day, status: "unavailable", reason: "YTD: not enough sessions this year" };
+  }
+  const pct = first.port > 0 && last.port > 0 ? (last.port / first.port - 1) * 100 : null;
+  return {
+    pct,
+    target,
+    observed: first.day,
+    status: pct == null ? "unavailable" : "available",
+    reason: pct == null ? "YTD: price was not usable" : null,
+  };
+}
+
+/** CAGR across the whole path. Short series stay unavailable instead of a compressed rate. */
+export function observeCagr(nav: NavPoint[]): WindowObs {
+  if (!nav || nav.length < 2) {
+    return { pct: null, target: null, observed: null, status: "unavailable", reason: "CAGR: insufficient price history" };
+  }
+  const a = nav[0];
+  const b = nav[nav.length - 1];
+  const pct = mixCagr(nav);
+  if (pct == null) {
+    return {
+      pct: null,
+      target: a.day,
+      observed: b.day,
+      status: "unavailable",
+      reason: "CAGR: series shorter than about two months, or a price was not usable",
+    };
+  }
+  return { pct, target: a.day, observed: b.day, status: "available", reason: null };
+}
+
+export function windowReturn(nav: NavPoint[], days: number): WindowPair {
+  const obs = observeWindow(nav, days, "window");
+  if (obs.status !== "available") return { port: null, bench: null };
+  const last = nav[nav.length - 1];
+  const targetSec = last.t - days * 86400;
+  let first: NavPoint | null = null;
+  for (const p of nav) if (p.t <= targetSec) first = p;
+  if (!first || !(first.port > 0)) return { port: null, bench: null };
   const bench = first.bench && last.bench ? (last.bench / first.bench - 1) * 100 : null;
-  return { port, bench };
+  return { port: obs.pct, bench };
 }
 
 export function ytdReturn(nav: NavPoint[]): WindowPair {

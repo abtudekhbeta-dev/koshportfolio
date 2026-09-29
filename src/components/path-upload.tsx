@@ -30,7 +30,7 @@ export function PathUpload({ portfolioId }: { portfolioId: string }) {
     setErrors([]);
     setNotes([]);
     try {
-      const { holdings, trades, errors: fails } = await parseHoldingsFiles(list);
+      const { holdings, trades, errors: fails, audit } = await parseHoldingsFiles(list);
       const issues = [...fails];
       if (!trades?.length) {
         setPreview(null);
@@ -92,8 +92,16 @@ export function PathUpload({ portfolioId }: { portfolioId: string }) {
       setNotes([...hints, ...audited.filter((n) => /day’s close|day's close/i.test(n))]);
       const undated = resolved.filter((t) => !t.date).length;
       const filledN = resolved.filter((t) => t.priceFilled).length;
+      const auditLine = audit?.rowsRead
+        ? `Read ${audit.rowsRead} · kept ${audit.accepted} · ignored ${audit.ignored}` +
+          (audit.duplicates ? ` · ${audit.duplicates} duplicate ids` : "") +
+          (audit.ambiguous ? ` · ${audit.ambiguous} side unclear` : "") +
+          (audit.missingPrices ? ` · ${audit.missingPrices} missing a price` : "") +
+          (audit.unresolved ? ` · ${audit.unresolved} unresolved` : "")
+        : "";
       setMsg(
         `Ready · ${resolved.length} buy/sell line${resolved.length === 1 ? "" : "s"}` +
+          (auditLine ? ` · ${auditLine}` : "") +
           (filledN ? ` · ${filledN} used that day’s close` : "") +
           (undated ? ` · ${undated} without a date will sit out of the line` : "") +
           " · This mix is not updated",

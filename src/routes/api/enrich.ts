@@ -20,7 +20,7 @@ export const Route = createFileRoute("/api/enrich")({
       },
       POST: async ({ request }) => {
         const ip = clientKey(request);
-        if (!rateLimit("enrich:" + ip, 40, 10 * 60 * 1000)) {
+        if (!rateLimit("enrich:" + ip, 120, 10 * 60 * 1000)) {
           return Response.json({ error: "Too many data requests. Try again in a few minutes." }, { status: 429 });
         }
         if (tooLarge(request, 32_000)) return Response.json({ error: "Request is too large." }, { status: 413 });
@@ -29,7 +29,7 @@ export const Route = createFileRoute("/api/enrich")({
           research?: { symbol?: string; missing?: string[] };
         };
         if (body.research) {
-          if (!rateLimit("research:" + ip, 8, 10 * 60 * 1000)) {
+          if (!rateLimit("research:" + ip, 80, 10 * 60 * 1000)) {
             return Response.json({ ok: false, error: "AI research unavailable" }, { status: 429 });
           }
           const result = await executeResearch({

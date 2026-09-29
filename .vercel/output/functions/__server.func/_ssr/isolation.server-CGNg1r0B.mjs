@@ -1,4 +1,4 @@
-import { o as getRequest } from "./ssr.mjs";
+import { a as getRequest } from "./ssr.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/isolation.server-CGNg1r0B.js
 /**
 * Fetch-Metadata sibling isolation — **server-only** (`.server.ts` suffix).

@@ -1,5 +1,5 @@
 import { n as require_jsx_runtime } from "../_libs/radix-ui__react-context+react.mjs";
-import { ir as cn } from "./router-CAFi_xno.mjs";
+import { fr as cn } from "./router-DRDyE1N8.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/ai-button-D8qNTvVB.js
 var import_jsx_runtime = require_jsx_runtime();
 /** Every model call uses this. Deterministic fetches do not. */

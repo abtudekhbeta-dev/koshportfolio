@@ -5,6 +5,7 @@ import { applyHoldingPatch, fillHoldings, mergeHoldings, mergeTradeLines, saniti
 import { samplePortfolio, SAMPLE_TRADES } from "@/lib/kosh/sample";
 import type { ScreenFilter, SkillRead } from "@/lib/kosh/screens";
 import { moveWatchSymbols, TERM_INTERVALS } from "@/lib/kosh/market-data";
+import { snapTermHeight } from "@/lib/kosh/term-height";
 import { cleanHoldSort } from "@/lib/kosh/instrument-nav";
 
 export type IconId = "k-path" | "bowl" | "twin" | "ledger" | "coin" | "fold";
@@ -272,6 +273,18 @@ type KoshState = {
   mergeTrades: (id: string, trades: TradeLine[]) => void;
   setDeepFund: (symbol: string, snap: DeepFundSnap) => void;
   setDeepFunds: (rows: Record<string, DeepFundSnap>) => void;
+  applyCloud: (doc: {
+    portfolios: Portfolio[];
+    watchlists: WatchList[];
+    activeWatchId: string;
+    customScreens: ScreenFilter[];
+    desk: DeskState | null;
+    chartPrefs: Partial<ChartPrefs>;
+    alerts: AlertRule[];
+    journal: JournalEntry[];
+    bookNotes: Record<string, BookNoteSnap>;
+    deepFunds: Record<string, DeepFundSnap>;
+  }) => void;
   toggleWatch: (symbol: string) => void;
   addWatchList: (name: string) => string;
   renameWatchList: (id: string, name: string) => void;
@@ -427,6 +440,35 @@ export const useKosh = create<KoshState>()(
         set({
           deepFunds: { ...get().deepFunds, ...rows },
         }),
+      applyCloud: (doc) => {
+        const lists = withDefaultLists(doc.watchlists?.length ? doc.watchlists : get().watchlists, get().watch);
+        const activeWatchId = lists.some((l) => l.id === doc.activeWatchId) ? doc.activeWatchId : lists[0].id;
+        const watch = (lists.find((l) => l.id === activeWatchId) || lists[0]).symbols;
+        set({
+          portfolios: doc.portfolios?.length
+            ? doc.portfolios.map((p) => ({
+                ...p,
+                holdings: sanitizeHoldings(p.holdings || []),
+                trades: sanitizeTrades(p.trades),
+              }))
+            : get().portfolios,
+          watchlists: lists,
+          activeWatchId,
+          watch,
+          customScreens: doc.customScreens || get().customScreens,
+          desk: doc.desk ? sanitizeDesk(doc.desk) : get().desk,
+          chartPrefs: {
+            ...get().chartPrefs,
+            ...doc.chartPrefs,
+            termHeight: snapTermHeight(doc.chartPrefs?.termHeight ?? get().chartPrefs.termHeight),
+            inds: get().chartPrefs.inds,
+          },
+          alerts: doc.alerts || get().alerts,
+          journal: doc.journal || get().journal,
+          bookNotes: doc.bookNotes || get().bookNotes,
+          deepFunds: (doc.deepFunds || get().deepFunds) as KoshState["deepFunds"],
+        });
+      },
       toggleWatch: (symbol) => {
         const n = bareSymbol(symbol);
         const id = get().activeWatchId;
@@ -550,7 +592,7 @@ export const useKosh = create<KoshState>()(
             ...p,
             inds: p.inds ? { ...s.chartPrefs.inds, ...p.inds } : s.chartPrefs.inds,
             chartHeight: Math.max(360, Math.min(900, p.chartHeight ?? s.chartPrefs.chartHeight ?? 580)),
-            termHeight: Math.max(320, Math.min(880, p.termHeight ?? s.chartPrefs.termHeight ?? 520)),
+            termHeight: snapTermHeight(p.termHeight ?? s.chartPrefs.termHeight ?? 560),
             chartBench: p.chartBench ? p.chartBench : s.chartPrefs.chartBench,
           },
         })),
@@ -618,7 +660,7 @@ export const useKosh = create<KoshState>()(
               chartMode: old.chartMode === "bench" || old.chartMode === "usd" ? old.chartMode : "price",
               chartBench: old.chartBench || "nifty",
               chartHeight: Math.max(360, Math.min(900, old.chartHeight || 580)),
-              termHeight: Math.max(320, Math.min(880, old.termHeight || 520)),
+              termHeight: snapTermHeight(old.termHeight || 560),
               rev: 5,
             };
           })(),

@@ -1467,6 +1467,8 @@ export function CandleChart({
     const el = overlayRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      const zoomGesture = e.ctrlKey || e.metaKey;
+      if (!zoomGesture && !e.shiftKey) return;
       e.preventDefault();
       if (nAll < 30) return;
       const { x } = svgXY(e);

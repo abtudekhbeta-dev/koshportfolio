@@ -2,7 +2,7 @@
 
 export type ResearchItem = {
   metric: string;
-  status: "researched" | "not_found" | "inputs_only";
+  status: "researched" | "not_found" | "inputs_only" | "conflicting";
   value: number | null;
   unit: string;
   period: string | null;
@@ -19,7 +19,7 @@ export type ResearchPack = {
   items: ResearchItem[];
 };
 
-const STATUSES = new Set(["researched", "not_found", "inputs_only"]);
+const STATUSES = new Set(["researched", "not_found", "inputs_only", "conflicting"]);
 
 function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
@@ -59,6 +59,10 @@ export function validateResearch(raw: unknown, requested: string[]): { ok: true;
       if (value == null || !sourceUrl.startsWith("http") || evidence.length < 8 || !sourceName || !period) {
         return { ok: false, error: "AI research unavailable" };
       }
+    }
+    if (status === "conflicting") {
+      if (evidence.length < 8 || !sourceName) return { ok: false, error: "AI research unavailable" };
+      if (value != null && !sourceUrl.startsWith("http")) return { ok: false, error: "AI research unavailable" };
     }
     if (status === "inputs_only" && !inputs.length) return { ok: false, error: "AI research unavailable" };
     if (status === "not_found" && value != null) return { ok: false, error: "AI research unavailable" };

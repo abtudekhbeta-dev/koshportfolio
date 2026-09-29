@@ -878,7 +878,7 @@ export function parseMatrix(matrix: unknown[][]): Holding[] {
   return parseMatrixDetailed(matrix).holdings;
 }
 
-export type ParsedBook = { holdings: Holding[]; fromTrades: boolean; trades: TradeLine[] };
+export type ParsedBook = { holdings: Holding[]; fromTrades: boolean; trades: TradeLine[]; audit?: TradeParseAudit };
 
 function matrixToRows(matrix: unknown[][]): Record<string, unknown>[] {
   const rows = (matrix || []).map((r) => (Array.isArray(r) ? r : [r]));
@@ -907,10 +907,10 @@ function matrixToRows(matrix: unknown[][]): Record<string, unknown>[] {
 
 export function parseMatrixDetailed(matrix: unknown[][]): ParsedBook {
   const objects = matrixToRows(matrix);
-  if (!objects.length) return { holdings: [], fromTrades: false, trades: [] };
+  if (!objects.length) return { holdings: [], fromTrades: false, trades: [], audit: emptyAudit() };
   const fromTrades = isTradeBook(objects);
   const trades = fromTrades ? extractTradeLines(objects) : [];
-  return { holdings: extractHoldings(objects), fromTrades, trades };
+  return { holdings: extractHoldings(objects), fromTrades, trades, audit: auditTradeObjects(objects) };
 }
 
 function lastWins(rows: Holding[]): Holding[] {
@@ -1029,7 +1029,7 @@ export async function parseSpreadsheetDetailed(buf: ArrayBuffer): Promise<Parsed
     [],
     hits.flatMap((h) => h.trades || []),
   );
-  return { holdings, fromTrades: Boolean(holdings.length) && !hasSnap, trades };
+  return { holdings, fromTrades: Boolean(holdings.length) && !hasSnap, trades, audit: sumAudits(hits.map((h) => h.audit)) };
 }
 
 function decodeText(buf: ArrayBuffer): string {
@@ -1053,7 +1053,12 @@ export async function parseHoldingsFileDetailed(file: File): Promise<ParsedBook>
   const text = decodeText(buf);
   const rows = parseCsv(text);
   const fromTrades = isTradeBook(rows);
-  return { holdings: extractHoldings(rows), fromTrades, trades: fromTrades ? extractTradeLines(rows) : [] };
+  return {
+    holdings: extractHoldings(rows),
+    fromTrades,
+    trades: fromTrades ? extractTradeLines(rows) : [],
+    audit: auditTradeObjects(rows),
+  };
 }
 
 export async function parseHoldingsFile(file: File): Promise<Holding[]> {
@@ -1063,7 +1068,7 @@ export async function parseHoldingsFile(file: File): Promise<Holding[]> {
 
 export async function parseHoldingsFiles(
   files: File[],
-): Promise<{ holdings: Holding[]; trades: TradeLine[]; errors: string[] }> {
+): Promise<{ holdings: Holding[]; trades: TradeLine[]; errors: string[]; audit: TradeParseAudit }> {
   const parts: ParsedBook[] = [];
   const errors: string[] = [];
   for (const f of files) {
@@ -1082,6 +1087,7 @@ export async function parseHoldingsFiles(
       parts.flatMap((p) => p.trades || []),
     ),
     errors,
+    audit: sumAudits(parts.map((p) => p.audit)),
   };
 }
 
@@ -1165,6 +1171,73 @@ export function mergeTradeLines(existing: TradeLine[], incoming: TradeLine[]): T
     out.push(row);
   }
   return sortTrades(out);
+}
+
+export type TradeParseAudit = {
+  rowsRead: number;
+  accepted: number;
+  ignored: number;
+  duplicates: number;
+  ambiguous: number;
+  missingPrices: number;
+  unresolved: number;
+};
+
+export function emptyAudit(): TradeParseAudit {
+  return { rowsRead: 0, accepted: 0, ignored: 0, duplicates: 0, ambiguous: 0, missingPrices: 0, unresolved: 0 };
+}
+
+export function sumAudits(parts: (TradeParseAudit | undefined)[]): TradeParseAudit {
+  const out = emptyAudit();
+  for (const p of parts) {
+    if (!p) continue;
+    out.rowsRead += p.rowsRead;
+    out.accepted += p.accepted;
+    out.ignored += p.ignored;
+    out.duplicates += p.duplicates;
+    out.ambiguous += p.ambiguous;
+    out.missingPrices += p.missingPrices;
+    out.unresolved += p.unresolved;
+  }
+  return out;
+}
+
+function rowHasText(row: Record<string, unknown>) {
+  return Object.values(row).some((v) => String(v ?? "").trim() !== "");
+}
+
+/** Counts what the trade parser kept, skipped, duplicated, or could not price. Does not drop rows by itself. */
+export function auditTradeObjects(rows: Record<string, unknown>[]): TradeParseAudit {
+  const source = (rows || []).filter(rowHasText);
+  const trades = extractTradeLines(source);
+  const ids = new Map<string, number>();
+  let missingPrices = 0;
+  let unresolved = 0;
+  for (const t of trades) {
+    if (!(t.price > 0)) missingPrices += 1;
+    if (!/^[A-Z][A-Z0-9.&-]{0,20}$/.test(t.symbol)) unresolved += 1;
+    if (t.id) ids.set(t.id, (ids.get(t.id) || 0) + 1);
+  }
+  let duplicates = 0;
+  for (const n of ids.values()) if (n > 1) duplicates += n - 1;
+  let ambiguous = 0;
+  for (const row of source) {
+    const map = rowMap(row);
+    const raw = String(pickNonIsin(map, SYM_KEYS) || pickNonIsin(map, NAME_KEYS) || "");
+    if (!raw) continue;
+    const { qty, side } = tradeQty(map);
+    if (qty > 0 && side === 0) ambiguous += 1;
+  }
+  const accepted = trades.length;
+  return {
+    rowsRead: source.length,
+    accepted,
+    ignored: Math.max(0, source.length - accepted),
+    duplicates,
+    ambiguous,
+    missingPrices,
+    unresolved,
+  };
 }
 
 /** Honest notes for Path upload: undated, missing price, zero qty. */

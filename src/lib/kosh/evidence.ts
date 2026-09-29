@@ -125,7 +125,8 @@ export const SOURCE_RANK: Record<SourceRank, number> = {
   "structured-provider": 5,
   secondary: 6,
   "kosh-derived": 7,
-  unknown: 8,
+  "ai-researched": 8,
+  unknown: 9,
 };
 
 function finite(v: unknown): number | null {

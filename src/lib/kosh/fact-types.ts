@@ -10,6 +10,7 @@ export type SourceRank =
   | "structured-provider"
   | "secondary"
   | "kosh-derived"
+  | "ai-researched"
   | "unknown";
 
 export type FactProvenance = {

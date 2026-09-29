@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getRouteApi } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Columns2, LayoutGrid, Maximize2, Minimize2, Minus, Plus, Square } from "lucide-react";
+import { Columns2, LayoutGrid, Maximize2, Minimize2, Square } from "lucide-react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { apiQuotes } from "@/lib/kosh/api";
 import { isIstSession, istClock } from "@/lib/kosh/market-hours";
@@ -9,6 +9,7 @@ import { MARKET_PROVIDER, quoteMap, quoteStatus, quoteStatusLabel } from "@/lib/
 import type { PatternHit } from "@/lib/kosh/patterns";
 import type { Quote } from "@/lib/kosh/types";
 import { bareSymbol, useKosh, type DeskLayout } from "@/lib/store";
+import { TERM_HEIGHT, snapTermHeight, termHeightName } from "@/lib/kosh/term-height";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useChartFullscreen } from "@/components/charts/use-fullscreen";
 import { cn } from "@/lib/utils";
@@ -58,14 +59,13 @@ export function MarketsDesk() {
   const patchDesk = useKosh((s) => s.patchDesk);
   const setDeskPane = useKosh((s) => s.setDeskPane);
   const setDeskSymbol = useKosh((s) => s.setDeskSymbol);
-  const termHeight = useKosh((s) => s.chartPrefs.termHeight || 520);
+  const termHeight = snapTermHeight(useKosh((s) => s.chartPrefs.termHeight || TERM_HEIGHT.standard));
   const patchChartPrefs = useKosh((s) => s.patchChartPrefs);
   const watch = useKosh((s) => s.watch);
   const ports = useKosh((s) => s.portfolios);
   const [wide, setWide] = useState(true);
   const [watchOpen, setWatchOpen] = useState(true);
   const deskRef = useRef<HTMLDivElement>(null);
-  const dragH = useRef<{ y: number; h: number } | null>(null);
   const { fs, fallback, toggle: toggleFs } = useChartFullscreen(deskRef);
   const [hits, setHits] = useState<PatternHit[]>([]);
   const onHits = useCallback((next: PatternHit[]) => {
@@ -201,31 +201,9 @@ export function MarketsDesk() {
     </div>
   );
 
-  const heightHandle = !fs ? (
-    <div
-      role="separator"
-      aria-orientation="horizontal"
-      aria-label="Drag chart height"
-      title="Drag chart height"
-      className="h-1.5 shrink-0 cursor-ns-resize bg-border hover:bg-fg/30"
-      onPointerDown={(e) => {
-        dragH.current = { y: e.clientY, h: termHeight };
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      }}
-      onPointerMove={(e) => {
-        if (!dragH.current) return;
-        patchChartPrefs({ termHeight: dragH.current.h + (e.clientY - dragH.current.y) });
-      }}
-      onPointerUp={() => {
-        dragH.current = null;
-      }}
-    />
-  ) : null;
-
   const mainCol = (
     <div className={cn("flex min-h-0 flex-col", fs ? "h-full" : "min-h-full")}>
       {chartBox}
-      {heightHandle}
       <div className={cn("border-t border-border", fs && "max-h-[34%] overflow-y-auto")}>{intel}</div>
     </div>
   );
@@ -264,39 +242,30 @@ export function MarketsDesk() {
             </Tooltip>
           ))}
         </div>
-        <div className="flex items-center gap-0.5">
-          <Tooltip content="Decrease chart height">
+        <div className="flex items-center gap-0.5 rounded-sm bg-bg-elevated p-0.5" role="group" aria-label="Chart height">
+          {(
+            [
+              ["compact", "S", TERM_HEIGHT.compact],
+              ["standard", "M", TERM_HEIGHT.standard],
+              ["tall", "L", TERM_HEIGHT.tall],
+            ] as const
+          ).map(([name, label, px]) => (
             <button
+              key={name}
               type="button"
-              aria-label="Decrease chart height"
+              aria-label={`${name} chart height`}
+              aria-pressed={termHeightName(termHeight) === name}
               disabled={fs}
-              onClick={() => patchChartPrefs({ termHeight: termHeight - 40 })}
-              className="grid size-8 place-items-center rounded-sm text-muted hover:text-fg disabled:opacity-40"
+              onClick={() => patchChartPrefs({ termHeight: px })}
+              className={cn(
+                "h-8 min-w-8 rounded-[6px] px-2 text-[11px] font-medium",
+                termHeightName(termHeight) === name ? "bg-surface text-fg" : "text-muted hover:text-fg",
+                fs && "opacity-40",
+              )}
             >
-              <Minus className="size-3.5" />
+              {label}
             </button>
-          </Tooltip>
-          <Tooltip content="Increase chart height">
-            <button
-              type="button"
-              aria-label="Increase chart height"
-              disabled={fs}
-              onClick={() => patchChartPrefs({ termHeight: termHeight + 40 })}
-              className="grid size-8 place-items-center rounded-sm text-muted hover:text-fg disabled:opacity-40"
-            >
-              <Plus className="size-3.5" />
-            </button>
-          </Tooltip>
-          <Tooltip content="Reset chart height">
-            <button
-              type="button"
-              aria-label="Reset chart height"
-              onClick={() => patchChartPrefs({ termHeight: 520 })}
-              className="h-8 rounded-sm px-2 text-[11px] font-medium text-muted hover:text-fg"
-            >
-              Fit
-            </button>
-          </Tooltip>
+          ))}
         </div>
         <Tooltip content={watchOpen ? "Close watchlist" : "Open watchlist"}>
           <button

@@ -9,8 +9,7 @@ import { NavChart } from "@/components/charts/nav-chart";
 import { FinancialSnapshot, OwnershipBlock } from "@/components/analysis-view";
 import { SnapshotCard, ValuationModels, CoverageLine, FieldCoverage } from "@/components/kosh-snapshot";
 import { AddToPortfolio } from "@/components/add-to-portfolio";
-import { EnrichButton } from "@/components/enrich-button";
-import { ResearchMissing } from "@/components/research-missing";
+import { CompleteMissing } from "@/components/complete-missing";
 import { AttentionStrip } from "@/components/attention-strip";
 import { LivePrice } from "@/components/live-price";
 import { NewsBoard } from "@/components/news-board";
@@ -30,7 +29,8 @@ import { universeName } from "@/lib/kosh/universe";
 import { skillOf, pickScreenRow } from "@/lib/kosh/screens";
 import { buildSnapshot } from "@/lib/kosh/snapshot";
 import { isCommodity } from "@/lib/kosh/commodities";
-import { missingFieldLabels, reconcileFundamentals } from "@/lib/kosh/evidence";
+import { missingFieldLabels } from "@/lib/kosh/evidence";
+import { seedCompletion } from "@/lib/kosh/complete";
 import { buildValuationModels, earningsQualityRead } from "@/lib/kosh/valuation";
 import { buildCoverage, peDiscrepancy } from "@/lib/kosh/coverage";
 import { bareSymbol, isWatched, useKosh, type AlertKind } from "@/lib/store";
@@ -161,9 +161,14 @@ function StockBody({
     apiEnrich([bare])
       .then((part) => {
         if (cancel) return;
-        const got = part.funds?.[bare];
-        if (got) setDeepFunds({ [bare]: { fund: got, at: Date.now(), sources: part.sources?.[bare] || [] } });
-        else setUpdateNote("No additional filing data for this name.");
+        const prev = useKosh.getState().deepFunds[bare]?.fund || null;
+        const got = part.funds?.[bare] || null;
+        if (!got && !prev) {
+          setUpdateNote("No additional filing data for this name.");
+          return;
+        }
+        const fund = seedCompletion(prev, got, bare);
+        setDeepFunds({ [bare]: { fund, at: Date.now(), sources: part.sources?.[bare] || ["complete"] } });
       })
       .catch(() => {
         if (!cancel) setUpdateNote("Background verify did not finish. Use Complete & verify data to retry.");
@@ -176,14 +181,11 @@ function StockBody({
     };
   }, [bare, setDeepFunds]);
   const fundData = useMemo(() => {
-    if (fund.data && deepSnap?.fund) {
-      return reconcileFundamentals(fund.data, deepSnap.fund, {
-        card: "Company card",
-        filing: "Verified record",
-      });
-    }
-    return fund.data || deepSnap?.fund || null;
-  }, [fund.data, deepSnap]);
+    const card = fund.data || null;
+    const saved = deepSnap?.fund || null;
+    if (!card && !saved) return null;
+    return seedCompletion(saved, card, bare);
+  }, [fund.data, deepSnap, bare]);
   const sector = sectorOf(symbol);
   const mineRow = pickScreenRow(screen.data?.rows, bare) || (screen.data?.rows || []).find((r) => r.symbol === bare);
   const snap = useMemo(
@@ -316,7 +318,6 @@ function StockBody({
               {watched ? "Watching" : "Watch"}
             </Button>
             <AddToPortfolio symbol={bare} name={name} px={px} bars={bars} sector={sector} />
-            <EnrichButton symbols={[bare]} />
           </div>
         </div>
       </header>
@@ -331,9 +332,8 @@ function StockBody({
       <SnapshotCard snap={snap} simple={models.simple} />
       <CoverageLine cov={cov} />
       <FieldCoverage fund={fundData} />
-      <ResearchMissing
-        jobs={[{ symbol: bare, missing: missingFieldLabels(fundData).slice(0, 6) }]}
-        label="Unresolved fields stay unresolved until a source is found. AI research is evidence, not a verified number, and it is not written into the company card."
+      <CompleteMissing
+        jobs={fundData ? [{ symbol: bare, missing: missingFieldLabels(fundData) }] : []}
       />
       <ValuationModels pack={models} fund={fundData} />
 

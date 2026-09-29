@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type WheelEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   ArrowDownRight,
@@ -327,18 +327,26 @@ export function TermChart({
     return { x, y, i, t: bar?.t || 0, p: yInv(y) };
   }
 
-  function onWheel(e: WheelEvent<HTMLDivElement>) {
-    e.preventDefault();
-    if (bars.length < 20) return;
-    if (e.shiftKey) {
-      const dir = e.deltaY > 0 || e.deltaX > 0 ? 1 : -1;
-      const step = Math.max(1, Math.round(view.count * 0.08)) * dir;
-      setView(panBy(view, bars.length, step));
-      return;
-    }
-    const i = idxAt(e.clientX);
-    setView(zoomAround(view, bars.length, i, e.deltaY < 0));
-  }
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const zoomGesture = e.ctrlKey || e.metaKey;
+      if (!zoomGesture && !e.shiftKey) return;
+      e.preventDefault();
+      if (bars.length < 20) return;
+      if (e.shiftKey) {
+        const dir = e.deltaY > 0 || e.deltaX > 0 ? 1 : -1;
+        const step = Math.max(1, Math.round(view.count * 0.08)) * dir;
+        setView(panBy(view, bars.length, step));
+        return;
+      }
+      const i = idxAt(e.clientX);
+      setView(zoomAround(view, bars.length, i, e.deltaY < 0));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [bars, view]);
 
   function fit() {
     setView({ start: 0, count: Math.max(1, bars.length) });
@@ -663,7 +671,6 @@ export function TermChart({
       <div
         ref={wrap}
         className={cn("relative min-h-0 flex-1", tool === "pan" || tool === "crosshair" ? "cursor-crosshair" : "cursor-cell")}
-        onWheel={onWheel}
         onPointerDown={(e) => {
           onActivate();
           const pt = xyAt(e.clientX, e.clientY);

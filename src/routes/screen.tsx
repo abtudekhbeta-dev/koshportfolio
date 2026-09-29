@@ -2,12 +2,11 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
-import { EnrichButton } from "@/components/enrich-button";
-import { ResearchMissing } from "@/components/research-missing";
-import { RowComplete } from "@/components/row-complete";
+import { CompleteMissing } from "@/components/complete-missing";
 import { Button } from "@/components/ui/button";
 import { AIButton } from "@/components/ui/ai-button";
 import { apiScreenBuild, apiScreener, apiScreenerDeep } from "@/lib/kosh/api";
+import { missingDisplayed, SCREEN_FUND_FIELDS } from "@/lib/kosh/complete";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { fmtVol } from "@/lib/kosh/ohlc";
 import {
@@ -17,7 +16,6 @@ import {
   fillBlankScreenFund,
   filterSector,
   matchLabel,
-  missingScreenFacts,
   mergeScreenRows,
   rulesForScreen,
   scoreMultibagger,
@@ -97,13 +95,24 @@ function ScreenPage() {
   const nStrict = mbScored.filter((x) => x.kind === "strict").length;
   const nFail = mbScored.filter((x) => x.kind === "fail").length;
   const nUnk = mbScored.filter((x) => x.kind === "unknown").length;
-  const gapSyms = shownAll.filter((r) => r.roce == null || r.opm == null).map((r) => r.symbol);
-  const gapNow = gapSyms.slice(0, 36);
-  const unresolved = shownAll.filter((r) => missingScreenFacts(r).length).length;
-  const researchJobs = shownAll
-    .map((r) => ({ symbol: r.symbol, missing: missingScreenFacts(r).slice(0, 4) }))
-    .filter((j) => j.missing.length)
-    .slice(0, 3);
+  const fields =
+    id === "stake"
+      ? [
+          { key: "fii", label: "FII" },
+          { key: "dii", label: "DII" },
+        ]
+      : id === "vcp" || id === "vcpbo"
+        ? []
+        : [
+            ...SCREEN_FUND_FIELDS,
+            ...EXTRA_COLS.filter((c) => cols[c.key]),
+          ];
+  const completionJobs = shownAll
+    .map((r) => ({
+      symbol: r.symbol,
+      missing: missingDisplayed(r as unknown as Record<string, unknown>, fields).map((f) => f.label),
+    }))
+    .filter((j) => j.missing.length);
 
   function head(key: SortKey, label: string) {
     const on = sort.key === key;
@@ -126,23 +135,12 @@ function ScreenPage() {
       <div className="kosh-page">
         <h1 className="text-[28px] font-semibold tracking-tight">Screener</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Every NSE equity we can list. Company numbers fill in from the company card, then from filings when you complete a row.
-          A blank cell is missing, not a pass — and never a guess. Complete & verify data reads filings for names on this page
-          that are still missing operating margin or return on capital, then the screen is applied again. It does not invent a number.
-          {shownAll.length ? ` ${shownAll.length} stocks in this screen · ${unresolved} still have unresolved supported fields.` : ""}
+          Every NSE equity we can list. A blank cell is missing, not a pass — and never a guess.
+          One completion pass reads filings, calculates what it can, then asks for a source on what is still blank.
+          The screen is applied again to the filled numbers.
         </p>
-        <div className="mt-3 flex flex-wrap items-start gap-3">
-          <EnrichButton symbols={gapNow} queued={Math.max(0, gapSyms.length - gapNow.length)} />
-        </div>
         <div className="mt-3">
-          <ResearchMissing
-            jobs={researchJobs}
-            label={
-              unresolved
-                ? `${shownAll.length} stocks returned · ${unresolved} have unresolved supported fields. This pass researches ${researchJobs.length} of them and does not treat the reply as a screen input.`
-                : ""
-            }
-          />
+          <CompleteMissing jobs={completionJobs} />
         </div>
 
         <CustomBuilder
@@ -344,7 +342,6 @@ function ScreenPage() {
                             {r.passCount != null ? ` · ${matchLabel(r)}` : ""}
                           </div>
                         </Link>
-                        <RowComplete row={r} />
                       </td>
                       <td className="px-3 py-2 font-mono tabular">{fmtPx(r.price)}</td>
                       <td className={cn("px-3 py-2 font-mono tabular", r.changePct >= 0 ? "text-up" : "text-down")}>
@@ -491,7 +488,6 @@ function ScreenPage() {
                       <div className="truncate text-[11px] text-muted">{read ? `${read.fundTag || "—"} · ${read.qualTag || "—"}` : "—"}</div>
                     </div>
                   </div>
-                  <RowComplete row={r} />
                 </article>
               );
             })}
