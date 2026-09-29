@@ -10,10 +10,14 @@ export function bareSym(symbol: string) {
     .replace(/[-_]SM$/i, "");
 }
 
-const NIFTY_SET = new Set(NIFTY50.map((x) => x.symbol.toUpperCase()));
+let niftySet: Set<string> | null = null;
+function niftySymbols(): Set<string> {
+  niftySet ??= new Set(NIFTY50.map((x) => x.symbol.toUpperCase()));
+  return niftySet;
+}
 
 export function isNifty50(symbol: string) {
-  return NIFTY_SET.has(bareSym(symbol));
+  return niftySymbols().has(bareSym(symbol));
 }
 
 export type OverlapSnap = {

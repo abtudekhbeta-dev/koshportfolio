@@ -21,7 +21,9 @@ let status: SkillBoardSnap["status"] = "idle";
 let error = "";
 let looping = false;
 
-function scanList() {
+let universe: { symbol: string; name: string }[] | null = null;
+function getUniverse() {
+  if (universe) return universe;
   const seen = new Set<string>();
   const out: { symbol: string; name: string }[] = [];
   for (const x of [...NIFTY50, ...NIFTY500]) {
@@ -30,10 +32,9 @@ function scanList() {
     seen.add(s);
     out.push({ symbol: s, name: x.name });
   }
+  universe = out;
   return out;
 }
-
-const UNIVERSE = scanList();
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -44,7 +45,7 @@ function snap(): SkillBoardSnap {
     status,
     autoScan: "disabled",
     note: "Automatic Nifty 500 AI coverage is off. Analysis runs when you ask for a name.",
-    total: UNIVERSE.length,
+    total: getUniverse().length,
     done: reads.size,
     error,
     reads: [...reads.values()].sort((a, b) => b.at - a.at),
@@ -92,7 +93,7 @@ async function readOne(u: { symbol: string; name: string }): Promise<SkillRead |
 async function runLoop() {
   status = "running";
   error = "";
-  for (const u of UNIVERSE) {
+  for (const u of getUniverse()) {
     if (reads.has(u.symbol)) continue;
     try {
       const got = await readOne(u);

@@ -140,7 +140,14 @@ export const TRADE_SCANS: { id: ScreenId; label: string; hint: string }[] = [
   { id: "squeeze", label: "Squeeze", hint: "Quiet Bollinger, waiting" },
 ];
 
-const NIFTY = new Set(NIFTY50.map((x) => x.symbol.toUpperCase()));
+let niftySet: Set<string> | null = null;
+function niftySymbols(): Set<string> {
+  // Built on first use. A top-level read of NIFTY50 crashes the production
+  // bundle: the router chunks import each other, and this module evaluates
+  // before the Nifty 50 array has been assigned.
+  niftySet ??= new Set(NIFTY50.map((x) => x.symbol.toUpperCase()));
+  return niftySet;
+}
 
 function passNum(v: number | null | undefined, min: number | null | undefined, max: number | null | undefined) {
   if (min != null && Number.isFinite(min)) {
@@ -278,7 +285,7 @@ export function applyFilter(rows: ScreenRow[], f: ScreenFilter) {
 export function applyScreen(rows: ScreenRow[], id: ScreenId) {
   const src = id === "all" ? rows : rows.filter((r) => r.price > 0);
   if (id === "all") return sortRows(src, "mcapCr", "desc");
-  if (id === "nifty") return src.filter((r) => NIFTY.has(r.symbol.toUpperCase()));
+  if (id === "nifty") return src.filter((r) => niftySymbols().has(r.symbol.toUpperCase()));
   if (id === "up") return sortRows(src, "changePct", "desc");
   if (id === "down") return sortRows(src, "changePct", "asc");
   if (id === "hot") return sortRows(src.filter((r) => (r.volRatio ?? 0) >= 1.4), "vol", "desc");

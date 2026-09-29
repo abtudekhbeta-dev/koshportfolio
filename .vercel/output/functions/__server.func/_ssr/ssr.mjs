@@ -118,7 +118,7 @@ var HEADERS = { TSS_SHELL: "X-TSS_SHELL" };
 * the dev styles URL for route-scoped CSS collection.
 */
 async function getStartManifest(matchedRoutes) {
-	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-C4cIFmRR.mjs");
+	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-BZBazKXF.mjs");
 	const startManifest = tsrStartManifest();
 	let routes = startManifest.routes;
 	routes[rootRouteId];
@@ -140,11 +140,11 @@ async function getStartManifest(matchedRoutes) {
 var manifest = {
 	"0e91473b8a573164424c655ab7a04cc189f455395bb79dec1df8b9ee23bd960a": {
 		functionName: "loadCloudState_createServerFn_handler",
-		importer: () => import("./cloud-D1Sufp1M.mjs")
+		importer: () => import("./cloud-B3lu0q0P.mjs")
 	},
 	"a0270d09cba43b3df5696c50f6cca5bb87cd3fd66e5b3037ec5b2b49cb7cea6a": {
 		functionName: "saveCloudState_createServerFn_handler",
-		importer: () => import("./cloud-D1Sufp1M.mjs")
+		importer: () => import("./cloud-B3lu0q0P.mjs")
 	}
 };
 async function getServerFnById(id, access) {
@@ -1414,7 +1414,7 @@ var getBaseManifest = getProdBaseManifest;
 var createEarlyHintsForRequest = createEarlyHintsCollector;
 async function loadEntries() {
 	const [routerEntry, startEntry, pluginAdapters] = await Promise.all([
-		import("./router-BsvOSOTS2.mjs").then((n) => n.t),
+		import("./router-D75dEx_h2.mjs").then((n) => n.t),
 		import("./start-5Z2QO8AU.mjs"),
 		import("./empty-plugin-adapters-D9UWiqvJ.mjs")
 	]);
