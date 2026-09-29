@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import type { Holding, Portfolio } from "./types";
+import { sanitizeHolding } from "./sanitize";
 
 type Row = { id: string; name: string; bench: string; holdings: string };
 
@@ -35,7 +36,7 @@ export const saveCloudPortfolios = createServerFn({ method: "POST" })
       id: String(p.id || "").slice(0, 40),
       name: String(p.name || "Main").slice(0, 80),
       bench: String(p.bench || "nifty").slice(0, 40),
-      holdings: Array.isArray(p.holdings) ? p.holdings : [],
+      holdings: Array.isArray(p.holdings) ? p.holdings.map((h) => sanitizeHolding(h as Holding)) : [],
     })),
   )
   .handler(async ({ context, data }) => {

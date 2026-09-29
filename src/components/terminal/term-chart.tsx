@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { apiOhlc } from "@/lib/kosh/api";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
-import { panBy, zoomAround, atLatest } from "@/lib/kosh/chart-nav";
+import { panBy, zoomAround, zoomRightEdge, atLatest } from "@/lib/kosh/chart-nav";
 import { adjustOhlcToBenchmark, applyHistoricalFx } from "@/lib/kosh/relative";
 import { histInit, histPush, histRedo, histUndo, type DrawHist } from "@/lib/kosh/draw-history";
 import { resolveBench } from "@/lib/kosh/benchmarks";
@@ -869,10 +869,10 @@ export function TermChart({
       </div>
 
       <div className="flex shrink-0 items-center gap-1 border-t border-border px-2 py-1" data-testid="chart-nav">
-        <IconBtn label="Zoom out" onClick={() => setView(zoomAround(view, bars.length, Math.floor(view.count / 2), false))}>
+        <IconBtn label="Zoom out" onClick={() => setView(zoomRightEdge(view, bars.length, false))}>
           <Minus className="size-3.5" />
         </IconBtn>
-        <IconBtn label="Zoom in" onClick={() => setView(zoomAround(view, bars.length, Math.floor(view.count / 2), true))}>
+        <IconBtn label="Zoom in" onClick={() => setView(zoomRightEdge(view, bars.length, true))}>
           <Plus className="size-3.5" />
         </IconBtn>
         <IconBtn

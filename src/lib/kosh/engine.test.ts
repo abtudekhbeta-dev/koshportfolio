@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   assembleBook,
   buildMixPath,
+  downsideDeviation,
   mixCagr,
   riskMetrics,
   saneDayPnl,
@@ -202,10 +203,46 @@ describe("windows and risk", () => {
     assert.ok(r.beta != null);
   });
 
-  it("saneDayPnl ignores a single-name move above 25%", () => {
-    assert.deepEqual(saneDayPnl(10000, 40), { abs: 0, pct: 0 });
+  it("saneDayPnl keeps a large move and flags it", () => {
+    const big = saneDayPnl(10000, 40);
+    assert.equal(big.abs, 4000);
+    assert.equal(big.pct, 40);
+    assert.ok(big.warn);
     const ok = saneDayPnl(10000, 2);
     assert.equal(ok.abs, 200);
+    assert.equal(ok.warn, null);
+  });
+
+  it("downside deviation uses every day, including up days", () => {
+    const ds = downsideDeviation([0.02, -0.01, 0.03], 0);
+    const meanSq = (0 + 0.01 * 0.01 + 0) / 3;
+    assert.ok(Math.abs(ds - Math.sqrt(meanSq)) < 1e-12);
+  });
+
+  it("a missing average cost does not become zero profit on the whole position", () => {
+    const q = {
+      input: "TCS",
+      symbol: "TCS",
+      name: "TCS",
+      price: 100,
+      previousClose: 90,
+      changePct: 2,
+      high52: 120,
+      low52: 80,
+    };
+    const book = assembleBook({
+      holdings: [{ symbol: "TCS", name: "TCS", qty: 10, avg: null, date: null }],
+      quotes: { TCS: q },
+      histories: { TCS: bars(0, 20, 100, 0) },
+      packs: {},
+      benchSymbol: "^NSEI",
+      benchName: "Nifty 50",
+    });
+    assert.equal(book.rows[0].costKnown, false);
+    assert.equal(book.invested, 0);
+    assert.equal(book.unreal, 0);
+    assert.equal(book.value, 1000);
+    assert.equal(book.costMissing, 1);
   });
 });
 

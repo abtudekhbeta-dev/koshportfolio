@@ -143,9 +143,9 @@ function Holdings() {
                     <Pct n={r.changePct} />
                   </td>
                   <td className="px-3 py-2 text-right font-mono tabular">
-                    {haveRet(r) ? fmtInr(r.unreal) : "—"}
+                    {!r.avg ? "Cost unavailable" : haveRet(r) ? fmtInr(r.unreal) : "—"}
                   </td>
-                  <td className="px-3 py-2 text-right">{haveRet(r) ? <Pct n={r.unrealPct} /> : "—"}</td>
+                  <td className="px-3 py-2 text-right">{!r.avg ? "Cost unavailable" : haveRet(r) ? <Pct n={r.unrealPct} /> : "—"}</td>
                   <td className="px-3 py-2 text-right">{r.xirr == null ? "—" : <Pct n={r.xirr} />}</td>
                   <td className="hidden px-3 py-2 text-right xl:table-cell">
                     <Pct n={r.periods.y1} />

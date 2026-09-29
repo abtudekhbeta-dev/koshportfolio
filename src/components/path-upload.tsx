@@ -14,7 +14,9 @@ export function PathUpload({ portfolioId }: { portfolioId: string }) {
   const mergeTrades = useKosh((s) => s.mergeTrades);
   const setTrades = useKosh((s) => s.setTrades);
   const existing = useKosh((s) => s.portfolios.find((p) => p.id === portfolioId)?.trades) || [];
-  const [msg, setMsg] = useState("CSV or Excel with dated buys and sells. This does not change This mix.");
+  const [msg, setMsg] = useState(
+    "CSV or Excel with dated buys and sells. Broker files can contain sensitive identifiers. Kosh reads the file in the browser and does not send the raw file to AI. This does not change This mix.",
+  );
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<TradeLine[] | null>(null);
   const [errors, setErrors] = useState<string[]>([]);

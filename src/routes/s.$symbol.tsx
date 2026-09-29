@@ -10,6 +10,7 @@ import { FinancialSnapshot, OwnershipBlock } from "@/components/analysis-view";
 import { SnapshotCard, ValuationModels, CoverageLine, FieldCoverage } from "@/components/kosh-snapshot";
 import { AddToPortfolio } from "@/components/add-to-portfolio";
 import { EnrichButton } from "@/components/enrich-button";
+import { ResearchMissing } from "@/components/research-missing";
 import { AttentionStrip } from "@/components/attention-strip";
 import { LivePrice } from "@/components/live-price";
 import { NewsBoard } from "@/components/news-board";
@@ -29,7 +30,7 @@ import { universeName } from "@/lib/kosh/universe";
 import { skillOf, pickScreenRow } from "@/lib/kosh/screens";
 import { buildSnapshot } from "@/lib/kosh/snapshot";
 import { isCommodity } from "@/lib/kosh/commodities";
-import { reconcileFundamentals } from "@/lib/kosh/evidence";
+import { missingFieldLabels, reconcileFundamentals } from "@/lib/kosh/evidence";
 import { buildValuationModels, earningsQualityRead } from "@/lib/kosh/valuation";
 import { buildCoverage, peDiscrepancy } from "@/lib/kosh/coverage";
 import { bareSymbol, isWatched, useKosh, type AlertKind } from "@/lib/store";
@@ -330,6 +331,10 @@ function StockBody({
       <SnapshotCard snap={snap} simple={models.simple} />
       <CoverageLine cov={cov} />
       <FieldCoverage fund={fundData} />
+      <ResearchMissing
+        jobs={[{ symbol: bare, missing: missingFieldLabels(fundData).slice(0, 6) }]}
+        label="Unresolved fields stay unresolved until a source is found. AI research is evidence, not a verified number, and it is not written into the company card."
+      />
       <ValuationModels pack={models} fund={fundData} />
 
       <nav className="flex flex-wrap gap-1" role="tablist" aria-label="Stock sections">

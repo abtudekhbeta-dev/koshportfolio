@@ -3,11 +3,11 @@
 import type { FinPoint, Fundamentals, ShPoint } from "./types.ts";
 import { sortShareholding } from "./shareholding.ts";
 import { fetchFundamentals } from "./fundamentals.server.ts";
-import { pickPeg } from "./portfolio-stats.ts";
 import { fillFundamentals } from "./fund-merge.ts";
 import { parsePeriod } from "./fin-series.ts";
 import { allowedFilingUrl } from "./guard.ts";
-import { noteDerived, reconcileFundamentals } from "./evidence.ts";
+import { reconcileFundamentals } from "./evidence.ts";
+import { applyFormulas } from "./formulas.ts";
 export { fillFundamentals } from "./fund-merge.ts";
 
 const UA =
@@ -321,26 +321,6 @@ export function parseShpPercents(xml: string): {
   return { promoters, fii, dii, pledge, period: inst ? periodLabel(inst) : null };
 }
 
-function yoyOf(pts: FinPoint[]) {
-  if (pts.length < 2) return null;
-  const a = pts[pts.length - 2].value;
-  const b = pts[pts.length - 1].value;
-  if (!(a > 0) || b == null) return null;
-  return ((b / a - 1) * 100);
-}
-
-function cagrOf(pts: FinPoint[], years: number) {
-  const rows = (pts || []).filter((p) => p.value > 0);
-  if (rows.length < 2) return null;
-  const last = rows[rows.length - 1];
-  const idx = rows.length - 1 - years;
-  const first = idx >= 0 ? rows[idx] : rows[0];
-  if (!(first.value > 0) || first === last) return null;
-  const span = idx >= 0 ? years : Math.max(1, rows.length - 1);
-  if (span < Math.min(years, 2) && years >= 3) return null;
-  return (Math.pow(last.value / first.value, 1 / (idx >= 0 ? years : span)) - 1) * 100;
-}
-
 function uniqPeriod(rows: FilingSlice[]) {
   const m = new Map<string, FilingSlice>();
   for (const r of rows) {
@@ -552,11 +532,6 @@ export async function fetchDeepFundamentals(symbol: string): Promise<{ fund: Fun
       extra.cfo = years.filter((y) => y.cfo != null).map((y) => ({ period: y.period, value: y.cfo as number }));
       extra.netWorth = years.filter((y) => y.netWorth != null).map((y) => ({ period: y.period, value: y.netWorth as number }));
       extra.ebitda = years.filter((y) => y.ebitda != null).map((y) => ({ period: y.period, value: y.ebitda as number }));
-      extra.salesYoY = yoyOf(extra.sales || []);
-      extra.profitYoY = yoyOf(extra.profits || []);
-      extra.salesCagr3 = cagrOf(extra.sales || [], 3);
-      extra.profitCagr3 = cagrOf(extra.profits || [], 3);
-      extra.profitCagr5 = cagrOf(extra.profits || [], 5);
       extra.de = years.map((y) => y.de).filter((n): n is number => n != null).at(-1) ?? null;
       extra.face = years.map((y) => y.face).filter((n): n is number => n != null).at(-1) ?? null;
       extra.eps = years.map((y) => y.eps).filter((n): n is number => n != null).at(-1) ?? null;
@@ -611,50 +586,12 @@ export async function fetchDeepFundamentals(symbol: string): Promise<{ fund: Fun
     /* keep card */
   }
 
-  let fund = reconcileFundamentals(base, extra, {
-    card: base.searchId ? "Company card" : "Structured provider",
-    filing: "NSE filing",
-  });
-  const before = {
-    cfoPat: fund.cfoPat,
-    salesCagr3: fund.salesCagr3,
-    profitCagr3: fund.profitCagr3,
-    profitCagr5: fund.profitCagr5,
-    peg: fund.peg,
-  };
-  const lastCfo = fund.cfo.at(-1)?.value;
-  const lastPat = fund.profits.at(-1)?.value;
-  if (fund.cfoPat == null && lastCfo != null && lastPat != null && lastPat !== 0) {
-    const r = lastCfo / lastPat;
-    fund.cfoPat = Number.isFinite(r) ? r : null;
-  }
-  if (fund.salesCagr3 == null) fund.salesCagr3 = cagrOf(fund.sales, 3);
-  if (fund.profitCagr3 == null) fund.profitCagr3 = cagrOf(fund.profits, 3);
-  if (fund.profitCagr5 == null) fund.profitCagr5 = cagrOf(fund.profits, 5);
-  const picked = pickPeg(fund.peg, fund.pe, fund.profitCagr5, fund.profitCagr3);
-  if (fund.peg == null && picked) {
-    fund.peg = picked.peg;
-    fund.pegVia = picked.via;
-  } else if (picked && fund.peg != null && fund.peg === picked.peg) {
-    fund.pegVia = picked.via;
-  }
-  const derived: Partial<Record<string, string>> = {};
-  if (before.cfoPat == null && fund.cfoPat != null) {
-    derived.cfoPat = "Kosh-derived: latest annual CFO / PAT on file. Not a company-reported ratio.";
-  }
-  if (before.salesCagr3 == null && fund.salesCagr3 != null) {
-    derived.salesCagr3 = "Kosh-derived: 3-year CAGR from annual revenue points.";
-  }
-  if (before.profitCagr3 == null && fund.profitCagr3 != null) {
-    derived.profitCagr3 = "Kosh-derived: 3-year CAGR from annual profit points.";
-  }
-  if (before.profitCagr5 == null && fund.profitCagr5 != null) {
-    derived.profitCagr5 = "Kosh-derived: 5-year CAGR from annual profit points.";
-  }
-  if (before.peg == null && fund.peg != null) {
-    derived.peg = `Kosh-derived PEG using ${fund.pegVia || "profit growth"}. Not a vendor PEG.`;
-  }
-  if (Object.keys(derived).length) fund = noteDerived(fund, derived);
+  let fund = applyFormulas(
+    reconcileFundamentals(base, extra, {
+      card: base.searchId ? "Company card" : "Structured provider",
+      filing: "NSE filing",
+    }),
+  );
   fund.retrievedAt = Date.now();
   if (!fund.searchId && !fund.sales.length && !fund.profits.length && fund.promoters == null && !fund.cfo.length) {
     deepCache.set(bare, { at: Date.now(), fund: null, sources });

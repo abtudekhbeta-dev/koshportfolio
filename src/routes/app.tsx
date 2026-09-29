@@ -27,16 +27,24 @@ function portSnap(holdings: Holding[], quotes: Quote[]) {
   }
   let value = 0;
   let invested = 0;
+  let knownValue = 0;
   let dayAbs = 0;
+  let dayWarn: string | null = null;
   for (const h of holdings) {
     const q = map.get(quoteKey(h.symbol));
     const px = q?.price || h.avg || 0;
     const val = h.qty * px;
     value += val;
-    invested += h.avg ? h.qty * h.avg : val;
-    dayAbs += saneDayPnl(val, q?.changePct || 0).abs;
+    const known = h.avg != null && h.avg > 0 && Number.isFinite(h.avg);
+    if (known) {
+      invested += h.qty * (h.avg as number);
+      knownValue += val;
+    }
+    const day = saneDayPnl(val, q?.changePct || 0);
+    dayAbs += day.abs;
+    if (day.warn) dayWarn = day.warn;
   }
-  return { value, invested, unreal: value - invested, dayAbs, dayPct: value ? (dayAbs / value) * 100 : 0 };
+  return { value, invested, unreal: knownValue - invested, dayAbs, dayPct: value ? (dayAbs / value) * 100 : 0, dayWarn };
 }
 
 function port1y(holdings: Holding[], packs: HistoryPack[], quotes: Quote[]) {

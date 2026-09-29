@@ -62,8 +62,48 @@ export function simpleAvg(values: (number | null | undefined)[]): number | null 
   return xs.reduce((s, x) => s + x, 0) / xs.length;
 }
 
+/**
+ * Aggregate P/E = sum(weight) / sum(weight / P/E).
+ * Equivalent to portfolio value / attributable earnings. Not a weighted average of the P/E numbers.
+ */
+export function aggregatePe(rows: { weight: number; pe: number | null | undefined }[]): {
+  value: number | null;
+  status: "derived" | "unavailable";
+  methodology: string;
+  missing: string[];
+  period: string | null;
+} {
+  let wSum = 0;
+  let inv = 0;
+  let used = 0;
+  for (const r of rows) {
+    const pe = r.pe != null && Number.isFinite(r.pe) ? r.pe : null;
+    if (!(r.weight > 0) || pe == null || !(pe > 0) || pe >= 400) continue;
+    wSum += r.weight;
+    inv += r.weight / pe;
+    used += 1;
+  }
+  if (!(inv > 0) || used < 1) {
+    return {
+      value: null,
+      status: "unavailable",
+      methodology: "Aggregate P/E needs weights and positive constituent P/E.",
+      missing: ["P/E"],
+      period: null,
+    };
+  }
+  return {
+    value: wSum / inv,
+    status: "derived",
+    methodology: `Kosh-derived aggregate P/E from ${used} names: total weight / sum(weight / P/E). Not a weighted average of P/E.`,
+    missing: [],
+    period: null,
+  };
+}
+
 export type MixVsNifty = {
   pe: number | null;
+  weightedPe: number | null;
   niftyPe: number | null;
   roe: number | null;
   niftyRoe: number | null;
@@ -88,8 +128,10 @@ export function mixVsNifty(
   };
   const covered = eq.filter((r) => peOf(r) != null || lookup(r)?.roe != null).length;
   const n50 = niftyRows.filter((r) => isNifty50(r.symbol));
+  const agg = aggregatePe(eq.map((r) => ({ weight: r.weight, pe: peOf(r) })));
   return {
-    pe: weightedAvg(eq, (r) => peOf(r)),
+    pe: agg.value,
+    weightedPe: weightedAvg(eq, (r) => peOf(r)),
     niftyPe: simpleAvg(n50.map((r) => (r.pe != null && r.pe > 0 && r.pe < 400 ? r.pe : null))),
     roe: weightedAvg(eq, (r) => {
       const v = lookup(r)?.roe;

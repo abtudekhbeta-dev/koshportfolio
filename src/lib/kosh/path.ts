@@ -126,19 +126,21 @@ function addCalendarDays(day: string, n: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
-function postSaleMove(
+function postSaleWindow(
   map: Map<string, { t: number; c: number }> | undefined,
   sellDay: string,
   sellPx: number,
   days: number,
-): number | null {
-  if (!map || !(sellPx > 0) || !sellDay) return null;
+): { pct: number | null; note: string } {
+  if (!map || !(sellPx > 0) || !sellDay) return { pct: null, note: "Unavailable · no price" };
   const target = addCalendarDays(sellDay, days);
+  const lastDay = [...map.keys()].sort().at(-1) || "";
+  if (!lastDay || target > lastDay) return { pct: null, note: "Not yet mature" };
   const hit = pxOnOrNear(map, target);
-  if (!hit || !(hit.px > 0) || hit.sessionDay <= sellDay) return null;
+  if (!hit || !(hit.px > 0) || hit.sessionDay <= sellDay) return { pct: null, note: "Unavailable · no history" };
   const drift = Math.abs(Date.parse(hit.sessionDay + "T00:00:00Z") - Date.parse(target + "T00:00:00Z"));
-  if (drift > 12 * 86400000) return null;
-  return (hit.px / sellPx - 1) * 100;
+  if (drift > 12 * 86400000) return { pct: null, note: "Unavailable · no history" };
+  return { pct: (hit.px / sellPx - 1) * 100, note: hit.sessionDay };
 }
 
 /**
@@ -482,9 +484,15 @@ export function buildPath(
 
   for (const c of closed) {
     const m = maps[c.symbol];
-    c.post1m = postSaleMove(m, c.sellDate, c.sellPx, 30);
-    c.post3m = postSaleMove(m, c.sellDate, c.sellPx, 90);
-    c.post1y = postSaleMove(m, c.sellDate, c.sellPx, 365);
+    const m1 = postSaleWindow(m, c.sellDate, c.sellPx, 30);
+    const m3 = postSaleWindow(m, c.sellDate, c.sellPx, 90);
+    const y1 = postSaleWindow(m, c.sellDate, c.sellPx, 365);
+    c.post1m = m1.pct;
+    c.post3m = m3.pct;
+    c.post1y = y1.pct;
+    c.post1mNote = m1.note;
+    c.post3mNote = m3.note;
+    c.post1yNote = y1.note;
   }
 
   const stillHeld: PathHeld[] = [];

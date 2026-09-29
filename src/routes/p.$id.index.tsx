@@ -56,19 +56,27 @@ function Overview() {
       <section className="kosh-stagger grid grid-cols-2 gap-2 lg:grid-cols-4">
         <Kpi metricId="value" label="Current value" value={fmtInr(value)} />
         <Kpi metricId="invested" label="Invested" value={fmtInr(invested)} />
-        <Kpi metricId="day" label="Today" value={fmtInr(dayAbs)} hint={fmtPct(dayPct)} tone={toneOf(dayAbs)} />
-        <Kpi metricId="unreal" label="Unrealised P&L" value={fmtInr(unreal)} hint={unrealPct.toFixed(2) + "%"} tone={toneOf(unreal)} />
+        <Kpi metricId="day" label="Today" value={fmtInr(dayAbs)} hint={book.dayWarn ? `${fmtPct(dayPct)} · check print` : fmtPct(dayPct)} tone={toneOf(dayAbs)} />
+        <Kpi metricId="unreal" label="Unrealised P&L" value={fmtInr(unreal)} hint={invested ? unrealPct.toFixed(2) + "%" : "Cost unavailable"} tone={toneOf(unreal)} />
       </section>
+      {book.dayWarn ? <p className="text-[13px] text-amber-700 dark:text-amber-400">{book.dayWarn}</p> : null}
+      {book.costMissing ? (
+        <p className="text-[13px] text-muted">
+          Cost unavailable on {book.costMissing} {book.costMissing === 1 ? "name" : "names"}. Those lines stay in
+          current value and are left out of invested and unrealised P&L.
+        </p>
+      ) : null}
       {xirr.xirr != null ? (
         <p className="text-[13px] text-muted">
           Your XIRR{" "}
           <span className={cn("font-mono tabular", xirr.xirr >= 0 ? "text-up" : "text-down")}>{xirr.xirr.toFixed(1)}%</span>
           {xirr.from ? ` from ${xirr.from}` : ""}
-          {xirr.nMissing ? ` · ${fmtInr(xirr.missingValue)} has no date` : ""}. Money-weighted from dated remaining lots — sold lines and dividends are not in this figure. The chart below is the current mix, not your XIRR.
+          {xirr.nMissing ? ` · ${fmtInr(xirr.missingValue)} has no date` : ""}
+          {xirr.note ? ` · ${xirr.note}` : ""}. Money-weighted from dated remaining lots — sold lines and dividends are not in this figure. The chart below is the current mix replayed historically, not your XIRR.
         </p>
       ) : (
         <p className="text-[13px] text-muted">
-          Add buy dates for your XIRR.{" "}
+          {xirr.note || "Add buy dates for your XIRR."}{" "}
           <Link to="/p/$id/holdings" params={{ id: portfolio.id }} className="text-chart hover:underline">
             Holdings
           </Link>
@@ -336,17 +344,32 @@ function MixFacts({
         zero.
       </p>
       <dl className="mt-2 max-w-xl">
-        {line("You pay for earnings", vs.pe, snap?.pe ?? null, (x) => x.toFixed(1) + "×")}
+        <div className="kosh-row kosh-row-stack py-1.5">
+          <dt className="text-[13px] text-muted">Aggregate P/E</dt>
+          <dd className="font-mono text-[14px] tabular">{vs.pe == null ? "—" : vs.pe.toFixed(1) + "×"}</dd>
+        </div>
+        <div className="kosh-row kosh-row-stack py-1.5">
+          <dt className="text-[13px] text-muted">Weighted constituent P/E</dt>
+          <dd className="font-mono text-[14px] tabular">
+            {vs.weightedPe == null ? "—" : vs.weightedPe.toFixed(1) + "×"}
+            <span className="text-subtle">
+              {" "}
+              · Nifty names {vs.niftyPe == null ? "—" : vs.niftyPe.toFixed(1) + "×"}
+            </span>
+          </dd>
+        </div>
         {line("Profitability (ROE)", vs.roe, snap?.roe ?? null, (x) => x.toFixed(0) + "%")}
         {line("Debt / equity", vs.de, snap?.de ?? null, (x) => x.toFixed(2))}
         {line("Dividend", vs.divYield, snap?.divYield ?? null, (x) => x.toFixed(1) + "%")}
       </dl>
       <p className="mt-3 text-[12px] text-subtle">
+        Aggregate P/E is portfolio value over attributable earnings. The weighted figure is an average of the P/E
+        numbers and is not the same thing. The Nifty names figure is a constituent average, not the index P/E.
         {vs.covered} of {eq.length} names have numbers
         {ov.satellites.length ? ` · ${ov.satellites.length} sit outside the 50` : ""}.
         {snap
-          ? ` Nifty side is the saved average of ${snap.covered} Nifty 50 names. A blank stays blank.`
-          : " Nifty side is unavailable until enough constituents are on file. A blank is unavailable, not zero."}
+          ? ` The ROE comparison uses a saved average of ${snap.covered} Nifty 50 names. A blank stays blank.`
+          : " A blank is unavailable, not zero."}
       </p>
     </section>
   );

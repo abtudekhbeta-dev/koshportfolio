@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { EnrichButton } from "@/components/enrich-button";
+import { ResearchMissing } from "@/components/research-missing";
 import { RowComplete } from "@/components/row-complete";
 import { Button } from "@/components/ui/button";
 import { AIButton } from "@/components/ui/ai-button";
@@ -16,6 +17,7 @@ import {
   fillBlankScreenFund,
   filterSector,
   matchLabel,
+  missingScreenFacts,
   mergeScreenRows,
   rulesForScreen,
   scoreMultibagger,
@@ -97,6 +99,11 @@ function ScreenPage() {
   const nUnk = mbScored.filter((x) => x.kind === "unknown").length;
   const gapSyms = shownAll.filter((r) => r.roce == null || r.opm == null).map((r) => r.symbol);
   const gapNow = gapSyms.slice(0, 36);
+  const unresolved = shownAll.filter((r) => missingScreenFacts(r).length).length;
+  const researchJobs = shownAll
+    .map((r) => ({ symbol: r.symbol, missing: missingScreenFacts(r).slice(0, 4) }))
+    .filter((j) => j.missing.length)
+    .slice(0, 3);
 
   function head(key: SortKey, label: string) {
     const on = sort.key === key;
@@ -121,10 +128,21 @@ function ScreenPage() {
         <p className="mt-1 max-w-2xl text-sm text-muted">
           Every NSE equity we can list. Company numbers fill in from the company card, then from filings when you complete a row.
           A blank cell is missing, not a pass — and never a guess. Complete & verify data reads filings for names on this page
-          that are still missing operating margin or return on capital. It does not invent a number.
+          that are still missing operating margin or return on capital, then the screen is applied again. It does not invent a number.
+          {shownAll.length ? ` ${shownAll.length} stocks in this screen · ${unresolved} still have unresolved supported fields.` : ""}
         </p>
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap items-start gap-3">
           <EnrichButton symbols={gapNow} queued={Math.max(0, gapSyms.length - gapNow.length)} />
+        </div>
+        <div className="mt-3">
+          <ResearchMissing
+            jobs={researchJobs}
+            label={
+              unresolved
+                ? `${shownAll.length} stocks returned · ${unresolved} have unresolved supported fields. This pass researches ${researchJobs.length} of them and does not treat the reply as a screen input.`
+                : ""
+            }
+          />
         </div>
 
         <CustomBuilder

@@ -1,6 +1,6 @@
 /** Field-level evidence. Status is explicit — never a fake confidence score. */
 
-export type FactStatus = "verified" | "derived" | "conflicting" | "unavailable" | "not_applicable";
+export type FactStatus = "verified" | "derived" | "researched" | "conflicting" | "unavailable" | "not_applicable";
 
 export type SourceRank =
   | "company-filing"

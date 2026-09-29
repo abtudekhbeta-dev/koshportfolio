@@ -5,11 +5,12 @@ import { cn } from "@/lib/utils";
 export function AIButton({
   children,
   busy,
+  busyLabel,
   className,
   disabled,
   type = "button",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { busy?: boolean }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { busy?: boolean; busyLabel?: string }) {
   return (
     <button
       type={type}
@@ -22,7 +23,7 @@ export function AIButton({
       disabled={disabled || busy}
     >
       <span className="kosh-ai-mark">✦ AI</span>
-      <span>{busy ? "Working…" : children}</span>
+      <span>{busy ? busyLabel || "Working…" : children}</span>
     </button>
   );
 }

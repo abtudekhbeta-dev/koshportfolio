@@ -44,6 +44,7 @@ export function CoverageLine({ cov }: { cov: CoverageModel }) {
 const STATUS_WORD: Record<FieldLine["status"], string> = {
   verified: "Verified",
   derived: "Derived",
+  researched: "AI-researched",
   conflicting: "Conflict",
   unavailable: "Not found",
   not_applicable: "N/A",
@@ -57,8 +58,9 @@ export function FieldCoverage({ fund }: { fund: Fundamentals | null | undefined 
       <summary className="cursor-pointer text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">
         Data coverage
         <span className="ml-2 font-mono text-[11px] font-normal normal-case tracking-normal text-subtle">
-          {report.counts.verified} verified · {report.counts.derived} derived · {report.counts.conflicting} conflicting ·{" "}
-          {report.counts.unavailable} not found
+          {report.counts.verified} verified · {report.counts.derived} derived
+          {report.counts.researched ? ` · ${report.counts.researched} AI-researched` : ""} · {report.counts.conflicting}{" "}
+          conflicting · {report.counts.unavailable} not found
         </span>
       </summary>
       <p className="mt-2 text-[12px] text-subtle">

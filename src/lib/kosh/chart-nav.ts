@@ -19,6 +19,19 @@ export function zoomAround(
   return { start: nextStart, count: nextCount };
 }
 
+/**
+ * Button zoom. The rightmost visible bar stays put.
+ * Wheel zoom uses zoomAround so the candle under the cursor stays put.
+ */
+export function zoomRightEdge(view: Viewport, nAll: number, zoomIn: boolean, minCount = 20): Viewport {
+  if (nAll < 1) return { start: 0, count: 1 };
+  const factor = zoomIn ? 0.82 : 1.18;
+  const nextCount = Math.max(Math.min(minCount, nAll), Math.min(nAll, Math.round(Math.max(1, view.count) * factor)));
+  const right = Math.min(nAll, view.start + view.count);
+  const nextStart = Math.max(0, Math.min(nAll - nextCount, right - nextCount));
+  return { start: nextStart, count: nextCount };
+}
+
 export function panBy(view: Viewport, nAll: number, deltaBars: number): Viewport {
   const count = Math.max(1, Math.min(view.count, nAll || 1));
   const start = Math.max(0, Math.min(Math.max(0, nAll - count), view.start + deltaBars));

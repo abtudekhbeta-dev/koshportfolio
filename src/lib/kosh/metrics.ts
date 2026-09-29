@@ -113,7 +113,7 @@ export const METRICS: Record<string, MetricDef> = {
     label: "Sortino",
     short: "Like Sharpe, but only penalises falling days.",
     hover: "Upside volatility is allowed. Downside deviation is the risk.",
-    deep: "Investors care more about losses than about the portfolio running up. Sortino uses only negative daily returns in the denominator. A high Sortino with a middling Sharpe means the portfolio was jumpy on the way up — usually acceptable. A low Sortino means the bad days were violent.",
+    deep: "Sortino = (annualised arithmetic return − 6.5%) / annualised downside deviation. Downside deviation is the square root of the mean of min(daily return − 6.5%/252, 0) squared, using every day in the window — not the standard deviation of only the down days. A dash means the sample is too short or there was no downside.",
     better: 1,
   },
   alpha: {

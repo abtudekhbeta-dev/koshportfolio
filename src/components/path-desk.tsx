@@ -79,8 +79,9 @@ export function PathDesk({
       <section>
         <h2 className="mb-1 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Performance</h2>
         <p className="mb-3 text-[13px] leading-relaxed text-muted">
-          How the names you actually held did, after taking out extra money you added later. {benchName} is the same
-          stretch, same method — not every stock sale treated as cash leaving the market.
+          How the names you actually held did, marked at each session’s close — not the clock time on the trade. The
+          holdings figure is a daily-close time-weighted path. XIRR, when shown, is money-weighted. {benchName} uses
+          the same cash-flow dates where a same-money ledger exists.
           {path.nUndated ? ` ${path.nUndated} line${path.nUndated === 1 ? "" : "s"} had no date and were skipped.` : ""}
           {mixValue != null && mixValue > 0 ? ` This mix today is ${fmtInr(mixValue)}.` : ""}
         </p>
@@ -298,6 +299,18 @@ function YearTable({ years, benchName }: { years: PathPack["years"]; benchName: 
   );
 }
 
+function AfterCell({ pct, note }: { pct?: number | null; note?: string | null }) {
+  if (pct != null && Number.isFinite(pct)) {
+    return (
+      <>
+        {fmtPct(pct)}
+        {note && /^\d{4}-\d{2}-\d{2}$/.test(note) ? <div className="text-[11px] text-subtle">{note}</div> : null}
+      </>
+    );
+  }
+  return <span className="text-[11px] font-sans text-subtle">{note || "Unavailable"}</span>;
+}
+
 function ClosedTable({ rows }: { rows: ClosedTrade[] }) {
   return (
     <div className="mt-6">
@@ -335,13 +348,13 @@ function ClosedTable({ rows }: { rows: ClosedTrade[] }) {
                   <div className="text-[11px]">{fmtPct(c.pnlPct)}</div>
                 </td>
                 <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.post1m))}>
-                  {c.post1m == null ? "—" : fmtPct(c.post1m)}
+                  <AfterCell pct={c.post1m} note={c.post1mNote} />
                 </td>
                 <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.post3m))}>
-                  {c.post3m == null ? "—" : fmtPct(c.post3m)}
+                  <AfterCell pct={c.post3m} note={c.post3mNote} />
                 </td>
                 <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.post1y))}>
-                  {c.post1y == null ? "—" : fmtPct(c.post1y)}
+                  <AfterCell pct={c.post1y} note={c.post1yNote} />
                 </td>
               </tr>
             ))}

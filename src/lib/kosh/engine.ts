@@ -27,6 +27,17 @@ import { holdingReturn } from "./holding-returns.ts";
 
 const RF = 0.065;
 
+/** Square root of the mean squared shortfall versus a daily target, over every day. */
+export function downsideDeviation(rets: number[], dailyTarget = RF / 252): number {
+  if (!rets.length) return 0;
+  let sum = 0;
+  for (const r of rets) {
+    const d = Math.min(r - dailyTarget, 0);
+    sum += d * d;
+  }
+  return Math.sqrt(sum / rets.length);
+}
+
 const IST_OFFSET = 19800;
 
 export function istDay(unixSec: number): string {
@@ -386,9 +397,8 @@ export function riskMetrics(nav: NavPoint[]): RiskMetrics {
   const mean = avg(rets);
   const ann = mean * 252;
   const sharpe = volD ? (ann - RF) / (volD * Math.sqrt(252)) : null;
-  const down = rets.filter((x) => x < 0);
-  const ds = down.length ? stdev(down) : 0;
-  const sortino = ds ? (ann - RF) / (ds * Math.sqrt(252)) : null;
+  const ds = downsideDeviation(rets, RF / 252);
+  const sortino = ds > 0 ? (ann - RF) / (ds * Math.sqrt(252)) : null;
   const idx = withDrawdown(toIndexed(nav));
   const maxDd = Math.min(...idx.map((p) => p.dd));
   const cagr = mixCagr(nav);
@@ -422,8 +432,8 @@ export function riskMetrics(nav: NavPoint[]): RiskMetrics {
         dnB.push(br[i]);
       }
     }
-    upCap = avg(upB) ? avg(upP) / avg(upB) : null;
-    downCap = avg(dnB) ? avg(dnP) / avg(dnB) : null;
+    upCap = upB.length && avg(upB) ? avg(upP) / avg(upB) : null;
+    downCap = dnB.length && avg(dnB) ? avg(dnP) / avg(dnB) : null;
     const excess = pr.map((x, i) => x - br[i]);
     const te = stdev(excess) * Math.sqrt(252);
     info = te ? (avg(excess) * 252) / te : null;
@@ -531,9 +541,10 @@ export function dash(n: number | null | undefined, fmt: (x: number) => string = 
   return fmt(n);
 }
 
-export function saneDayPnl(value: number, changePct: number): { abs: number; pct: number } {
-  if (!Number.isFinite(changePct) || Math.abs(changePct) > 25) return { abs: 0, pct: 0 };
-  return { abs: value * (changePct / 100), pct: changePct };
+export function saneDayPnl(value: number, changePct: number): { abs: number; pct: number; warn: string | null } {
+  if (!Number.isFinite(changePct) || !Number.isFinite(value)) return { abs: 0, pct: 0, warn: "Day move unavailable" };
+  const warn = Math.abs(changePct) > 25 ? "Large move kept. Check for a split, bonus, or a bad print." : null;
+  return { abs: value * (changePct / 100), pct: changePct, warn };
 }
 
 export function holdingWindows(bars: Bar[]) {
@@ -690,9 +701,10 @@ export function assembleBook(args: {
     const qrow = quotes[baseKey(h.symbol)] || quotes[h.symbol] || ({} as Quote);
     const px = qrow.price || h.avg || 0;
     const value = h.qty * px;
-    const invested = h.avg ? h.qty * h.avg : value;
-    const unreal = h.avg ? value - invested : 0;
-    const unrealPct = h.avg && h.avg > 0 ? (px / h.avg - 1) * 100 : 0;
+    const costKnown = h.avg != null && h.avg > 0 && Number.isFinite(h.avg);
+    const invested = costKnown ? h.qty * (h.avg as number) : 0;
+    const unreal = costKnown ? value - invested : 0;
+    const unrealPct = costKnown && h.avg ? (px / h.avg - 1) * 100 : 0;
     const offHigh = qrow.high52 ? (px / qrow.high52 - 1) * 100 : null;
     const qName = qrow.name && !isIsin(qrow.name) ? qrow.name : "";
     const fileSector = h.sector && h.sector !== "Other" ? h.sector : "";
@@ -709,6 +721,7 @@ export function assembleBook(args: {
       invested,
       unreal,
       unrealPct,
+      costKnown,
       changePct: qrow.changePct || 0,
       high52: qrow.high52 || 0,
       offHigh,
@@ -729,13 +742,16 @@ export function assembleBook(args: {
 
   const active = include ? rows : rows.filter((r) => r.kind !== "commodity");
   const value = active.reduce((s, r) => s + r.value, 0);
-  const invested = active.reduce((s, r) => s + r.invested, 0);
+  const invested = active.reduce((s, r) => s + (r.costKnown ? r.invested : 0), 0);
+  const unreal = active.reduce((s, r) => s + (r.costKnown ? r.unreal : 0), 0);
+  const costMissing = active.filter((r) => !r.costKnown).length;
   rows.forEach((r) => {
     r.weight = r.kind === "commodity" && !include ? 0 : value ? r.value / value : 0;
   });
   const dayBits = active.map((r) => saneDayPnl(r.value, r.changePct));
   const dayAbs = dayBits.reduce((s, x) => s + x.abs, 0);
   const dayPct = value ? (dayAbs / value) * 100 : 0;
+  const dayWarn = dayBits.find((x) => x.warn)?.warn || null;
 
   const mix = buildMixPath(
     active.map((r) => ({ symbol: r.symbol, qty: r.qty, name: r.name, avg: r.avg, date: r.date, kind: r.kind, unit: r.unit })),
@@ -848,9 +864,11 @@ export function assembleBook(args: {
     rows,
     value,
     invested,
-    unreal: value - invested,
+    unreal,
+    costMissing,
     dayAbs,
     dayPct,
+    dayWarn,
     mix,
     risk,
     windows,

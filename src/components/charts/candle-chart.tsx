@@ -22,7 +22,7 @@ import {
 import { detectPatterns, patternStatusLabel, type PatternHit } from "@/lib/kosh/patterns";
 import { applyDrag, channelOffFromThird, hitTest, magnetPrice, positionMetrics, type HitMode } from "@/lib/kosh/draw-hit";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
-import { panBy, zoomAround, atLatest, resetView } from "@/lib/kosh/chart-nav";
+import { panBy, zoomAround, zoomRightEdge, atLatest, resetView } from "@/lib/kosh/chart-nav";
 import { applyHistoricalFx, adjustOhlcToBenchmark } from "@/lib/kosh/relative";
 import { resolveBench } from "@/lib/kosh/benchmarks";
 import { histInit, histPush, histRedo, histUndo, type DrawHist } from "@/lib/kosh/draw-history";
@@ -2031,7 +2031,7 @@ export function CandleChart({
           onClick={() => {
             const cur = viewRef.current.count > 0 ? viewRef.current.count : nAll;
             const startNow = viewRef.current.count > 0 ? viewRef.current.start : 0;
-            setView(zoomAround({ start: startNow, count: cur }, nAll, Math.round(cur / 2), false));
+            setView(zoomRightEdge({ start: startNow, count: cur }, nAll, false));
           }}
           className="h-8 rounded-sm bg-bg px-2.5 text-[11px] font-medium text-muted shadow-[var(--shadow-border)]"
         >
@@ -2042,7 +2042,7 @@ export function CandleChart({
           onClick={() => {
             const cur = viewRef.current.count > 0 ? viewRef.current.count : nAll;
             const startNow = viewRef.current.count > 0 ? viewRef.current.start : 0;
-            setView(zoomAround({ start: startNow, count: cur }, nAll, Math.round(cur / 2), true));
+            setView(zoomRightEdge({ start: startNow, count: cur }, nAll, true));
           }}
           className="inline-flex h-8 items-center gap-1 rounded-sm bg-bg px-2.5 text-[11px] font-medium text-muted shadow-[var(--shadow-border)]"
         >

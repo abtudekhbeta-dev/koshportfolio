@@ -187,6 +187,30 @@ export async function apiEnrich(symbols: string[]) {
   return { funds: cur.funds || {}, sources: cur.sources || {} };
 }
 
+export async function apiResearch(symbol: string, missing: string[]) {
+  return json<{
+    ok: boolean;
+    error?: string;
+    symbol?: string;
+    items?: {
+      metric: string;
+      status: "researched" | "not_found" | "inputs_only";
+      value: number | null;
+      unit: string;
+      period: string | null;
+      sourceName: string;
+      sourceUrl: string;
+      evidence: string;
+      methodology: string;
+      inputs: { name: string; value: number; unit: string }[];
+    }[];
+  }>("/api/enrich", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ research: { symbol, missing: missing.slice(0, 8) } }),
+  });
+}
+
 export async function apiMacro() {
   return json<MacroPack>("/api/macro");
 }

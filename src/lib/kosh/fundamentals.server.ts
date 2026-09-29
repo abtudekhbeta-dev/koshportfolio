@@ -1,9 +1,10 @@
 /** Groww company card — PE, ROE, book, D/E, sales. Cached. Server-only. */
 
 import type { Fundamentals, FinPoint } from "./types";
-import { pickPeg } from "./portfolio-stats.ts";
 import { universeName } from "./universe.ts";
 import { sortShareholding } from "./shareholding.ts";
+import { applyFormulas } from "./formulas.ts";
+import { noteDerived, stampCard } from "./evidence.ts";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -32,16 +33,6 @@ function parseNum(raw: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function yoy(series: Record<string, number> | undefined): number | null {
-  if (!series) return null;
-  const keys = Object.keys(series).sort();
-  if (keys.length < 2) return null;
-  const a = series[keys[keys.length - 2]];
-  const b = series[keys[keys.length - 1]];
-  if (!(a > 0) || b == null) return null;
-  return ((b / a - 1) * 100);
-}
-
 function points(series: Record<string, number> | undefined): FinPoint[] {
   if (!series) return [];
   return Object.entries(series)
@@ -65,19 +56,6 @@ function interestCoverFrom(cons: Array<{ title?: string; yearly?: Record<string,
   if (e == null || i == null || !(Math.abs(i) > 0)) return null;
   const c = e / Math.abs(i);
   return Number.isFinite(c) && c > 0 && c < 800 ? c : null;
-}
-
-function cagrFrom(pts: FinPoint[], years: number): number | null {
-  const rows = (pts || []).filter((p) => p.value > 0);
-  if (rows.length < 2) return null;
-  const last = rows[rows.length - 1];
-  const idx = rows.length - 1 - years;
-  const first = idx >= 0 ? rows[idx] : rows[0];
-  const n = Math.max(1, years);
-  if (!(first.value > 0) || first === last) return null;
-  const span = idx >= 0 ? years : Math.max(1, rows.length - 1);
-  if (span < Math.min(years, 2) && years >= 3) return null;
-  return (Math.pow(last.value / first.value, 1 / (idx >= 0 ? n : span)) - 1) * 100;
 }
 
 function cleanUrl(raw: unknown): string | null {
@@ -239,6 +217,8 @@ export async function fetchFundamentals(symbol: string): Promise<Fundamentals | 
       }),
     );
     const latestSh = shareholding.length ? g.shareHoldingPattern?.[shareholding[shareholding.length - 1].period] : undefined;
+    const reportedCover = pick(list, "Interest Coverage", "Interest Coverage Ratio", "Interest Cover");
+    const derivedCover = reportedCover == null ? interestCoverFrom(cons) : null;
     const out: Fundamentals = {
       symbol: bare,
       searchId: id,
@@ -257,8 +237,8 @@ export async function fetchFundamentals(symbol: string): Promise<Fundamentals | 
       book: pick(list, "Book Value"),
       face: pick(list, "Face Value"),
       industryPe: pick(list, "Industry P/E"),
-      salesYoY: yoy(rev?.yearly),
-      profitYoY: yoy(profit?.yearly),
+      salesYoY: null,
+      profitYoY: null,
       sales: points(rev?.yearly),
       profits: points(profit?.yearly),
       qSales: points(rev?.quarterly),
@@ -275,11 +255,11 @@ export async function fetchFundamentals(symbol: string): Promise<Fundamentals | 
       forwardEps: pick(list, "Forward EPS", "Fwd EPS", "Estimated EPS", "EPS Forward"),
       forwardPeg: pick(list, "Forward PEG", "Fwd PEG", "Forward PEG Ratio"),
       opm: pick(list, "OPM", "Operating Profit Margin", "OPM %", "Operating Margin", "EBIT Margin"),
-      salesCagr3: cagrFrom(points(rev?.yearly), 3),
-      profitCagr3: cagrFrom(points(profit?.yearly), 3),
-      profitCagr5: cagrFrom(points(profit?.yearly), 5),
+      salesCagr3: null,
+      profitCagr3: null,
+      profitCagr5: null,
       website: cleanUrl(g.details?.websiteUrl || g.details?.website || g.details?.companyWebsite),
-      interestCover: pick(list, "Interest Coverage", "Interest Coverage Ratio", "Interest Cover") ?? interestCoverFrom(cons),
+      interestCover: reportedCover ?? derivedCover,
       pegVia: null,
       ebitda: points(ebitdaLine?.yearly),
       cfo: points(cfoLine?.yearly),
@@ -289,14 +269,15 @@ export async function fetchFundamentals(symbol: string): Promise<Fundamentals | 
       shPeriod: shareholding.at(-1)?.period || null,
       retrievedAt: Date.now(),
     };
-    const lastCfo = out.cfo.at(-1)?.value;
-    const lastPat = out.profits.at(-1)?.value;
-    out.cfoPat = lastCfo != null && lastPat != null && lastPat !== 0 && Number.isFinite(lastCfo / lastPat) ? lastCfo / lastPat : null;
-    const picked = pickPeg(out.peg, out.pe, out.profitCagr5, out.profitCagr3);
-    out.peg = picked?.peg ?? null;
-    out.pegVia = picked?.via ?? null;
-    fundCache.set(bare, { at: Date.now(), data: out });
-    return out;
+    let done = applyFormulas(stampCard(out));
+    if (derivedCover != null && done.interestCover === derivedCover) {
+      done = noteDerived(done, {
+        interestCover:
+          "Kosh-derived: operating profit / finance cost from the company-card lines. Not a reported interest-coverage line.",
+      });
+    }
+    fundCache.set(bare, { at: Date.now(), data: done });
+    return done;
   } catch {
     fundCache.set(bare, { at: Date.now(), data: null });
     return null;

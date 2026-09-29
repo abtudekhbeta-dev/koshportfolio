@@ -88,9 +88,11 @@ function Risk() {
           <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Names that move together</h2>
           <p className="mt-1 max-w-2xl text-[13px] text-muted">
             Last 1 year of daily moves on the top {corr.cap || corr.symbols.length} holdings by weight
-            {corr.cap && corr.symbols.length >= (corr.cap || 12) ? ` (capped at ${corr.cap})` : ""}. Correlation is not
-            the same as economic exposure. {corr.clusters.filter((c) => !c.alone).length || 0} group
-            {corr.clusters.filter((c) => !c.alone).length === 1 ? "" : "s"} plus names that go their own way. Not a promise they always will.
+            {corr.cap && corr.symbols.length >= (corr.cap || 12) ? ` (capped at ${corr.cap})` : ""}. These are
+            high-correlation groups, not a hierarchical cluster. Correlation is not the same as economic exposure.{" "}
+            {corr.clusters.filter((c) => !c.alone).length || 0} group
+            {corr.clusters.filter((c) => !c.alone).length === 1 ? "" : "s"} plus names that go their own way. Not a
+            promise they always will.
           </p>
           <ul className="mt-3 grid gap-3">
             {corr.clusters.map((c) => (

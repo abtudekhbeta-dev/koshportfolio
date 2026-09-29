@@ -313,7 +313,7 @@ export function noteDerived(fund: Fundamentals, notes: Partial<Record<string, st
       altSource: prev?.altSource,
     };
   }
-  return { ...fund, provenance: { searched: fund.provenance?.searched ?? true, at: Date.now(), fields } };
+  return { ...fund, provenance: { searched: fund.provenance?.searched === true, at: Date.now(), fields } };
 }
 
 export function stampCard(fund: Fundamentals): Fundamentals {
@@ -356,6 +356,7 @@ export function buildFieldReport(fund: Fundamentals | null | undefined): FieldRe
   const counts: Record<FactStatus, number> = {
     verified: 0,
     derived: 0,
+    researched: 0,
     conflicting: 0,
     unavailable: 0,
     not_applicable: 0,

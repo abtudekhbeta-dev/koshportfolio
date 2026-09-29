@@ -201,10 +201,13 @@ export type ClosedTrade = {
   pnl: number;
   pnlPct: number;
   days: number;
-  /** Percent move of the stock after the sell. Null when no later print. */
+  /** Percent move of the stock after the sell. Null when the window is not usable. */
   post1m?: number | null;
   post3m?: number | null;
   post1y?: number | null;
+  post1mNote?: string | null;
+  post3mNote?: string | null;
+  post1yNote?: string | null;
 };
 
 export type PathYear = {
@@ -353,6 +356,8 @@ export type HoldingRow = Holding & {
   invested: number;
   unreal: number;
   unrealPct: number;
+  /** False when average cost is missing. Those rupees are not treated as zero profit. */
+  costKnown?: boolean;
   changePct: number;
   high52: number;
   offHigh: number | null;
@@ -410,8 +415,12 @@ export type Book = {
   value: number;
   invested: number;
   unreal: number;
+  /** Names in the active book with no average cost. Excluded from invested and unrealised. */
+  costMissing?: number;
   dayAbs: number;
   dayPct: number;
+  /** Set when a large day move was kept instead of being zeroed. */
+  dayWarn?: string | null;
   mix: MixPath;
   risk: RiskMetrics;
   windows: { w1: WindowPair; m1: WindowPair; m3: WindowPair; m6: WindowPair; y1: WindowPair; ytd: WindowPair };

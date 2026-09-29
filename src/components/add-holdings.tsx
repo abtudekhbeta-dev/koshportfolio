@@ -139,7 +139,9 @@ function FilePane({
   onUpsert?: (h: Holding[], trades?: TradeLine[]) => void;
   existing?: Holding[];
 }) {
-  const [msg, setMsg] = useState("CSV or Excel from your broker — holdings snapshot or a buy/sell trade book.");
+  const [msg, setMsg] = useState(
+    "CSV or Excel from your broker. Broker files can contain sensitive identifiers. The raw file stays in the browser and is not sent to AI.",
+  );
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<Holding[] | null>(null);
   const [previewTrades, setPreviewTrades] = useState<TradeLine[]>([]);

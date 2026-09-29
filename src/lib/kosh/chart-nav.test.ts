@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { atLatest, panBy, resetView, zoomAround } from "./chart-nav.ts";
+import { atLatest, panBy, resetView, zoomAround, zoomRightEdge } from "./chart-nav.ts";
 import { alignIndexed, applyHistoricalFx, adjustOhlcToBenchmark, indexTo100, indexedGap } from "./relative.ts";
 import { histPush, histRedo, histUndo, histInit } from "./draw-history.ts";
 import { sectorIndex } from "./benchmarks.ts";
@@ -28,7 +28,17 @@ describe("chart viewport", () => {
     assert.equal(next.start, 30);
   });
 
-  it("reset and latest put the newest bar on the right", () => {
+  it("button zoom keeps the right edge fixed", () => {
+    const view = { start: 200, count: 100 };
+    const next = zoomRightEdge(view, 400, true);
+    assert.ok(next.count < view.count);
+    assert.equal(next.start + next.count, view.start + view.count);
+    const wider = zoomRightEdge(view, 400, false);
+    assert.ok(wider.count > view.count);
+    assert.equal(wider.start + wider.count, view.start + view.count);
+  });
+
+  it("reset parks the latest bars on the right edge", () => {
     const v = resetView(500, 180);
     assert.equal(v.count, 180);
     assert.equal(v.start, 320);
