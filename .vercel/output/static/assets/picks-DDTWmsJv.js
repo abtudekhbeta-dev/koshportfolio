@@ -1,1 +1,0 @@
-import{t as e}from"./jsx-runtime-0vZSBttN.js";import{nt as t}from"./index-xNcIULsn.js";var n=e();function r(){return(0,n.jsx)(t,{to:`/screen`})}export{r as component};

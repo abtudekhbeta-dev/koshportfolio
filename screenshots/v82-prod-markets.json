@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8081/markets",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Kosh · Indian markets and portfolios",
+      "hasCanvas": false,
+      "bodyTextLen": 678,
+      "bodyTextHash": "6b5ad7ad3d7f44edce1e80563d54e3cd637dc946a0216f371d652e732f1bf333",
+      "bodyTextPrefix": "Kosh Markets Screener Portfolios Search any NSE or BSE name… / W",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/v82-prod-markets.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Kosh · Indian markets and portfolios",
+      "hasCanvas": false,
+      "bodyTextLen": 619,
+      "bodyTextHash": "b2b447371abc04b48f7372eef7ccde32da54e13092f2d3c3349c3d4e43ffb7ee",
+      "bodyTextPrefix": "Kosh Search any NSE or BSE name… Sign in Create account MARKETS ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/v82-prod-markets-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/v82-prod-markets.json"
+}

@@ -1,0 +1,69 @@
+{
+  "base": "http://127.0.0.1:8081",
+  "pages": {
+    "home": {
+      "status": 200,
+      "title": "Kosh · Indian markets and portfolios",
+      "startsWithKosh": false
+    },
+    "markets": {
+      "status": 200,
+      "chip": "LAST AVAILABLE",
+      "chartHasDelayed": false,
+      "chartHasLiveWord": false,
+      "chipHasDelayed": false,
+      "chipHasLive": false,
+      "before": {
+        "right": "501",
+        "count": "180"
+      },
+      "afterIn": {
+        "right": "501",
+        "count": "121"
+      },
+      "afterCtrl": {
+        "right": "501",
+        "count": "99"
+      },
+      "afterOut": {
+        "right": "501",
+        "count": "117"
+      },
+      "scrollBefore": 0,
+      "scrollAfter": 0,
+      "tools": {
+        "Trend": 1,
+        "Channel": 1,
+        "Horizontal": 0,
+        "Long": 1,
+        "Short": 1
+      },
+      "drawingsBefore": 22,
+      "urlAfterEscape": "http://127.0.0.1:8081/markets?view=terminal",
+      "rightAnchored": true
+    },
+    "path": {
+      "status": 200,
+      "horizonCards": [],
+      "hasAfterSelling": false,
+      "hasAfterHeaders": false,
+      "itc": "ITC ITC 20 3 Jun 2024 ₹430 ₹4,200 +95.45% -4.09% 3 Jul 2024 · ₹412.42 Target 3 Jul 2024 +14.07% 3 Sep 2024 · ₹490.51 Target 3 Sep 2024 +5.82% 3 Dec 2024 · ₹455.03 Target 3 Dec 2024 +6.01% 3 Jun 2025 · ₹455.83 Target 3 Jun 2025 · adjusted"
+    },
+    "holdings": {
+      "status": 200,
+      "hasReliance": false,
+      "hasItc": false
+    },
+    "screen": {
+      "status": 200,
+      "hasScreener": false,
+      "bodyStart": ""
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "quote": {
+    "status": 200,
+    "text": "{\"quotes\":[{\"input\":\"RELIANCE\",\"symbol\":\"RELIANCE.NS\",\"name\":\"Reliance Industries Limited\",\"price\":1167.7,\"previousClose\":1197.6,\"changePct\":-1.626,\"high52\":1611.8,\"low52\":1160.8,\"mcapCr\":null,\"retrievedAt\":1791114543557,\"delayMin\":null}],\"provider\":{\"id\":\"yahoo\",\"name\":\"Yahoo Finance\",\"delay\":\"delayed\"}}"
+  }
+}

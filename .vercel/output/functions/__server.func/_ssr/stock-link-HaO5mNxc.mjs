@@ -1,6 +1,6 @@
-import { y as Link } from "../_libs/@tanstack/react-router+[...].mjs";
+import { x as Link } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as require_jsx_runtime } from "../_libs/radix-ui__react-context+react.mjs";
-import { dt as isListedSymbol, vn as cn } from "./router-D75dEx_h2.mjs";
+import { ct as isListedSymbol, gn as cn } from "./router-DhekK0Gr2.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/stock-link-HaO5mNxc.js
 var import_jsx_runtime = require_jsx_runtime();
 function stockBare(symbol) {
