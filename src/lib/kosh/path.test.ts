@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { afterSale, buildPath, fillTradePrices, mixVsPathGaps, overlayOnMix, pathToChartNav, sortTrades } from "./path.ts";
 import { buildMixPath } from "./engine.ts";
-import type { Bar, NavPoint, TradeLine } from "./types.ts";
+import type { Bar, NavPoint, PathPriceFact, TradeLine } from "./types.ts";
 
 function bars(startIso: string, n: number, startPx: number, daily: number): Bar[] {
   const t0 = Date.parse(startIso + "T00:00:00Z") / 1000;
@@ -464,5 +464,32 @@ describe("after-sale windows", () => {
     const cell = afterSale(undefined, undefined, "", 0, 1);
     assert.equal(cell.status, "na");
     assert.equal(cell.pct, null);
+    assert.equal(cell.code, "INVALID_SELL");
+  });
+
+  it("fills a missing series from a sourced close and does not invent the other windows", () => {
+    const fact: PathPriceFact = {
+      symbol: "ZZZ",
+      date: "2024-07-03",
+      price: 120,
+      sourceName: "NSE",
+      sourceUrl: "https://www.nseindia.com/example",
+      retrievedAt: "2026-10-04",
+      evidence: "Official close of ZZZ on 2024-07-03 was 120.",
+    };
+    const p = buildPath(
+      [buy("ZZZ", 10, 100, "2024-01-02"), sell("ZZZ", 10, 110, "2024-06-03")],
+      {},
+      [],
+      Date.parse("2026-01-01T00:00:00Z"),
+      undefined,
+      [fact],
+    );
+    const cell = p.closed[0]?.after1m;
+    assert.equal(cell?.status, "ai");
+    assert.equal(cell?.code, "AI_SOURCE");
+    assert.ok(cell?.pct != null && Math.abs(cell.pct - (120 / 110 - 1) * 100) < 0.01);
+    assert.equal(p.closed[0]?.after3m?.code, "NO_HISTORICAL_DATA");
+    assert.equal(p.closed[0]?.after3m?.pct, null);
   });
 });

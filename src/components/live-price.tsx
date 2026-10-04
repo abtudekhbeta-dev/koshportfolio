@@ -4,6 +4,7 @@ import { apiQuotes } from "@/lib/kosh/api";
 import { fmtPct, fmtPx, fmtTapePx } from "@/lib/kosh/engine";
 import { gramToMcx, metalKey, METALS } from "@/lib/kosh/commodities";
 import { isIstSession } from "@/lib/kosh/market-hours";
+import { quoteStatus, quoteStatusLabel } from "@/lib/kosh/market-data";
 import { cn } from "@/lib/utils";
 
 export function LivePrice({
@@ -13,7 +14,7 @@ export function LivePrice({
   symbol: string;
   initial: { price: number; changePct: number };
 }) {
-  const live = isIstSession();
+  const session = isIstSession();
   const metal = metalKey(symbol);
   const q = useQuery({
     queryKey: ["live-quote", symbol],
@@ -21,13 +22,15 @@ export function LivePrice({
       const rows = await apiQuotes([symbol]);
       return rows[0] || null;
     },
-    refetchInterval: live ? 3_000 : 60_000,
-    staleTime: live ? 1_500 : 30_000,
+    refetchInterval: session ? 3_000 : 60_000,
+    staleTime: session ? 1_500 : 30_000,
     placeholderData: (prev) => prev,
   });
   const quotePx = q.data?.price && q.data.price > 0 ? q.data.price : null;
   const price = metal ? (quotePx ? gramToMcx(metal, quotePx) : initial.price) : (quotePx ?? initial.price);
   const changePct = q.data?.changePct ?? initial.changePct;
+  const statusLabel = quoteStatusLabel(quoteStatus({ session, price }), q.data?.delayMin);
+  const genuinelyLive = statusLabel.endsWith("LIVE");
   const [flash, setFlash] = useState<"up" | "down" | null>(null);
   const prev = useRef(price);
 
@@ -60,12 +63,13 @@ export function LivePrice({
           {fmtPct(changePct)}
         </div>
         <span
+          data-quote-status
           className={cn(
             "rounded-sm px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] uppercase",
-            live ? "bg-up/15 text-up" : "bg-surface-2 text-subtle",
+            genuinelyLive ? "bg-up/15 text-up" : "bg-surface-2 text-subtle",
           )}
         >
-          {live ? "Live" : "Close"}
+          {statusLabel}
         </span>
       </div>
     </div>

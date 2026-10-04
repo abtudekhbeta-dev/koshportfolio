@@ -10,6 +10,7 @@ import {
   SMA_STROKE,
   buildRows,
   buildSvgDoc,
+  plotChrome,
   countable,
   domain,
   extremes,
@@ -151,6 +152,7 @@ export function NavChart({
   modes?: ChartMode[];
 }) {
   const prefs = useKosh((s) => s.navPrefs);
+  const theme = useKosh((s) => s.theme);
   const patchNavPrefs = useKosh((s) => s.patchNavPrefs);
   const [mode, setMode] = useState<ChartMode>(modes?.[0] || "cum");
   const [rangeLocal, setRangeLocal] = useState<ChartRange>(rangeProp || (pathPrimary ? "MAX" : "1Y"));
@@ -229,8 +231,9 @@ export function NavChart({
         showMix,
         pathPrimary,
         benchStroke,
+        ...plotChrome(theme),
       }),
-    [rows, bar, rupee, mixStroke, sma, marks, ext.peak, wantSma, fillOn, showBench, style, showPath, showSame, showMix, pathPrimary, benchStroke],
+    [rows, bar, rupee, mixStroke, sma, marks, ext.peak, wantSma, fillOn, showBench, style, showPath, showSame, showMix, pathPrimary, benchStroke, theme],
   );
   const img = useMemo(() => svgDataUrlSafe(svg), [svg]);
   const hiRow = hover != null ? rows[hover] : rows[n - 1];

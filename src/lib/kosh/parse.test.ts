@@ -10,6 +10,7 @@ import {
   mergeHoldings,
   mergeTradeLines,
   parseCsv,
+  parseHoldingWhen,
   parseMatrix,
   parseSpreadsheet,
   sanitizeHoldings,
@@ -396,5 +397,56 @@ describe("path trade lines", () => {
     ]);
     assert.ok(notes.some((n) => /day’s close|day's close|no price/i.test(n)));
     assert.ok(notes.some((n) => /no date/i.test(n)));
+  });
+});
+
+describe("tradebook robustness", () => {
+  it("reads a title row, a repeated header, currency prices, and skips an unknown side", () => {
+    const csv = [
+      "Client statement",
+      "Symbol,Side,Quantity,Price,Trade Date",
+      "INFY,Purchased,10,\"₹1,000.50\",03/01/2024",
+      "Symbol,Side,Quantity,Price,Trade Date",
+      "TCS,Sold,2,2000,2024-02-01",
+      "ABC,MAYBE,1,10,2024-02-02",
+    ].join("\n");
+    const rows = extractTradeLines(parseCsv(csv));
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].symbol, "INFY");
+    assert.equal(rows[0].side, 1);
+    assert.equal(rows[0].price, 1000.5);
+    assert.equal(rows[0].date, "2024-01-03");
+    assert.equal(rows[1].symbol, "TCS");
+    assert.equal(rows[1].side, -1);
+  });
+
+  it("keeps Indian dates and only swaps a date that cannot be DD/MM", () => {
+    assert.equal(parseHoldingWhen("13/02/2024").date, "2024-02-13");
+    assert.equal(parseHoldingWhen("02/13/2024").date, "2024-02-13");
+    assert.equal(parseHoldingWhen("03/06/2024").date, "2024-06-03");
+    assert.equal(parseHoldingWhen("32/40/2024").date, null);
+    assert.equal(parseHoldingWhen("31/02/2024").date, null);
+  });
+
+  it("reads a trade sheet that is not the first worksheet", async () => {
+    const XLSX = await import("xlsx");
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["Account"], ["Notes only"]]), "Summary");
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([
+        ["Symbol", "Side", "Qty", "Price", "Date"],
+        ["INFY", "BUY", 4, 1500, "2024-03-01"],
+        ["INFY", "BUY", 6, 1520, "2024-03-02"],
+      ]),
+      "Trades",
+    );
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+    const file = new File([buf], "book.xlsx");
+    const { parseHoldingsFileDetailed } = await import("./parse.ts");
+    const got = await parseHoldingsFileDetailed(file);
+    assert.equal(got.trades.length, 2);
+    assert.equal(got.trades[0].qty, 4);
+    assert.equal(got.trades[1].qty, 6);
   });
 });

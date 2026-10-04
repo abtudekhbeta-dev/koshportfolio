@@ -3,6 +3,7 @@ import { AuthSlot } from "@/components/auth-slot";
 import { BrandLink } from "@/components/mark";
 import { SearchBar } from "@/components/search-bar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LayoutSwitch } from "@/components/layout-switch";
 import type { ReactNode } from "react";
 
 export function SkipToMain() {
@@ -19,7 +20,7 @@ export function SkipToMain() {
 export function LandingHeader() {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-bg/85 backdrop-blur-md">
-      <div className="mx-auto grid h-16 max-w-6xl grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 sm:px-4">
+      <div className="kosh-topbar mx-auto grid h-16 max-w-6xl grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 sm:px-4">
         <div className="flex items-center gap-2">
           <BrandLink to="/" />
           <nav className="hidden items-center gap-1 md:flex">
@@ -58,6 +59,7 @@ export function LandingHeader() {
             </Link>
           </nav>
           <ThemeToggle />
+          <LayoutSwitch />
           <AuthSlot />
         </div>
       </div>

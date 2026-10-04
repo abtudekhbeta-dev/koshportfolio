@@ -1,6 +1,6 @@
 /** Strip broker identifiers before anything leaves the browser for cloud or AI. */
 
-import type { Holding, Lot, Portfolio, TradeLine } from "./types.ts";
+import type { Holding, Lot, PathPriceFact, Portfolio, TradeLine } from "./types.ts";
 
 const PAN = /\b[A-Z]{5}[0-9]{4}[A-Z]\b/g;
 const LONG_NUM = /\b\d{12,18}\b/g;
@@ -54,6 +54,24 @@ export function sanitizeTrade(t: TradeLine): TradeLine {
   };
 }
 
+function sanitizeFact(f: PathPriceFact): PathPriceFact | null {
+  const price = Number(f.price);
+  const date = String(f.date || "");
+  const sourceUrl = String(f.sourceUrl || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !(price > 0) || !/^https?:\/\//i.test(sourceUrl)) return null;
+  const evidence = redactSensitive(f.evidence || "").slice(0, 400);
+  if (evidence.length < 8 || !evidence.includes(date)) return null;
+  return {
+    symbol: redactSensitive(f.symbol).slice(0, 32),
+    date,
+    price,
+    sourceName: redactSensitive(f.sourceName || "").slice(0, 80),
+    sourceUrl: sourceUrl.slice(0, 400),
+    retrievedAt: String(f.retrievedAt || "").slice(0, 24),
+    evidence,
+  };
+}
+
 export function sanitizePortfolio(p: Portfolio): Portfolio {
   return {
     id: redactSensitive(String(p.id || "")).slice(0, 40),
@@ -62,5 +80,7 @@ export function sanitizePortfolio(p: Portfolio): Portfolio {
     includeCommodities: p.includeCommodities,
     holdings: (p.holdings || []).map(sanitizeHolding),
     trades: p.trades?.map(sanitizeTrade),
+    pathFacts: (p.pathFacts || []).map(sanitizeFact).filter((f): f is PathPriceFact => Boolean(f)).slice(0, 400),
+    updatedAt: p.updatedAt,
   };
 }

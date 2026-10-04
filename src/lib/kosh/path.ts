@@ -15,6 +15,7 @@ import type {
   PathName,
   PathPack,
   PathPoint,
+  PathPriceFact,
   PathSlice,
   PathYear,
   AfterSale,
@@ -166,7 +167,7 @@ function sessionOnOrBefore(map: DayPx | undefined, day: string, maxBack: number)
   return { day: hit, px: row.c };
 }
 
-function blankSale(sellDate: string, sellPx: number, status: AfterSale["status"], reason: string, targetDate: string | null = null): AfterSale {
+function blankSale(sellDate: string, sellPx: number, status: AfterSale["status"], reason: string, code: string, targetDate: string | null = null): AfterSale {
   return {
     status,
     pct: null,
@@ -176,6 +177,9 @@ function blankSale(sellDate: string, sellPx: number, status: AfterSale["status"]
     observedDate: null,
     observedPx: null,
     basis: null,
+    code,
+    sourceName: null,
+    sourceUrl: null,
     reason,
   };
 }
@@ -196,17 +200,17 @@ export function afterSale(
   months: number,
 ): AfterSale {
   if (!sellDate || !(sellPx > 0)) {
-    return blankSale(sellDate || "", sellPx || 0, "na", "Not applicable — this sale has no date or price.");
+    return blankSale(sellDate || "", sellPx || 0, "na", "Not applicable — this sale has no date or price.", "INVALID_SELL");
   }
   const target = addCalendarMonths(sellDate, months);
-  if (!target) return blankSale(sellDate, sellPx, "na", "Not applicable — the sell date is not a calendar date.");
+  if (!target) return blankSale(sellDate, sellPx, "na", "Not applicable — the sell date is not a calendar date.", "INVALID_SELL_DATE");
   const series = raw && raw.size ? raw : adj;
   if (!series || !series.size) {
-    return blankSale(sellDate, sellPx, "unavailable", "Unavailable — no price history for this symbol.", target);
+    return blankSale(sellDate, sellPx, "unavailable", "Unavailable — no price history for this symbol.", "NO_HISTORICAL_DATA", target);
   }
   const last = [...series.keys()].sort().at(-1) || "";
   if (!last || target > last) {
-    return blankSale(sellDate, sellPx, "insufficient", "Insufficient history — that window has not elapsed yet.", target);
+    return blankSale(sellDate, sellPx, "insufficient", "Insufficient history — that window has not elapsed yet.", "INSUFFICIENT_HISTORY", target);
   }
   const rawObs = sessionOnOrAfter(raw, target, 10);
   const adjObs = sessionOnOrAfter(adj, target, 10);
@@ -226,6 +230,7 @@ export function afterSale(
         sellPx,
         "unavailable",
         "Unavailable — a corporate action is in the series and the adjusted prices are missing.",
+        "CORPORATE_ACTION_UNCHECKED",
         target,
       );
     }
@@ -239,12 +244,22 @@ export function afterSale(
       observedDate: adjObs.day,
       observedPx: sellPx * ratio,
       basis: "adjusted",
+      code: "CALCULATED",
+      sourceName: null,
+      sourceUrl: null,
       reason: "Calculated from the adjusted series so a split or bonus is not a fake jump.",
     };
   }
   const obs = rawObs || adjObs;
   if (!obs) {
-    return blankSale(sellDate, sellPx, "unavailable", "Unavailable — no trading session within 10 days after the target date.", target);
+    return blankSale(
+      sellDate,
+      sellPx,
+      "unavailable",
+      "Unavailable — no trading session within 10 days after the target date.",
+      "NO_SESSION_IN_WINDOW",
+      target,
+    );
   }
   const sellSession = rawObs ? rawSell : adjSell;
   if (!raw && sellSession && sellSession.px > 0 && Math.abs(sellSession.px / sellPx - 1) > 0.25) {
@@ -253,6 +268,7 @@ export function afterSale(
       sellPx,
       "unavailable",
       "Unavailable — the only price series does not match the sell price, so a corporate action could not be checked.",
+      "CORPORATE_ACTION_UNCHECKED",
       target,
     );
   }
@@ -265,11 +281,40 @@ export function afterSale(
     observedDate: obs.day,
     observedPx: obs.px,
     basis: rawObs ? "close" : "adjusted",
+    code: "CALCULATED",
+    sourceName: null,
+    sourceUrl: null,
     reason: rawObs ? "Calculated from the session close after the sell." : "Calculated from the adjusted close after the sell.",
   };
 }
 
-function applyAfter(c: ClosedTrade, raw: DayPx | undefined, adj: DayPx | undefined) {
+/** A sourced close may fill a cell only when the market series itself is missing. */
+function overlayFact(cell: AfterSale, symbol: string, facts?: PathPriceFact[]): AfterSale {
+  if (cell.code !== "NO_HISTORICAL_DATA" || !cell.targetDate || !(cell.sellPx > 0)) return cell;
+  const sym = baseSym(symbol);
+  const fact = (facts || []).find((f) => {
+    if (!f || baseSym(f.symbol) !== sym || f.date !== cell.targetDate) return false;
+    if (!(f.price > 0) || !/^https?:\/\//i.test(f.sourceUrl || "")) return false;
+    if (!String(f.sourceName || "").trim() || String(f.evidence || "").trim().length < 8) return false;
+    if (/\b(estimat\w*|interpolat\w*|predict\w*|guess\w*)/i.test(f.evidence || "")) return false;
+    return String(f.evidence || "").includes(cell.targetDate || "");
+  });
+  if (!fact) return cell;
+  return {
+    ...cell,
+    status: "ai",
+    code: "AI_SOURCE",
+    pct: (fact.price / cell.sellPx - 1) * 100,
+    observedDate: fact.date,
+    observedPx: fact.price,
+    basis: "source",
+    sourceName: fact.sourceName,
+    sourceUrl: fact.sourceUrl,
+    reason: "AI-researched · source-backed. The close is the cited print, not an estimate.",
+  };
+}
+
+function applyAfter(c: ClosedTrade, raw: DayPx | undefined, adj: DayPx | undefined, facts?: PathPriceFact[]) {
   const windows: Array<[1 | 3 | 6 | 12, "1m" | "3m" | "6m" | "1y"]> = [
     [1, "1m"],
     [3, "3m"],
@@ -277,12 +322,12 @@ function applyAfter(c: ClosedTrade, raw: DayPx | undefined, adj: DayPx | undefin
     [12, "1y"],
   ];
   for (const [months, key] of windows) {
-    const cell = afterSale(raw, adj, c.sellDate, c.sellPx, months);
+    const cell = overlayFact(afterSale(raw, adj, c.sellDate, c.sellPx, months), c.symbol, facts);
     const pctKey = key === "1m" ? "post1m" : key === "3m" ? "post3m" : key === "6m" ? "post6m" : "post1y";
     const noteKey = key === "1m" ? "post1mNote" : key === "3m" ? "post3mNote" : key === "6m" ? "post6mNote" : "post1yNote";
     const cellKey = key === "1m" ? "after1m" : key === "3m" ? "after3m" : key === "6m" ? "after6m" : "after1y";
-    c[pctKey] = cell.status === "calculated" ? cell.pct : null;
-    c[noteKey] = cell.status === "calculated" ? cell.observedDate : cell.reason;
+    c[pctKey] = cell.status === "calculated" || cell.status === "ai" ? cell.pct : null;
+    c[noteKey] = cell.status === "calculated" || cell.status === "ai" ? cell.observedDate : cell.reason;
     c[cellKey] = cell;
   }
 }
@@ -339,6 +384,7 @@ export function buildPath(
   benchBars: Bar[],
   asOf = Date.now(),
   livePx?: Record<string, number>,
+  facts?: PathPriceFact[],
 ): PathPack {
   const all = trades || [];
   const datedRaw = all.filter((t) => t.date && t.qty > 0 && (t.side === 1 || t.side === -1));
@@ -628,7 +674,7 @@ export function buildPath(
     }
   }
 
-  for (const c of closed) applyAfter(c, maps[c.symbol], adjMaps[c.symbol]);
+  for (const c of closed) applyAfter(c, maps[c.symbol], adjMaps[c.symbol], facts);
 
   const stillHeld: PathHeld[] = [];
   for (const [sym, list] of lots) {

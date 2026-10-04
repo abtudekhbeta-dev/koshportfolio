@@ -502,12 +502,32 @@ export function explainGaps(fund: Fundamentals, missing: string[]): Gap[] {
   return gaps;
 }
 
-/** Path prices come from the market history, never from a model reply. */
-export function usablePathPrice(_item: ResearchItem | null): number | null {
-  return null;
+/**
+ * A historical close from research. Null unless the reply is source-backed,
+ * names the date, and does not estimate. Identity lookups pass no date and
+ * still return null when the source is missing.
+ */
+export function usablePathPrice(item: ResearchItem | null | undefined, expectedDate?: string | null): number | null {
+  if (!item || item.status !== "researched") return null;
+  const url = String(item.sourceUrl || "");
+  if (!/^https?:\/\//i.test(url)) return null;
+  if (!String(item.sourceName || "").trim()) return null;
+  const evidence = String(item.evidence || "").trim();
+  if (evidence.length < 8) return null;
+  const method = `${item.methodology || ""} ${evidence} ${item.metric || ""}`.toLowerCase();
+  if (/\b(estimat\w*|interpolat\w*|predict\w*|guess\w*|approx\w*)\b/.test(method)) return null;
+  const value = typeof item.value === "number" ? item.value : Number(String(item.value ?? "").replace(/[,₹]/g, ""));
+  if (!(value > 0) || !Number.isFinite(value)) return null;
+  if (!expectedDate) return null;
+  if (!`${item.period || ""} ${item.metric || ""} ${evidence}`.includes(expectedDate)) return null;
+  return value;
 }
 
-/** What a model may be asked when a Path name did not match a listed ticker. Never a price or a return. */
+/** Last-resort ask for one exchange close. Never a return, never an estimate. */
+export function pathPriceAsk(symbol: string, date: string): string {
+  return `official exchange closing price of ${symbol} on ${date}. Cite that date and price only if a primary source states both. Do not estimate, interpolate, or predict.`;
+}
+
 export function pathIdentityAsk(symbol: string): string {
   return `listed NSE or BSE symbol for ${symbol}`;
 }

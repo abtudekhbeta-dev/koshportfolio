@@ -92,19 +92,15 @@ export function PathUpload({ portfolioId }: { portfolioId: string }) {
       setNotes([...hints, ...audited.filter((n) => /day’s close|day's close/i.test(n))]);
       const undated = resolved.filter((t) => !t.date).length;
       const filledN = resolved.filter((t) => t.priceFilled).length;
-      const auditLine = audit?.rowsRead
-        ? `Read ${audit.rowsRead} · kept ${audit.accepted} · ignored ${audit.ignored}` +
-          (audit.duplicates ? ` · ${audit.duplicates} duplicate ids` : "") +
-          (audit.ambiguous ? ` · ${audit.ambiguous} side unclear` : "") +
-          (audit.missingPrices ? ` · ${audit.missingPrices} missing a price` : "") +
-          (audit.unresolved ? ` · ${audit.unresolved} unresolved` : "")
-        : "";
+      const needs = (audit?.ambiguous || 0) + (audit?.unresolved || 0);
       setMsg(
-        `Ready · ${resolved.length} buy/sell line${resolved.length === 1 ? "" : "s"}` +
-          (auditLine ? ` · ${auditLine}` : "") +
-          (filledN ? ` · ${filledN} used that day’s close` : "") +
-          (undated ? ` · ${undated} without a date will sit out of the line` : "") +
-          " · This mix is not updated",
+        audit?.rowsRead
+          ? `Read ${audit.rowsRead.toLocaleString("en-IN")} rows · Kept ${audit.accepted.toLocaleString("en-IN")} · Needs review ${needs.toLocaleString("en-IN")}` +
+            (audit.ignored ? ` · Ignored ${audit.ignored.toLocaleString("en-IN")}` : "") +
+            (filledN ? ` · ${filledN} used that day’s close` : "") +
+            (undated ? ` · ${undated} without a date` : "") +
+            " · This mix is not updated"
+          : `Ready · ${resolved.length} buy/sell line${resolved.length === 1 ? "" : "s"}`,
       );
     } finally {
       setBusy(false);
@@ -132,8 +128,9 @@ export function PathUpload({ portfolioId }: { portfolioId: string }) {
     <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
       <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Upload buys and sells</h2>
       <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">
-        Adds to your path only. If a line has a date but no price, we fill that day’s close and tell you. Names already
-        in This mix still flow into Path. Add keeps every execution. Use Replace if you are loading the same file again.
+        Adds to your path only. CSV, TSV, or Excel. Headers can sit below a title, and a repeated header is skipped.
+        Buy, Sell, Purchased, and Sold are recognized. A side that is not one of those is left for review, not guessed.
+        This mix is not changed.
       </p>
       <label
         onDragOver={(e) => e.preventDefault()}

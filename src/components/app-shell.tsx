@@ -3,12 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { apiTape } from "@/lib/kosh/api";
 import { isIstSession } from "@/lib/kosh/market-hours";
+import { quoteStatus, quoteStatusLabel } from "@/lib/kosh/market-data";
 import { AddHoldings } from "@/components/add-holdings";
 import { AlertBanner } from "@/components/alert-banner";
 import { AuthSlot } from "@/components/auth-slot";
 import { BrandLink } from "@/components/mark";
 import { SearchBar } from "@/components/search-bar";
 import { TapeQuote } from "@/components/tape-quote";
+import { LayoutSwitch } from "@/components/layout-switch";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useKosh } from "@/lib/store";
@@ -42,12 +44,19 @@ export function AppShell({ children, wide, full }: { children: ReactNode; wide?:
     enabled: !full,
   });
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const tapeOn = isIstSession() && (tape.data || []).some((t) => t.price > 0);
+  const tapeLabel = quoteStatusLabel(quoteStatus({ session: isIstSession(), price: tapeOn ? 1 : (tape.data || [])[0]?.price }), null);
 
   return (
     <div className={cn(full ? "flex h-dvh min-h-0 flex-col overflow-hidden" : "min-h-dvh")}>
       {!full ? (
       <div className="border-b border-border bg-bg-elevated">
         <div className="kosh-marquee-wrap overflow-hidden px-3 py-2 sm:px-4">
+          <div className="mb-1 flex items-center gap-2 px-1">
+            <span data-tape-status className="text-[10px] font-semibold tracking-[0.08em] text-subtle uppercase">
+              {tapeLabel}
+            </span>
+          </div>
           <div className="kosh-tape-track flex w-max items-center">
             {[0, 1].map((copy) => (
               <div key={copy} className="flex min-w-[100vw] shrink-0 items-center gap-8 pr-8">
@@ -61,7 +70,7 @@ export function AppShell({ children, wide, full }: { children: ReactNode; wide?:
       </div>
       ) : null}
       <header className={cn("z-30 border-b border-border bg-bg/85 backdrop-blur-md", full ? "shrink-0" : "sticky top-0")}>
-        <div className={cn("mx-auto grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 sm:grid-cols-[1fr_minmax(0,36rem)_1fr] sm:gap-3 sm:px-4", full ? "max-w-none" : wide ? "max-w-[1400px]" : "max-w-6xl")}>
+        <div className={cn("kosh-app-header mx-auto grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 sm:grid-cols-[1fr_minmax(0,36rem)_1fr] sm:gap-3 sm:px-4", full ? "max-w-none" : wide ? "max-w-[1400px]" : "max-w-6xl")}>
           <div className="flex items-center gap-2">
             <BrandLink to="/" />
             <nav className="hidden items-center gap-1 md:flex">
@@ -114,6 +123,7 @@ export function AppShell({ children, wide, full }: { children: ReactNode; wide?:
               }
             />
             <ThemeToggle />
+            <LayoutSwitch />
             <AuthSlot />
           </div>
         </div>
@@ -127,8 +137,8 @@ export function AppShell({ children, wide, full }: { children: ReactNode; wide?:
       <main
         className={cn(
           full
-            ? "flex min-h-0 flex-1 flex-col overflow-hidden px-0 pb-14 pt-0 md:pb-0"
-            : cn("mx-auto px-3 pb-24 pt-5 sm:px-4 sm:pb-20 sm:pt-6", wide ? "max-w-[1400px]" : "max-w-6xl"),
+            ? "kosh-main flex min-h-0 flex-1 flex-col overflow-hidden px-0 pb-14 pt-0 md:pb-0"
+            : cn("kosh-main mx-auto px-3 pb-24 pt-5 sm:px-4 sm:pb-20 sm:pt-6", wide ? "max-w-[1400px]" : "max-w-6xl"),
         )}
       >
         {children}

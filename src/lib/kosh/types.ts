@@ -119,6 +119,17 @@ export type TradeLine = {
   priceFilled?: boolean;
 };
 
+/** A sourced historical close. Never an estimate. */
+export type PathPriceFact = {
+  symbol: string;
+  date: string;
+  price: number;
+  sourceName: string;
+  sourceUrl: string;
+  retrievedAt: string;
+  evidence: string;
+};
+
 export type Portfolio = {
   id: string;
   name: string;
@@ -126,6 +137,8 @@ export type Portfolio = {
   bench: string;
   includeCommodities?: boolean;
   trades?: TradeLine[];
+  /** Source-backed closes used only when market history has no series. */
+  pathFacts?: PathPriceFact[];
   updatedAt?: number;
 };
 
@@ -232,7 +245,11 @@ export type AfterSale = {
   targetDate: string | null;
   observedDate: string | null;
   observedPx: number | null;
-  basis: "close" | "adjusted" | null;
+  basis: "close" | "adjusted" | "source" | null;
+  /** Stable reason code for a missing or sourced cell. Not shown as the main value. */
+  code?: string;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
   reason: string;
 };
 

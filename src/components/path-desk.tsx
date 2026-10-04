@@ -298,89 +298,167 @@ function saleLabel(status: AfterSale["status"]) {
   return "Unavailable";
 }
 
-function AfterCell({ cell, pct, note }: { cell?: AfterSale | null; pct?: number | null; note?: string | null }) {
-  if (cell?.status === "calculated" && cell.pct != null && Number.isFinite(cell.pct)) {
+function AfterCell({ cell, pct }: { cell?: AfterSale | null; pct?: number | null }) {
+  const value = cell?.pct ?? pct;
+  const known = cell?.status === "calculated" || cell?.status === "ai";
+  if (known && value != null && Number.isFinite(value)) {
     return (
-      <>
-        {fmtPct(cell.pct)}
-        <div className="text-[11px] font-sans text-subtle">
-          {cell.observedDate ? dayLabel(cell.observedDate) : ""}
-          {cell.observedPx != null ? ` · ₹${cell.observedPx.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : ""}
-        </div>
-        <div className="text-[10px] font-sans text-subtle">
-          Target {cell.targetDate ? dayLabel(cell.targetDate) : "—"}
-          {cell.basis === "adjusted" ? " · adjusted" : ""}
-        </div>
-      </>
-    );
-  }
-  if (cell) {
-    return (
-      <span className="text-[11px] font-sans text-subtle" title={cell.reason}>
-        {saleLabel(cell.status)}
+      <span title={cell?.status === "ai" ? "AI-researched · source-backed" : saleLabel("calculated")}>
+        {fmtPct(value)}
       </span>
     );
   }
-  if (pct != null && Number.isFinite(pct)) return <>{fmtPct(pct)}</>;
-  return <span className="text-[11px] font-sans text-subtle">{note || "Unavailable"}</span>;
+  const why = cell ? `${cell.code || saleLabel(cell.status)}. ${cell.reason}` : "Unavailable";
+  return (
+    <span className="text-subtle" title={why}>
+      —
+    </span>
+  );
 }
 
+function SaleDetail({ cell, label }: { cell?: AfterSale | null; label: string }) {
+  if (!cell) return null;
+  return (
+    <div className="min-w-[9rem]">
+      <div className="text-[11px] font-semibold tracking-[0.06em] text-subtle uppercase">{label}</div>
+      <div className="mt-1 text-[13px] text-fg">{saleLabel(cell.status)}</div>
+      <dl className="mt-1 grid gap-0.5 text-[12px] text-muted">
+        <div>Target {cell.targetDate ? dayLabel(cell.targetDate) : "—"}</div>
+        <div>Observed {cell.observedDate ? dayLabel(cell.observedDate) : "—"}</div>
+        <div>
+          Price{" "}
+          {cell.observedPx != null ? `₹${cell.observedPx.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "—"}
+        </div>
+        <div>Basis {cell.basis || "—"}{cell.code ? ` · ${cell.code}` : ""}</div>
+        {cell.sourceName ? (
+          <div>
+            Source{" "}
+            {cell.sourceUrl ? (
+              <a href={cell.sourceUrl} className="text-chart hover:underline" target="_blank" rel="noreferrer">
+                {cell.sourceName}
+              </a>
+            ) : (
+              cell.sourceName
+            )}
+          </div>
+        ) : null}
+      </dl>
+    </div>
+  );
+}
+
+const SALE_PAGE = 50;
+
 function ClosedTable({ rows }: { rows: ClosedTrade[] }) {
-  const shown = rows.length > 500 ? rows.slice(-500) : rows;
+  const pages = Math.max(1, Math.ceil(rows.length / SALE_PAGE));
+  const [page, setPage] = useState(pages);
+  const [open, setOpen] = useState<string | null>(null);
+  const safe = Math.min(pages, Math.max(1, page));
+  const start = (safe - 1) * SALE_PAGE;
+  const shown = rows.slice(start, start + SALE_PAGE);
   return (
     <div className="mt-6">
       <h3 className="mb-2 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">After selling</h3>
       <p className="mb-3 text-[12px] text-muted">
-        Each row is one sale. 1M, 3M, 6M and 1Y are the stock’s move from your sell price to the first session on or
-        after that later date — not today’s price, and not a card above this table.
-        {rows.length > shown.length ? ` Showing the latest ${shown.length} of ${rows.length} calculated sales.` : ""}
+        How the stock moved from your sell price. 1M, 3M, 6M and 1Y use the first session on or after that later date.
+        {rows.length ? ` Showing ${start + 1}–${start + shown.length} of ${rows.length}.` : ""}
       </p>
-      <div className="max-h-[32rem] overflow-auto rounded-lg bg-surface shadow-[var(--shadow-border)]">
-        <table className="kosh-table w-full text-left text-[13px]">
-          <thead className="sticky top-0 bg-surface text-[11px] tracking-[0.06em] text-subtle uppercase">
+      <div className="overflow-x-auto rounded-lg bg-surface shadow-[var(--shadow-border)]">
+        <table className="kosh-table w-full min-w-[720px] text-left text-[13px]">
+          <thead className="text-[11px] tracking-[0.06em] text-subtle uppercase">
             <tr>
               <th className="px-3 py-2 font-medium">Stock</th>
-              <th className="px-3 py-2 font-medium text-right">Qty</th>
               <th className="px-3 py-2 font-medium">Sell date</th>
               <th className="px-3 py-2 font-medium text-right">Sell price</th>
               <th className="px-3 py-2 font-medium text-right">P&L</th>
-              <th className="px-3 py-2 font-medium text-right">After sell · 1M</th>
-              <th className="px-3 py-2 font-medium text-right">After sell · 3M</th>
-              <th className="px-3 py-2 font-medium text-right">After sell · 6M</th>
-              <th className="px-3 py-2 font-medium text-right">After sell · 1Y</th>
+              <th className="px-3 py-2 font-medium text-right">1M</th>
+              <th className="px-3 py-2 font-medium text-right">3M</th>
+              <th className="px-3 py-2 font-medium text-right">6M</th>
+              <th className="px-3 py-2 font-medium text-right">1Y</th>
+              <th className="px-3 py-2 font-medium" />
             </tr>
           </thead>
           <tbody>
-            {shown.map((c, i) => (
-              <tr key={c.symbol + c.buyDate + c.sellDate + i}>
-                <td className="px-3 py-2">
-                  <div className="text-fg">{c.name}</div>
-                  <div className="font-mono text-[11px] text-subtle">{c.symbol}</div>
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular">{c.qty}</td>
-                <td className="px-3 py-2 text-muted">{dayLabel(c.sellDate)}</td>
-                <td className="px-3 py-2 text-right font-mono tabular">₹{c.sellPx.toLocaleString("en-IN")}</td>
-                <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.pnl))}>
-                  {fmtInr(c.pnl)}
-                  <div className="text-[11px]">{fmtPct(c.pnlPct)}</div>
-                </td>
-                <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.after1m?.pct ?? c.post1m))}>
-                  <AfterCell cell={c.after1m} pct={c.post1m} note={c.post1mNote} />
-                </td>
-                <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.after3m?.pct ?? c.post3m))}>
-                  <AfterCell cell={c.after3m} pct={c.post3m} note={c.post3mNote} />
-                </td>
-                <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.after6m?.pct ?? c.post6m))}>
-                  <AfterCell cell={c.after6m} pct={c.post6m} note={c.post6mNote} />
-                </td>
-                <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.after1y?.pct ?? c.post1y))}>
-                  <AfterCell cell={c.after1y} pct={c.post1y} note={c.post1yNote} />
-                </td>
-              </tr>
-            ))}
+            {shown.map((c, i) => {
+              const key = c.symbol + c.buyDate + c.sellDate + (start + i);
+              const on = open === key;
+              return (
+                <Fragment key={key}>
+                  <tr>
+                    <td className="px-3 py-2">
+                      <div className="text-fg">{c.name}</div>
+                      <div className="font-mono text-[11px] text-subtle">
+                        {c.symbol}
+                        {c.qty ? ` · ${c.qty}` : ""}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-muted">{dayLabel(c.sellDate)}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular">₹{c.sellPx.toLocaleString("en-IN")}</td>
+                    <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.pnl))}>{fmtPct(c.pnlPct)}</td>
+                    <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.after1m?.pct ?? c.post1m))}>
+                      <AfterCell cell={c.after1m} pct={c.post1m} />
+                    </td>
+                    <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.after3m?.pct ?? c.post3m))}>
+                      <AfterCell cell={c.after3m} pct={c.post3m} />
+                    </td>
+                    <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.after6m?.pct ?? c.post6m))}>
+                      <AfterCell cell={c.after6m} pct={c.post6m} />
+                    </td>
+                    <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.after1y?.pct ?? c.post1y))}>
+                      <AfterCell cell={c.after1y} pct={c.post1y} />
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        type="button"
+                        className="text-[12px] text-muted hover:text-fg"
+                        aria-expanded={on}
+                        onClick={() => setOpen(on ? null : key)}
+                      >
+                        {on ? "Hide" : "Details"}
+                      </button>
+                    </td>
+                  </tr>
+                  {on ? (
+                    <tr>
+                      <td colSpan={9} className="bg-bg/40 px-3 py-3">
+                        <div className="flex flex-wrap gap-6">
+                          <SaleDetail cell={c.after1m} label="1M" />
+                          <SaleDetail cell={c.after3m} label="3M" />
+                          <SaleDetail cell={c.after6m} label="6M" />
+                          <SaleDetail cell={c.after1y} label="1Y" />
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
+      {pages > 1 ? (
+        <div className="mt-2 flex items-center justify-end gap-2 text-[12px] text-muted">
+          <button
+            type="button"
+            className="rounded-sm px-2 py-1 hover:text-fg disabled:opacity-40"
+            disabled={safe <= 1}
+            onClick={() => setPage(safe - 1)}
+          >
+            Older
+          </button>
+          <span>
+            {safe} / {pages}
+          </span>
+          <button
+            type="button"
+            className="rounded-sm px-2 py-1 hover:text-fg disabled:opacity-40"
+            disabled={safe >= pages}
+            onClick={() => setPage(safe + 1)}
+          >
+            Newer
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

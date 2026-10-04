@@ -378,6 +378,62 @@ html[data-theme="light"] {
 
 .kosh-page {
   animation: koshRise 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  min-width: 0;
+  max-width: 100%;
+}
+.kosh-page .grid,
+.kosh-page section,
+.kosh-page .overflow-x-auto {
+  min-width: 0;
+  max-width: 100%;
+}
+main.kosh-main {
+  min-width: 0;
+}
+
+/* Layouts change spacing and density only. Classic is the unset default. */
+html[data-layout="compact"] .kosh-app-header {
+  height: 3.25rem;
+}
+html[data-layout="compact"] .kosh-main {
+  padding-top: 0.75rem;
+}
+html[data-layout="compact"] .kosh-page {
+  gap: 1.25rem;
+}
+html[data-layout="compact"] .kosh-table th,
+html[data-layout="compact"] .kosh-table td {
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+html[data-layout="compact"] [data-term-height] {
+  max-height: 480px;
+}
+html[data-layout="research"] .kosh-main {
+  padding-top: 1.75rem;
+}
+html[data-layout="research"] .kosh-page {
+  gap: 2.75rem;
+}
+html[data-layout="research"] .kosh-table td {
+  padding-top: 0.7rem;
+  padding-bottom: 0.7rem;
+}
+html[data-layout="terminal"] [data-term-height] {
+  min-height: 720px;
+}
+@media (max-width: 767px) {
+  html[data-layout="terminal"] [data-term-height] {
+    min-height: 420px;
+  }
+  html[data-layout="research"] .kosh-main {
+    padding-top: 1rem;
+  }
+  .kosh-app-header,
+  .kosh-topbar {
+    max-width: 100%;
+    overflow-x: auto;
+  }
 }
 
 .kosh-card {

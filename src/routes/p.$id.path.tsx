@@ -2,15 +2,14 @@ import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useBookCtx } from "@/components/book-context";
-import { NavChart } from "@/components/charts/nav-chart";
 import { PathDesk } from "@/components/path-desk";
 import { PathUpload } from "@/components/path-upload";
 import { fmtInr } from "@/lib/kosh/engine";
-import { pathToChartNav } from "@/lib/kosh/path";
 import { apiResearch } from "@/lib/kosh/api";
-import { listedSymbolFromResearch, pathIdentityAsk, usablePathPrice } from "@/lib/kosh/complete";
+import { listedSymbolFromResearch, pathIdentityAsk, pathPriceAsk, usablePathPrice } from "@/lib/kosh/complete";
 import { AIButton } from "@/components/ui/ai-button";
 import { useKosh } from "@/lib/store";
+import type { PathPriceFact } from "@/lib/kosh/types";
 
 export const Route = createFileRoute("/p/$id/path")({ component: PathPage });
 
@@ -25,12 +24,12 @@ function PathPage() {
   const pathNow = path?.wealthNow || 0;
   const close =
     mixValue > 0 && pathNow > 0 ? Math.abs(pathNow - mixValue) / Math.max(mixValue, pathNow) < 0.015 : false;
-  const chartNav = hasPath && path ? pathToChartNav(path) : [];
   const qc = useQueryClient();
   const tradeError = useKosh((s) => s.tradeError);
   const tradesReady = useKosh((s) => s.tradesReady);
   const tradeCount = useKosh((s) => s.tradeCounts[portfolio.id] || 0);
   const confirmSymbol = useKosh((s) => s.confirmSymbol);
+  const rememberPathFacts = useKosh((s) => s.rememberPathFacts);
   const [checking, setChecking] = useState(false);
   const [checkNote, setCheckNote] = useState("");
 
@@ -39,9 +38,8 @@ function PathPage() {
       <section>
         <h2 className="mb-1 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Your path</h2>
         <p className="mb-3 max-w-2xl text-[13px] leading-relaxed text-muted">
-          What you actually owned after each buy and sell, marked at that day’s price. Growth is how those names did —
-          extra money you added later is taken out. {book.benchName} is the same stretch, same method. This mix is
-          leftover names today; if the file is complete, today’s path and today’s mix are the same rupees.{" "}
+          What happened after you sold. Each sale is measured from your sell price to the first session one month, three
+          months, six months, and one year later.{" "}
           <Link to="/p/$id" params={{ id: portfolio.id }} className="text-chart hover:underline">
             Back to Overview
           </Link>
@@ -107,10 +105,49 @@ function PathPage() {
                       notes.push(`${symbol}: ${err instanceof Error ? err.message : "AI research unavailable"}`);
                     }
                   }
+                  const asks: { symbol: string; date: string }[] = [];
+                  const seen = new Set((portfolio.pathFacts || []).map((f) => `${f.symbol}|${f.date}`));
+                  for (const c of path?.closed || []) {
+                    for (const cell of [c.after1m, c.after3m, c.after6m, c.after1y]) {
+                      if (cell?.code !== "NO_HISTORICAL_DATA" || !cell.targetDate) continue;
+                      const key = `${c.symbol}|${cell.targetDate}`;
+                      if (seen.has(key)) continue;
+                      seen.add(key);
+                      asks.push({ symbol: c.symbol, date: cell.targetDate });
+                      if (asks.length >= 6) break;
+                    }
+                    if (asks.length >= 6) break;
+                  }
+                  const saved: PathPriceFact[] = [];
+                  for (const ask of asks) {
+                    try {
+                      const res = await apiResearch(ask.symbol, [pathPriceAsk(ask.symbol, ask.date)]);
+                      const item = res.items?.[0];
+                      const shaped = item ? { ...item, inputs: item.inputs || [] } : null;
+                      const px = usablePathPrice(shaped, ask.date);
+                      if (px == null || !shaped?.sourceUrl || !shaped.sourceName) {
+                        notes.push(`${ask.symbol} ${ask.date}: no sourced close. Left unavailable.`);
+                        continue;
+                      }
+                      saved.push({
+                        symbol: ask.symbol,
+                        date: ask.date,
+                        price: px,
+                        sourceName: shaped.sourceName,
+                        sourceUrl: shaped.sourceUrl,
+                        retrievedAt: new Date().toISOString().slice(0, 10),
+                        evidence: shaped.evidence,
+                      });
+                      notes.push(`${ask.symbol} ${ask.date}: AI-researched · source-backed (${shaped.sourceName}).`);
+                    } catch (err) {
+                      notes.push(`${ask.symbol} ${ask.date}: ${err instanceof Error ? err.message : "AI research unavailable"}`);
+                    }
+                  }
+                  if (saved.length) rememberPathFacts(portfolio.id, saved);
                   setCheckNote(
-                    missing.length
+                    notes.length
                       ? notes.join(" ")
-                      : "Price history checked again. No unresolved security needed a model. Prices were not guessed.",
+                      : "Price history checked again. Nothing needed a model. Prices were not guessed.",
                   );
                   setChecking(false);
                 })();
@@ -119,27 +156,18 @@ function PathPage() {
               · Complete Path data
             </AIButton>
             <p className="max-w-xl text-[12px] leading-relaxed text-muted">
-              Refetches market history and calculates the windows. AI is asked only for an unresolved listed symbol, never for a price or a return.
+              Market history is used first. AI is only asked for an unresolved listed symbol, or for a close when that
+              name has no price series. A price is kept only with a source. Nothing is estimated.
             </p>
             {checkNote ? <p className="text-[12px] text-muted">{checkNote}</p> : null}
           </div>
         ) : null}
-        {hasPath ? (
-          <NavChart
-            nav={chartNav}
-            portLabel="Your path"
-            benchLabel={`${book.benchName} same stretch`}
-            coverage={path?.coverage}
-            nowValue={pathNow}
-            pathPrimary
-            modes={["inr", "cum", "dd", "roll1y", "roll3m", "m", "w", "gap"]}
-          />
-        ) : (
-          <div className="rounded-lg bg-surface p-4 text-[13px] text-muted shadow-[var(--shadow-border)]">
-            Upload a dated buy/sell file below. Each line is plotted as the rupees you held that day.
-          </div>
-        )}
+        {!trades.length ? (
+          <p className="text-[13px] text-muted">Upload a dated buy/sell file. The table below shows what the stock did after each sale.</p>
+        ) : null}
       </section>
+
+      <PathUpload portfolioId={portfolio.id} />
 
       {trades.length && path ? (
         <PathDesk
@@ -153,14 +181,11 @@ function PathPage() {
         <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
           <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">What will show here</h2>
           <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted">
-            How the holdings did versus {book.benchName}, the journey (drops and mix over time), which names created or
-            destroyed value — including what the stock did after you sold — and month-by-month history. All from the
-            buys and sells you actually did.
+            One row per sale: your sell date, sell price, and how the stock did one month, three months, six months,
+            and one year later. Open Details if you need the observed date, price, and source.
           </p>
         </section>
       )}
-
-      <PathUpload portfolioId={portfolio.id} />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { GRID_STROKE, PAD, TICK_FILL, VH, VW, niceY, xOf, yOf, yTicks } from "@/lib/kosh/plot";
+import { PAD, VH, VW, niceY, plotChrome, xOf, yOf, yTicks } from "@/lib/kosh/plot";
+import { useKosh } from "@/lib/store";
 import type { PathSlice } from "@/lib/kosh/types";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +46,7 @@ function linesOf(slices: PathSlice[]): Line[] {
 }
 
 export function PathStack({ slices }: { slices: PathSlice[] }) {
+  const chrome = plotChrome(useKosh((s) => s.theme));
   const all = useMemo(() => linesOf(slices), [slices]);
   const [off, setOff] = useState<Record<string, boolean>>({});
   const visible = all.filter((l) => !off[l.key]);
@@ -132,14 +134,14 @@ export function PathStack({ slices }: { slices: PathSlice[] }) {
                 ticks
                   .map((v) => {
                     const y = yOf(v, yLo, yHi);
-                    return `<line x1="${PAD.l}" y1="${y.toFixed(2)}" x2="${VW - PAD.r}" y2="${y.toFixed(2)}" stroke="${GRID_STROKE}" stroke-width="1"/>` +
-                      `<text x="${PAD.l - 6}" y="${y.toFixed(2)}" fill="${TICK_FILL}" font-size="10" font-family="IBM Plex Mono,ui-monospace,monospace" text-anchor="end" dominant-baseline="middle">${esc(niceY(v, true))}</text>`;
+                    return `<line x1="${PAD.l}" y1="${y.toFixed(2)}" x2="${VW - PAD.r}" y2="${y.toFixed(2)}" stroke="${chrome.gridStroke}" stroke-width="1"/>` +
+                      `<text x="${PAD.l - 6}" y="${y.toFixed(2)}" fill="${chrome.tickFill}" font-size="10" font-family="IBM Plex Mono,ui-monospace,monospace" text-anchor="end" dominant-baseline="middle">${esc(niceY(v, true))}</text>`;
                   })
                   .join("") +
                 xIdx
                   .map((i) => {
                     if (!slices[i]) return "";
-                    return `<text x="${xOf(i, n).toFixed(2)}" y="${VH - 8}" fill="${TICK_FILL}" font-size="10" font-family="IBM Plex Mono,ui-monospace,monospace" text-anchor="middle">${esc(slices[i].day.slice(2))}</text>`;
+                    return `<text x="${xOf(i, n).toFixed(2)}" y="${VH - 8}" fill="${chrome.tickFill}" font-size="10" font-family="IBM Plex Mono,ui-monospace,monospace" text-anchor="middle">${esc(slices[i].day.slice(2))}</text>`;
                   })
                   .join("") +
                 visible

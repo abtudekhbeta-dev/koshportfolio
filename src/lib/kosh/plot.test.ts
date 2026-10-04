@@ -7,6 +7,7 @@ import {
   countable,
   domain,
   extremes,
+  plotChrome,
   seriesPath,
   smaRows,
   sparkHeights,
@@ -129,5 +130,22 @@ describe("plot", () => {
     assert.ok(Math.abs(g[1].port - 100) < 1e-6, String(g[1].port));
     const { rows: r } = buildRows(rows, "inr", "MAX", 2000);
     assert.ok(r[1].port != null && r[1].port > 1500);
+  });
+});
+
+describe("plot chrome", () => {
+  it("uses a faint grid in light theme instead of a near-black rule", () => {
+    const light = plotChrome("light");
+    assert.notEqual(light.gridStroke, "#26262b");
+    assert.match(light.gridStroke, /rgba\(22,22,24/);
+    const svg = buildSvgDoc({
+      rows: [{ day: "2024-01-02", port: 100, bench: 100 }, { day: "2024-01-03", port: 110, bench: 101 }],
+      bar: false,
+      rupee: true,
+      mixStroke: "#3d6ad6",
+      ...light,
+    });
+    assert.match(svg, /rgba\(22,22,24,0\.10\)/);
+    assert.equal(svg.includes("#26262b"), false);
   });
 });

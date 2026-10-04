@@ -1,6 +1,6 @@
 /** What leaves the browser for a signed-in account, and how two devices merge. */
 
-import type { JournalEntry, Portfolio, TradeLine, Fundamentals, Holding } from "./types.ts";
+import type { JournalEntry, PathPriceFact, Portfolio, TradeLine, Fundamentals, Holding } from "./types.ts";
 import type { ScreenFilter } from "./screens.ts";
 import { sanitizePortfolio } from "./sanitize.ts";
 import { baseSym, preferSymbol } from "./sectors.ts";
@@ -183,6 +183,16 @@ function mergeHoldingLists(remote: Holding[] | undefined, local: Holding[] | und
   return [...map.values()];
 }
 
+function mergeFacts(a?: PathPriceFact[], b?: PathPriceFact[]): PathPriceFact[] {
+  const map = new Map<string, PathPriceFact>();
+  for (const f of [...(a || []), ...(b || [])]) {
+    if (!f?.date || !(f.price > 0) || !/^https?:\/\//i.test(f.sourceUrl || "")) continue;
+    const key = `${f.symbol}|${f.date}`;
+    if (!map.has(key)) map.set(key, f);
+  }
+  return [...map.values()].slice(0, 400);
+}
+
 /** Union Path trades. A stale device must not erase a newer tradebook. */
 export function mergeCloud(local: CloudDoc, remote: CloudDoc): { doc: CloudDoc; dirty: boolean; notes: string[] } {
   const notes: string[] = [];
@@ -204,6 +214,7 @@ export function mergeCloud(local: CloudDoc, remote: CloudDoc): { doc: CloudDoc; 
       ...(localNewer ? { ...prev, ...p } : { ...p, ...prev }),
       holdings,
       trades,
+      pathFacts: mergeFacts(prev.pathFacts, p.pathFacts),
       id: p.id,
     });
   }

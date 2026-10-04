@@ -282,6 +282,7 @@ type KoshState = {
   replaceHoldings: (id: string, holdings: Holding[]) => void;
   setTrades: (id: string, trades: TradeLine[]) => void;
   mergeTrades: (id: string, trades: TradeLine[]) => void;
+  rememberPathFacts: (id: string, facts: import("@/lib/kosh/types").PathPriceFact[]) => void;
   setDeepFund: (symbol: string, snap: DeepFundSnap) => void;
   setDeepFunds: (rows: Record<string, DeepFundSnap>) => void;
   applyCloud: (doc: {
@@ -478,6 +479,20 @@ export const useKosh = create<KoshState>()(
           tradeCounts: { ...get().tradeCounts, [id]: next.length },
         });
         saveBook(id, next);
+      },
+      rememberPathFacts: (id, facts) => {
+        if (!id || !facts?.length) return;
+        set({
+          portfolios: get().portfolios.map((p) => {
+            if (p.id !== id) return p;
+            const map = new Map((p.pathFacts || []).map((f) => [`${f.symbol}|${f.date}`, f]));
+            for (const f of facts) {
+              if (!f?.date || !(f.price > 0) || !/^https?:\/\//i.test(f.sourceUrl || "")) continue;
+              map.set(`${f.symbol}|${f.date}`, f);
+            }
+            return { ...p, pathFacts: [...map.values()].slice(0, 400), updatedAt: Date.now() };
+          }),
+        });
       },
       setDeepFund: (symbol, snap) =>
         set({

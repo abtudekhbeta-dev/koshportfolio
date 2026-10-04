@@ -7,6 +7,8 @@ import { LandingHeader, SiteFooter, SkipToMain } from "@/components/landing/site
 import { Button } from "@/components/ui/button";
 import { apiNews, apiScreener, apiTape } from "@/lib/kosh/api";
 import { fmtPct, fmtTapePx } from "@/lib/kosh/engine";
+import { isIstSession } from "@/lib/kosh/market-hours";
+import { quoteStatus, quoteStatusLabel } from "@/lib/kosh/market-data";
 import { applyScreen } from "@/lib/kosh/screens";
 import { cn } from "@/lib/utils";
 import { MixNudge } from "@/components/mix-nudge";
@@ -76,11 +78,11 @@ const FAQ = [
   },
   {
     q: "Where do prices come from?",
-    a: "Live market data vendors, IST calendar. Some Nifty sector indices only print a stub — we then use the ETF that actually has a series.",
+    a: "Yahoo Finance, on an IST calendar. The print is delayed unless the provider says otherwise, and the status on the tape matches the terminal. Some Nifty sector indices only print a stub — we then use the ETF that actually has a series.",
   },
   {
     q: "Can I add gold and silver?",
-    a: "Yes. Under Add holdings → Gold & silver. Live MCX: gold as ₹/10g, silver as ₹/kg. You still type grams; average cost is ₹/g. A switch on every portfolio includes or excludes metals from the chart.",
+    a: "Yes. Under Add holdings → Gold & silver. Gold is shown as ₹/10g and silver as ₹/kg. You still type grams; average cost is ₹/g. A switch on every portfolio includes or excludes metals from the chart.",
   },
   {
     q: "Guest or account?",
@@ -93,8 +95,15 @@ function Tape() {
   const rows = tape.data || [];
   if (!rows.length) return null;
   const items = [...rows, ...rows];
+  const tapeOn = isIstSession() && rows.some((t) => t.price > 0);
+  const tapeLabel = quoteStatusLabel(quoteStatus({ session: isIstSession(), price: tapeOn ? 1 : rows[0]?.price }), null);
   return (
     <div className="overflow-hidden border-b border-border bg-bg-elevated">
+      <div className="flex items-center px-4 pt-1.5">
+        <span data-tape-status className="text-[10px] font-semibold tracking-[0.08em] text-subtle uppercase">
+          {tapeLabel}
+        </span>
+      </div>
       <div className="kosh-tape-track inline-flex w-max gap-8 px-4 py-2 text-[12px] text-muted">
         {items.map((t, i) => (
           <span key={t.id + "-" + i} className="inline-flex shrink-0 items-baseline gap-1.5 whitespace-nowrap">
@@ -129,6 +138,9 @@ function HeroBoard() {
           <div className="mt-0.5 text-[13px] font-semibold">{focus?.label || "Nifty 50"}</div>
         </div>
         <div className="flex items-center gap-1.5">
+          <span data-hero-status className="text-[10px] font-semibold tracking-[0.06em] text-subtle uppercase">
+            {quoteStatusLabel(quoteStatus({ session: isIstSession(), price: last || rows.find((r) => r.price > 0)?.price }), null)}
+          </span>
           <span className="rounded-sm bg-surface-2 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em] text-fg">LOG</span>
           <span className="rounded-sm px-1.5 py-0.5 text-[10px] text-muted">1D</span>
           <span className="rounded-sm px-1.5 py-0.5 text-[10px] text-muted">W</span>

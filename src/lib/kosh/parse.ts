@@ -475,19 +475,34 @@ export function parseHoldingWhen(raw: unknown): { date: string | null; boughtAt:
       mm = Number(m[5] || 0);
       ss = Number(m[6] || 0);
     } else {
-      d = Number(m[1]);
-      mo = Number(m[2]);
+      let dayN = Number(m[1]);
+      let monthN = Number(m[2]);
       y = Number(m[3]);
       if (y < 100) y += y >= 70 ? 1900 : 2000;
+      if (dayN > 12 && monthN <= 12) {
+        /* DD/MM */
+      } else if (monthN > 12 && dayN <= 12) {
+        const swap = dayN;
+        dayN = monthN;
+        monthN = swap;
+      } else if (dayN > 12 && monthN > 12) {
+        return { date: null, boughtAt: null };
+      }
+      d = dayN;
+      mo = monthN;
       hh = Number(m[4] || 0);
       mm = Number(m[5] || 0);
       ss = Number(m[6] || 0);
     }
     if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31 && y >= 1990 && y <= 2100) {
       const dt = new Date(Date.UTC(y, mo - 1, d, hh, mm, ss));
+      if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) {
+        return { date: null, boughtAt: null };
+      }
       const iso = dt.toISOString();
       return { date: iso.slice(0, 10), boughtAt: iso };
     }
+    return { date: null, boughtAt: null };
   }
   if (Number.isFinite(isoTry)) {
     const iso = new Date(isoTry).toISOString();
@@ -583,7 +598,6 @@ function rowMap(row: Record<string, unknown>): Record<string, unknown> {
 }
 
 function sideOf(map: Record<string, unknown>, qty: number): 1 | -1 | 0 {
-  if (qty < 0) return -1;
   const s = String(pick(map, SIDE_KEYS) || "").toUpperCase().trim();
   if (s) {
     if (/\b(EQUITY|STOCK|MUTUAL|FUND|ETF|OPTION|FUTURE|INDEX|BOND|DEBT|COMMODITY)\b/.test(s) && !/\b(BUY|SELL)\b/.test(s)) {
@@ -592,7 +606,9 @@ function sideOf(map: Record<string, unknown>, qty: number): 1 | -1 | 0 {
     else if (/^(S|SELL|SALE|SOLD|DEBIT|DR|OUT|SQUARE)$/.test(s)) return -1;
     else if (/buy/.test(s.toLowerCase()) && !/sell/.test(s.toLowerCase())) return 1;
     else if (/sell|sale/.test(s.toLowerCase())) return -1;
+    else if (!/^(CNC|MIS|NRML|DELIVERY|INTRADAY|MARGIN|LIMIT|MARKET|SL|SL-M)$/.test(s)) return 0;
   }
+  if (qty < 0) return -1;
   const bq = num(pick(map, BUYQTY_KEYS));
   const sq = num(pick(map, SELLQTY_KEYS));
   if (bq > 0 && !(sq > 0)) return 1;
@@ -884,26 +900,34 @@ export type ParsedBook = { holdings: Holding[]; fromTrades: boolean; trades: Tra
 function matrixToRows(matrix: unknown[][]): Record<string, unknown>[] {
   const rows = (matrix || []).map((r) => (Array.isArray(r) ? r : [r]));
   if (!rows.length) return [];
-  let headerIdx = -1;
-  const limit = Math.min(rows.length, 60);
-  for (let i = 0; i < limit; i++) {
-    const cells = rows[i].map((c) => (c == null ? "" : String(c).trim()));
-    if (looksLikeHeader(cells)) {
-      headerIdx = i;
-      break;
-    }
-  }
-  if (headerIdx < 0) {
-    headerIdx = rows.findIndex((r) => r.some((c) => String(c || "").trim()));
-    if (headerIdx < 0) return [];
-  }
-  const hdr = rows[headerIdx].map((c) => String(c ?? "").trim());
+  const cellsOf = (r: unknown[]) => r.map((c) => (c == null ? "" : String(c).trim()));
+  let header: string[] | null = null;
+  let sawHeader = false;
   const objects: Record<string, unknown>[] = [];
+  for (const r of rows) {
+    const cells = cellsOf(r);
+    if (!cells.some(Boolean)) continue;
+    if (looksLikeHeader(cells)) {
+      if (header && cells.map(normKey).join("|") === header.map(normKey).join("|")) continue;
+      header = cells;
+      sawHeader = true;
+      continue;
+    }
+    if (!header) continue;
+    objects.push(rowToMap(header, r));
+  }
+  if (sawHeader) return objects;
+  let headerIdx = rows.findIndex((r) => r.some((c) => String(c || "").trim()));
+  if (headerIdx < 0) return [];
+  const hdr = rows[headerIdx].map((c) => String(c ?? "").trim());
+  const fallback: Record<string, unknown>[] = [];
   for (const r of rows.slice(headerIdx + 1)) {
     if (!r.some((c) => c != null && String(c).trim() !== "")) continue;
-    objects.push(rowToMap(hdr, r));
+    const cells = cellsOf(r);
+    if (cells.map(normKey).join("|") === hdr.map(normKey).join("|")) continue;
+    fallback.push(rowToMap(hdr, r));
   }
-  return objects;
+  return fallback;
 }
 
 export function parseMatrixDetailed(matrix: unknown[][]): ParsedBook {
@@ -961,8 +985,29 @@ function parseCsvText(text: string): unknown[][] {
   const raw = text.replace(/^\uFEFF/, "");
   const lines = raw.split(/\r?\n/).filter((l) => l.trim().length);
   if (!lines.length) return [];
-  const delim =
-    [",", "\t", ";", "|"].sort((a, b) => (lines[0].split(b).length - 1) - (lines[0].split(a).length - 1))[0] || ",";
+  const cands = [",", "\t", ";", "|"];
+  let delim = ",";
+  let best = -1;
+  for (const d of cands) {
+    const counts = lines.slice(0, 40).map((line) => {
+      let n = 0;
+      let q = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') q = !q;
+        else if (ch === d && !q) n++;
+      }
+      return n;
+    });
+    const useful = counts.filter((n) => n > 0);
+    if (!useful.length) continue;
+    const mode = useful.sort((a, b) => a - b)[Math.floor(useful.length / 2)];
+    const score = useful.filter((n) => n === mode).length * mode;
+    if (score > best) {
+      best = score;
+      delim = d;
+    }
+  }
   const split = (line: string) => {
     const out: string[] = [];
     let cur = "";
@@ -986,18 +1031,7 @@ function parseCsvText(text: string): unknown[][] {
 }
 
 export function parseCsv(text: string): Record<string, unknown>[] {
-  const matrix = parseCsvText(text);
-  if (!matrix.length) return [];
-  let headerIdx = matrix.findIndex((r) => looksLikeHeader(r.map(String)));
-  if (headerIdx < 0) headerIdx = 0;
-  const hdr = matrix[headerIdx].map(String);
-  return matrix.slice(headerIdx + 1).map((cells) => {
-    const row: Record<string, unknown> = {};
-    hdr.forEach((h, i) => {
-      row[h] = cells[i] ?? "";
-    });
-    return row;
-  });
+  return matrixToRows(parseCsvText(text));
 }
 
 export async function parseSpreadsheet(buf: ArrayBuffer): Promise<Holding[]> {
@@ -1013,10 +1047,10 @@ export async function parseSpreadsheetDetailed(buf: ArrayBuffer): Promise<Parsed
     const sheet = wb.Sheets[name];
     if (!sheet) continue;
     const n = name.toLowerCase();
-    if (/mutual|\bmf\b|nfo|sip/.test(n) && !/equity|holding/.test(n)) continue;
+    if (/mutual|\bmf\b|nfo|sip/.test(n) && !/equity|holding|trade|transaction/.test(n)) continue;
     const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "", raw: true });
     const got = parseMatrixDetailed(matrix);
-    if (!got.holdings.length) continue;
+    if (!got.holdings.length && !(got.trades || []).length) continue;
     let score = got.holdings.length;
     if (/holdings|equity|stock/.test(n)) score += 100;
     if (/trade|transaction|order|pnl|buy/.test(n)) score += 80;
@@ -1046,7 +1080,7 @@ export async function parseHoldingsFileDetailed(file: File): Promise<ParsedBook>
   if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".xlsm")) {
     try {
       const got = await parseSpreadsheetDetailed(buf);
-      if (got.holdings.length) return got;
+      if (got.holdings.length || (got.trades || []).length) return got;
     } catch {
       /* fall through to text */
     }

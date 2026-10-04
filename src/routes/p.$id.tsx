@@ -130,7 +130,7 @@ function PortfolioLayout() {
         </div>
       </div>
 
-      <nav className="-mx-4 mb-5 flex gap-1 overflow-x-auto px-4">
+      <nav className="-mx-3 mb-5 flex gap-1 overflow-x-auto px-3 sm:-mx-4 sm:px-4">
         {TABS.map((t) => {
           const href = t.to.replace("$id", id);
           const active = t.exact ? pathname === `/p/${id}` || pathname === `/p/${id}/` : pathname.startsWith(href);

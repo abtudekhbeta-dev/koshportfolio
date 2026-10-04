@@ -202,6 +202,35 @@ describe("completion plan", () => {
     );
   });
 
+  it("accepts one sourced close for the asked date and rejects an estimate", () => {
+    const sourced = item({
+      metric: "closing price of ITC on 2024-07-03",
+      status: "researched",
+      value: 412.42,
+      period: "2024-07-03",
+      sourceName: "NSE",
+      sourceUrl: "https://www.nseindia.com/example",
+      evidence: "NSE official close of ITC on 2024-07-03 was 412.42.",
+      methodology: "quoted",
+    });
+    assert.equal(usablePathPrice(sourced, "2024-07-03"), 412.42);
+    assert.equal(usablePathPrice(sourced, "2024-08-03"), null);
+    assert.equal(
+      usablePathPrice(
+        item({
+          metric: "close on 2024-07-03",
+          status: "researched",
+          value: 400,
+          evidence: "Estimated close on 2024-07-03 was about 400.",
+          sourceUrl: "https://example.com/note",
+          sourceName: "Blog",
+        }),
+        "2024-07-03",
+      ),
+      null,
+    );
+  });
+
   it("maps a source-backed listed symbol and ignores a price-only reply", () => {
     const hit = listedSymbolFromResearch(
       "GMR",

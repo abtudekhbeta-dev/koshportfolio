@@ -24,6 +24,24 @@ export const SMA_STROKE = "#c4b08a";
 export const PLOT_BG = "#161618";
 export const UP_FILL = "#3dcf8e";
 
+/** Light-theme grid matches the terminal: a faint line, not a near-black rule. */
+export function plotChrome(theme: "light" | "dark" | string | null | undefined) {
+  if (theme === "light") {
+    return {
+      gridStroke: "rgba(22,22,24,0.10)",
+      zeroStroke: "rgba(22,22,24,0.20)",
+      tickFill: "#5a5a62",
+      markerStroke: "#fffcf6",
+    };
+  }
+  return {
+    gridStroke: "rgba(255,255,255,0.055)",
+    zeroStroke: "rgba(255,255,255,0.14)",
+    tickFill: TICK_FILL,
+    markerStroke: "#09090b",
+  };
+}
+
 export const VW = 800;
 export const VH = 300;
 export const PAD = { l: 54, r: 16, t: 16, b: 28 };
@@ -461,6 +479,10 @@ export function buildSvgDoc(args: {
   showMix?: boolean;
   pathPrimary?: boolean;
   benchStroke?: string;
+  gridStroke?: string;
+  zeroStroke?: string;
+  tickFill?: string;
+  markerStroke?: string;
 }): string {
   const { rows, bar, rupee, mixStroke } = args;
   const n = rows.length;
@@ -492,6 +514,10 @@ export function buildSvgDoc(args: {
     ? Array.from({ length: xCount }, (_, i) => Math.round((i * (n - 1)) / Math.max(1, xCount - 1)))
     : [];
   const benchStroke = args.benchStroke || BENCH_STROKE;
+  const gridStroke = args.gridStroke || GRID_STROKE;
+  const zeroStroke = args.zeroStroke || ZERO_STROKE;
+  const tickFill = args.tickFill || TICK_FILL;
+  const markerStroke = args.markerStroke || "#09090b";
   const lastStroke = args.pathPrimary ? PATH_STROKE : mixStroke;
 
   const p: string[] = [];
@@ -508,28 +534,28 @@ export function buildSvgDoc(args: {
   for (const v of ticks) {
     const y = yOf(v, lo, hi);
     p.push(
-      `<line x1="${PAD.l}" y1="${y.toFixed(2)}" x2="${VW - PAD.r}" y2="${y.toFixed(2)}" stroke="${GRID_STROKE}" stroke-width="1"/>`,
+      `<line x1="${PAD.l}" y1="${y.toFixed(2)}" x2="${VW - PAD.r}" y2="${y.toFixed(2)}" stroke="${gridStroke}" stroke-width="1"/>`,
     );
     p.push(
-      `<text x="${PAD.l - 6}" y="${y.toFixed(2)}" fill="${TICK_FILL}" font-size="10" font-family="IBM Plex Mono,ui-monospace,monospace" text-anchor="end" dominant-baseline="middle">${xmlEsc(niceY(v, rupee))}</text>`,
+      `<text x="${PAD.l - 6}" y="${y.toFixed(2)}" fill="${tickFill}" font-size="10" font-family="IBM Plex Mono,ui-monospace,monospace" text-anchor="end" dominant-baseline="middle">${xmlEsc(niceY(v, rupee))}</text>`,
     );
   }
   if (lo < 0 && hi > 0) {
     const y = yOf(0, lo, hi);
     p.push(
-      `<line x1="${PAD.l}" y1="${y.toFixed(2)}" x2="${VW - PAD.r}" y2="${y.toFixed(2)}" stroke="${ZERO_STROKE}" stroke-width="1"/>`,
+      `<line x1="${PAD.l}" y1="${y.toFixed(2)}" x2="${VW - PAD.r}" y2="${y.toFixed(2)}" stroke="${zeroStroke}" stroke-width="1"/>`,
     );
   }
   for (const y of args.years || []) {
     const x = xOf(y.i, n);
     p.push(
-      `<text x="${x.toFixed(2)}" y="${PAD.t + 11}" fill="${TICK_FILL}" font-size="9" font-family="IBM Plex Mono,ui-monospace,monospace" text-anchor="middle">${xmlEsc(y.year)}</text>`,
+      `<text x="${x.toFixed(2)}" y="${PAD.t + 11}" fill="${tickFill}" font-size="9" font-family="IBM Plex Mono,ui-monospace,monospace" text-anchor="middle">${xmlEsc(y.year)}</text>`,
     );
   }
   for (const i of xIdx) {
     if (!rows[i]) continue;
     p.push(
-      `<text x="${xOf(i, n).toFixed(2)}" y="${VH - 8}" fill="${TICK_FILL}" font-size="10" font-family="IBM Plex Mono,ui-monospace,monospace" text-anchor="middle">${xmlEsc(fmtTick(rows[i].day))}</text>`,
+      `<text x="${xOf(i, n).toFixed(2)}" y="${VH - 8}" fill="${tickFill}" font-size="10" font-family="IBM Plex Mono,ui-monospace,monospace" text-anchor="middle">${xmlEsc(fmtTick(rows[i].day))}</text>`,
     );
   }
   if (useBars) {
@@ -581,7 +607,7 @@ export function buildSvgDoc(args: {
       const x = xOf(lastI, n);
       const y = yOf(rows[lastI][lastKey] as number, lo, hi);
       p.push(
-        `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3.6" fill="${lastStroke}" stroke="#09090b" stroke-width="1.4"/>`,
+        `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3.6" fill="${lastStroke}" stroke="${markerStroke}" stroke-width="1.4"/>`,
       );
     }
   }

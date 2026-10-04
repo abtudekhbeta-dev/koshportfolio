@@ -92,7 +92,7 @@ export async function loadBook(portfolio: Portfolio, opts?: { sleeves?: boolean 
     for (const [k, q] of Object.entries(quoteMap)) {
       if (q?.price > 0) livePx[baseSym(k)] = q.price;
     }
-    book.path = buildPath(trades, tradeHx, benchPack?.bars || [], Date.now(), livePx);
+    book.path = buildPath(trades, tradeHx, benchPack?.bars || [], Date.now(), livePx, portfolio.pathFacts);
   }
   return book;
 }
@@ -107,6 +107,7 @@ export function useBook(portfolio: Portfolio | undefined) {
       portfolio?.includeCommodities,
       portfolio?.holdings,
       portfolio?.trades,
+      portfolio?.pathFacts,
     ],
     queryFn: () => loadBook(portfolio!, { sleeves: false }),
     enabled: Boolean(portfolio && portfolio.holdings.length),
