@@ -378,6 +378,7 @@ function stamp(fields: Record<string, FactProvenance>, key: string, item: Resear
     method,
     period: item.period,
     reason: item.evidence,
+    sourceUrl: item.sourceUrl || null,
   };
 }
 
@@ -416,6 +417,7 @@ export function applyResearchToFund(fund: Fundamentals, items: ResearchItem[]): 
           method: "Annual observations from a cited source. CAGR is calculated by Kosh, not by the model.",
           period: pts.at(-1)?.period || item.period,
           reason: item.evidence,
+          sourceUrl: item.sourceUrl || null,
         };
       }
       continue;
@@ -433,6 +435,7 @@ export function applyResearchToFund(fund: Fundamentals, items: ResearchItem[]): 
             period: item.period,
             reason: item.evidence || "Sources disagree. Kosh did not average them.",
             alt: item.value,
+            sourceUrl: item.sourceUrl || null,
           };
         }
       }
@@ -447,6 +450,7 @@ export function applyResearchToFund(fund: Fundamentals, items: ResearchItem[]): 
           method: item.evidence || "Not found in the sources checked.",
           period: item.period,
           reason: item.evidence || "Not found in the sources checked.",
+          sourceUrl: item.sourceUrl || null,
         };
       }
       continue;
@@ -506,6 +510,41 @@ export function usablePathPrice(_item: ResearchItem | null): number | null {
 /** What a model may be asked when a Path name did not match a listed ticker. Never a price or a return. */
 export function pathIdentityAsk(symbol: string): string {
   return `listed NSE or BSE symbol for ${symbol}`;
+}
+
+/**
+ * A listed ticker from a source-backed identity reply. Never a price.
+ * Requires an http source, a source name, and evidence that names the ticker.
+ */
+export function listedSymbolFromResearch(asked: string, item: ResearchItem | null | undefined): string | null {
+  if (!item || item.status !== "researched") return null;
+  const url = String(item.sourceUrl || "");
+  if (!/^https?:\/\//i.test(url)) return null;
+  if (!String(item.sourceName || "").trim()) return null;
+  const evidence = String(item.evidence || "").trim();
+  if (evidence.length < 8) return null;
+  const blob = `${item.metric || ""} ${evidence}`;
+  const bare = String(asked || "").replace(/\.(NS|BO)$/i, "").toUpperCase();
+  const re = /(?:symbol|ticker|listed|NSE|BSE|nse|bse|Symbol|Ticker|Listed)[^A-Z0-9&]{0,48}([A-Z][A-Z0-9&]{1,18})/g;
+  const skip = new Set(["NSE", "BSE", "NS", "BO", "EQ", "SYMBOL", "TICKER", "LISTED", "OR", "THE", "FOR", "AND"]);
+  let found: string | null = null;
+  for (const m of blob.matchAll(re)) {
+    const ticker = m[1].replace(/\.(NS|BO)$/, "").toUpperCase();
+    if (!/^[A-Z][A-Z0-9&]{1,18}$/.test(ticker) || skip.has(ticker) || ticker === bare) continue;
+    found = ticker;
+  }
+  return found;
+}
+
+/** Names already finished are not run again when a bulk completion is resumed. */
+export function remainingJobs<T extends { symbol: string }>(
+  jobs: T[],
+  rows: { symbol: string; phase: string }[],
+): T[] {
+  const finished = new Set(
+    rows.filter((r) => r.phase === "done" || r.phase === "incomplete").map((r) => r.symbol),
+  );
+  return jobs.filter((j) => j.symbol && !finished.has(j.symbol));
 }
 
 /**

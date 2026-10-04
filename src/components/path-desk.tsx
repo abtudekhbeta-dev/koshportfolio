@@ -2,10 +2,9 @@ import { Link } from "@tanstack/react-router";
 import { Fragment, useMemo, useState } from "react";
 import { PathStack } from "@/components/charts/path-stack";
 import { MonthHeatmap } from "@/components/charts/heatmap";
-import { WindowsGrid } from "@/components/windows-grid";
 import { fmtInr, fmtPct } from "@/lib/kosh/engine";
 import { mixVsPathGaps } from "@/lib/kosh/path";
-import type { ClosedTrade, PathEvent, PathName, PathPack, PathSlice } from "@/lib/kosh/types";
+import type { AfterSale, ClosedTrade, PathEvent, PathName, PathPack, PathSlice } from "@/lib/kosh/types";
 import { cn } from "@/lib/utils";
 
 function dayLabel(d: string) {
@@ -111,14 +110,6 @@ export function PathDesk({
             className={tone(vsNifty)}
           />
         </div>
-        {path.windows && Object.keys(path.windows).length ? (
-          <div className="mt-4">
-            <p className="mb-3 text-[12px] text-muted">
-              Each window uses the same method. Extra money added later is taken out of these percentages.
-            </p>
-            <WindowsGrid windows={path.windows} portLabel="Your path" benchLabel={benchName} />
-          </div>
-        ) : null}
       </section>
 
       <section>
@@ -299,62 +290,91 @@ function YearTable({ years, benchName }: { years: PathPack["years"]; benchName: 
   );
 }
 
-function AfterCell({ pct, note }: { pct?: number | null; note?: string | null }) {
-  if (pct != null && Number.isFinite(pct)) {
+function saleLabel(status: AfterSale["status"]) {
+  if (status === "calculated") return "Calculated";
+  if (status === "insufficient") return "Insufficient history";
+  if (status === "ai") return "AI-researched · source-backed";
+  if (status === "na") return "Not applicable";
+  return "Unavailable";
+}
+
+function AfterCell({ cell, pct, note }: { cell?: AfterSale | null; pct?: number | null; note?: string | null }) {
+  if (cell?.status === "calculated" && cell.pct != null && Number.isFinite(cell.pct)) {
     return (
       <>
-        {fmtPct(pct)}
-        {note && /^\d{4}-\d{2}-\d{2}$/.test(note) ? <div className="text-[11px] text-subtle">{note}</div> : null}
+        {fmtPct(cell.pct)}
+        <div className="text-[11px] font-sans text-subtle">
+          {cell.observedDate ? dayLabel(cell.observedDate) : ""}
+          {cell.observedPx != null ? ` · ₹${cell.observedPx.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : ""}
+        </div>
+        <div className="text-[10px] font-sans text-subtle">
+          Target {cell.targetDate ? dayLabel(cell.targetDate) : "—"}
+          {cell.basis === "adjusted" ? " · adjusted" : ""}
+        </div>
       </>
     );
   }
+  if (cell) {
+    return (
+      <span className="text-[11px] font-sans text-subtle" title={cell.reason}>
+        {saleLabel(cell.status)}
+      </span>
+    );
+  }
+  if (pct != null && Number.isFinite(pct)) return <>{fmtPct(pct)}</>;
   return <span className="text-[11px] font-sans text-subtle">{note || "Unavailable"}</span>;
 }
 
 function ClosedTable({ rows }: { rows: ClosedTrade[] }) {
+  const shown = rows.length > 500 ? rows.slice(-500) : rows;
   return (
     <div className="mt-6">
       <h3 className="mb-2 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">After selling</h3>
       <p className="mb-3 text-[12px] text-muted">
-        First-in, first-out from the file. Post-sale is the stock’s later print — shown only when we have a price near
-        that later date.
+        Each row is one sale. 1M, 3M, 6M and 1Y are the stock’s move from your sell price to the first session on or
+        after that later date — not today’s price, and not a card above this table.
+        {rows.length > shown.length ? ` Showing the latest ${shown.length} of ${rows.length} calculated sales.` : ""}
       </p>
-      <div className="overflow-x-auto rounded-lg bg-surface shadow-[var(--shadow-border)]">
+      <div className="max-h-[32rem] overflow-auto rounded-lg bg-surface shadow-[var(--shadow-border)]">
         <table className="kosh-table w-full text-left text-[13px]">
-          <thead className="text-[11px] tracking-[0.06em] text-subtle uppercase">
+          <thead className="sticky top-0 bg-surface text-[11px] tracking-[0.06em] text-subtle uppercase">
             <tr>
               <th className="px-3 py-2 font-medium">Stock</th>
               <th className="px-3 py-2 font-medium text-right">Qty</th>
-              <th className="px-3 py-2 font-medium">Sold</th>
+              <th className="px-3 py-2 font-medium">Sell date</th>
+              <th className="px-3 py-2 font-medium text-right">Sell price</th>
               <th className="px-3 py-2 font-medium text-right">P&L</th>
-              <th className="px-3 py-2 font-medium text-right">1M after</th>
-              <th className="px-3 py-2 font-medium text-right">3M after</th>
-              <th className="px-3 py-2 font-medium text-right">1Y after</th>
+              <th className="px-3 py-2 font-medium text-right">After sell · 1M</th>
+              <th className="px-3 py-2 font-medium text-right">After sell · 3M</th>
+              <th className="px-3 py-2 font-medium text-right">After sell · 6M</th>
+              <th className="px-3 py-2 font-medium text-right">After sell · 1Y</th>
             </tr>
           </thead>
           <tbody>
-            {rows.slice(0, 24).map((c, i) => (
+            {shown.map((c, i) => (
               <tr key={c.symbol + c.buyDate + c.sellDate + i}>
                 <td className="px-3 py-2">
                   <div className="text-fg">{c.name}</div>
                   <div className="font-mono text-[11px] text-subtle">{c.symbol}</div>
                 </td>
                 <td className="px-3 py-2 text-right font-mono tabular">{c.qty}</td>
-                <td className="px-3 py-2 text-muted">
-                  {dayLabel(c.sellDate)} · ₹{c.sellPx.toLocaleString("en-IN")}
-                </td>
+                <td className="px-3 py-2 text-muted">{dayLabel(c.sellDate)}</td>
+                <td className="px-3 py-2 text-right font-mono tabular">₹{c.sellPx.toLocaleString("en-IN")}</td>
                 <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.pnl))}>
                   {fmtInr(c.pnl)}
                   <div className="text-[11px]">{fmtPct(c.pnlPct)}</div>
                 </td>
-                <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.post1m))}>
-                  <AfterCell pct={c.post1m} note={c.post1mNote} />
+                <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.after1m?.pct ?? c.post1m))}>
+                  <AfterCell cell={c.after1m} pct={c.post1m} note={c.post1mNote} />
                 </td>
-                <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.post3m))}>
-                  <AfterCell pct={c.post3m} note={c.post3mNote} />
+                <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.after3m?.pct ?? c.post3m))}>
+                  <AfterCell cell={c.after3m} pct={c.post3m} note={c.post3mNote} />
                 </td>
-                <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.post1y))}>
-                  <AfterCell pct={c.post1y} note={c.post1yNote} />
+                <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.after6m?.pct ?? c.post6m))}>
+                  <AfterCell cell={c.after6m} pct={c.post6m} note={c.post6mNote} />
+                </td>
+                <td className={cn("px-3 py-2 text-right font-mono tabular", tone(c.after1y?.pct ?? c.post1y))}>
+                  <AfterCell cell={c.after1y} pct={c.post1y} note={c.post1yNote} />
                 </td>
               </tr>
             ))}

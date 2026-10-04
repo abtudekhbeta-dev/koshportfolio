@@ -667,6 +667,7 @@ export function blankScreenRow(symbol: string, name?: string): ScreenRow {
     vcpDays: null,
     vcpVolX: null,
     vcpPivot: null,
+    vcpState: "unavailable",
     depth: "name",
     thin: null,
   };

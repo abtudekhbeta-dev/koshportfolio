@@ -22,6 +22,8 @@ export type FactProvenance = {
   alt?: number | null;
   altSource?: string | null;
   reason?: string;
+  /** Present only for AI-researched facts that cited an http(s) page. */
+  sourceUrl?: string | null;
 };
 
 export type Provenance = {

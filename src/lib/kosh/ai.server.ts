@@ -573,25 +573,32 @@ export async function executeNote(input: NoteInput): Promise<NoteOk | { ok: fals
   if ((kind === "book" || kind === "holdings" || kind === "picks" || kind === "improve") && !input.book?.names?.length) return { ok: false, error: "Empty portfolio" };
 
   const day = input.fresh ? "f" + String(input.fresh) : new Date().toISOString().slice(0, 10);
+  const portfolioExtra =
+    kind === "book" || kind === "holdings" || kind === "picks" || kind === "improve"
+      ? (input.book?.names || [])
+          .map((h) =>
+            kind === "improve"
+              ? `${h.symbol}:${h.weight}:${h.fundApproved || h.fundTag || ""}:${h.qualApproved || h.qualTag || ""}:${h.fundStatus || ""}:${h.qualStatus || ""}`
+              : `${h.symbol}:${h.weight}`,
+          )
+          .join(",")
+      : "";
   const cacheKey =
-    kind === "fund" || kind === "qual"
-      ? skillCacheKey({ kind, symbol: symbol.toUpperCase(), date: day })
+    kind === "fund" || kind === "qual" || kind === "book" || kind === "holdings" || kind === "picks" || kind === "improve"
+      ? skillCacheKey({
+          kind,
+          symbol: symbol.toUpperCase(),
+          date: day,
+          extra: portfolioExtra || undefined,
+        })
       : `${SKILL_CACHE_PREFIX}:` +
-        (kind === "book" || kind === "holdings" || kind === "picks" || kind === "improve"
-          ? `${kind}:${(input.book?.names || [])
-              .map((h) =>
-                kind === "improve"
-                  ? `${h.symbol}:${h.weight}:${h.fundApproved || h.fundTag || ""}:${h.qualApproved || h.qualTag || ""}:${h.fundStatus || ""}:${h.qualStatus || ""}`
-                  : `${h.symbol}:${h.weight}`,
-              )
-              .join(",")}:${day}`
-          : kind === "pulse"
-            ? `pulse:${new Date().toISOString().slice(0, 10)}`
-            : kind === "structure"
-              ? `structure:${symbol.toUpperCase()}:${input.chart?.mode || ""}:${input.chart?.interval || ""}:${input.chart?.lookback || ""}:${new Date().toISOString().slice(0, 10)}`
-              : kind === "combine"
-                ? `combine:${symbol.toUpperCase()}:${String(input.prior?.fund || "").length}:${String(input.prior?.qual || "").length}:${new Date().toISOString().slice(0, 10)}`
-                : `${kind}:${symbol.toUpperCase()}:${kind === "ask" ? question : day}`);
+        (kind === "pulse"
+          ? `pulse:${new Date().toISOString().slice(0, 10)}`
+          : kind === "structure"
+            ? `structure:${symbol.toUpperCase()}:${input.chart?.mode || ""}:${input.chart?.interval || ""}:${input.chart?.lookback || ""}:${new Date().toISOString().slice(0, 10)}`
+            : kind === "combine"
+              ? `combine:${symbol.toUpperCase()}:${String(input.prior?.fund || "").length}:${String(input.prior?.qual || "").length}:${new Date().toISOString().slice(0, 10)}`
+              : `${kind}:${symbol.toUpperCase()}:${kind === "ask" ? question : day}`);
   const hit = cache.get(cacheKey);
   if (hit && Date.now() - hit.at < DAY) {
     if ((kind === "fund" || kind === "qual") && !skillOutputReady(kind, hit.text)) {

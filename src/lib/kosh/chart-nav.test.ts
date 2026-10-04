@@ -38,6 +38,15 @@ describe("chart viewport", () => {
     assert.equal(wider.start + wider.count, view.start + view.count);
   });
 
+  it("repeated zoom in and out keeps the same right edge", () => {
+    let view = { start: 220, count: 80 };
+    const right = view.start + view.count;
+    for (let i = 0; i < 6; i++) view = zoomRightEdge(view, 400, true);
+    assert.equal(view.start + view.count, right);
+    for (let i = 0; i < 4; i++) view = zoomRightEdge(view, 400, false);
+    assert.equal(view.start + view.count, right);
+  });
+
   it("reset parks the latest bars on the right edge", () => {
     const v = resetView(500, 180);
     assert.equal(v.count, 180);

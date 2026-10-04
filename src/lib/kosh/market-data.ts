@@ -18,10 +18,27 @@ export function quoteStatus(input: {
   return "last";
 }
 
-export function quoteStatusLabel(status: QuoteStatus): string {
-  if (status === "session") return "SESSION · DELAYED";
+export function quoteStatusLabel(status: QuoteStatus, delayMin?: number | null): string {
+  if (status === "session") {
+    // 0 is the only provider signal that this print is not delayed. Missing is not live.
+    if (delayMin === 0) return "SESSION · LIVE";
+    return "SESSION · DELAYED";
+  }
   if (status === "last") return "LAST AVAILABLE";
   return "UNAVAILABLE";
+}
+
+/**
+ * Yahoo chart `exchangeDataDelayedBy`. 0 = live. Small numbers are minutes.
+ * Values above 180 are seconds (15 minutes is often 900). Missing stays null.
+ */
+export function delayMinutesFromMeta(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return null;
+  if (n === 0) return 0;
+  if (n > 180) return Math.round(n / 60);
+  return Math.round(n);
 }
 
 /** Quotes are delayed. Do not describe this feed as live. */

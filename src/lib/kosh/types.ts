@@ -34,6 +34,8 @@ export type Quote = {
   error?: string;
   /** Unix ms when this print was fetched. Missing on older cached rows. */
   retrievedAt?: number;
+  /** Minutes the provider says this print is delayed. 0 means the provider marks it live. Missing means unknown — not live. */
+  delayMin?: number | null;
 };
 
 export type HistoryPack = {
@@ -204,13 +206,34 @@ export type ClosedTrade = {
   pnl: number;
   pnlPct: number;
   days: number;
-  /** Percent move of the stock after the sell. Null when the window is not usable. */
+  /** Percent move of the stock after the sell. Null when the window is not a calculated result. */
   post1m?: number | null;
   post3m?: number | null;
+  post6m?: number | null;
   post1y?: number | null;
   post1mNote?: string | null;
   post3mNote?: string | null;
+  post6mNote?: string | null;
   post1yNote?: string | null;
+  after1m?: AfterSale | null;
+  after3m?: AfterSale | null;
+  after6m?: AfterSale | null;
+  after1y?: AfterSale | null;
+};
+
+export type AfterSaleStatus = "calculated" | "unavailable" | "insufficient" | "ai" | "na";
+
+/** What the stock did after this sale. Anchored to the sell date and sell price. */
+export type AfterSale = {
+  status: AfterSaleStatus;
+  pct: number | null;
+  sellDate: string;
+  sellPx: number;
+  targetDate: string | null;
+  observedDate: string | null;
+  observedPx: number | null;
+  basis: "close" | "adjusted" | null;
+  reason: string;
 };
 
 export type PathYear = {
@@ -574,6 +597,8 @@ export type ScreenRow = {
   vcpDays: number | null;
   vcpVolX: number | null;
   vcpPivot: number | null;
+  /** calculated = a VCP number; na = enough history, not a VCP; insufficient = too few bars; unavailable = no series. */
+  vcpState?: "calculated" | "insufficient" | "unavailable" | "na" | null;
   /** full = daily history + company card; quote = live print only; name = listed, no print yet */
   depth?: "full" | "quote" | "name";
   thin?: boolean | null;

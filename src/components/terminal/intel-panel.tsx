@@ -111,7 +111,7 @@ export function IntelPanel({
                 status === "session" ? "bg-up/15 text-up" : status === "last" ? "bg-surface-2 text-muted" : "bg-down/15 text-down",
               )}
             >
-              {quoteStatusLabel(status)}
+              {quoteStatusLabel(status, quote?.delayMin)}
             </span>
           </div>
           <p className="mt-0.5 text-[11px] text-subtle">Kosh intelligence — numbers on file, not a forecast.</p>

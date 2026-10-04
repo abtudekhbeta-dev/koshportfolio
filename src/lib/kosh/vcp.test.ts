@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { detectVcp } from "./vcp.ts";
+import { classifyVcp, detectVcp } from "./vcp.ts";
 import type { OhlcBar } from "./types.ts";
 
 function bar(i: number, o: number, h: number, l: number, c: number, v: number): OhlcBar {
@@ -98,5 +98,25 @@ describe("detectVcp", () => {
       out.push(bar(i, px, px * 1.01, px * 0.99, px, 1_000_000));
     }
     assert.equal(detectVcp(out), null);
+  });
+});
+
+describe("classifyVcp", () => {
+  it("is unavailable with no series and insufficient under 80 bars", () => {
+    assert.equal(classifyVcp(null).state, "unavailable");
+    assert.equal(classifyVcp([]).state, "unavailable");
+    assert.equal(classifyVcp([bar(0, 10, 11, 9, 10, 1_000)]).state, "insufficient");
+  });
+
+  it("is not applicable when there is enough history and no VCP", () => {
+    const flat = Array.from({ length: 90 }, (_, i) => bar(i, 100, 101, 99, 100, 1_000_000));
+    assert.equal(classifyVcp(flat).state, "na");
+    assert.equal(classifyVcp(flat).hit, null);
+  });
+
+  it("is calculated when detectVcp finds a pattern", () => {
+    const hit = classifyVcp(formingVcp());
+    assert.equal(hit.state, "calculated");
+    assert.ok(hit.hit);
   });
 });

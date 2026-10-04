@@ -7,7 +7,7 @@ import { fetchFundamentals } from "./fundamentals.server.ts";
 import { listedEquities } from "./master.server.ts";
 import { newsAboutCompany, newsMaterial } from "./news.ts";
 import { stakeDelta } from "./shareholding.ts";
-import { detectVcp } from "./vcp.ts";
+import { classifyVcp } from "./vcp.ts";
 import { loadCompanyFunds } from "./company-cache.server.ts";
 import { fillBlankScreenFund } from "./screens.ts";
 import { rememberNifty } from "./nifty-snap.ts";
@@ -206,7 +206,8 @@ function toRow(pack: OhlcPack, input: string, fund?: Fundamentals | null): Scree
   const off = pack.high52 ? ((px / pack.high52 - 1) * 100) : null;
   const bare = input.replace(/\.(NS|BO)$/i, "").toUpperCase();
   const retest = detectRetest(bars);
-  const vcp = detectVcp(bars);
+  const classified = classifyVcp(bars);
+  const vcp = classified.hit;
   const retBars = bars.map((b) => ({ ...b, c: b.adj && b.adj > 0 ? b.adj : b.c }));
   const thin = (pack.mcapCr != null && pack.mcapCr < 500) || (avg > 0 && avg < 50_000);
   return {
@@ -248,6 +249,7 @@ function toRow(pack: OhlcPack, input: string, fund?: Fundamentals | null): Scree
     vcpDays: vcp?.days ?? null,
     vcpVolX: vcp?.volX ?? null,
     vcpPivot: vcp?.pivot ?? null,
+    vcpState: classified.state,
     depth: "full",
     thin,
   };
@@ -301,6 +303,7 @@ function emptyRow(u: { symbol: string; name: string }): ScreenRow {
     vcpDays: null,
     vcpVolX: null,
     vcpPivot: null,
+    vcpState: "unavailable",
     depth: "name" as const,
     thin: null,
   };

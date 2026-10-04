@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildPath, fillTradePrices, mixVsPathGaps, overlayOnMix, pathToChartNav, sortTrades } from "./path.ts";
+import { afterSale, buildPath, fillTradePrices, mixVsPathGaps, overlayOnMix, pathToChartNav, sortTrades } from "./path.ts";
 import { buildMixPath } from "./engine.ts";
 import type { Bar, NavPoint, TradeLine } from "./types.ts";
 
@@ -393,6 +393,9 @@ describe("path reconstruction", () => {
     assert.ok(c);
     assert.ok(c.post1m != null);
     assert.ok(Math.abs(c.post1m! - 30) < 1, String(c.post1m));
+    assert.equal(c.after1m?.status, "calculated");
+    assert.equal(c.after1m?.targetDate, "2024-02-06");
+    assert.equal(c.after1m?.observedDate, "2024-02-06");
   });
 
   it("never-sold stays a hypothetical leftover of purchased qty", () => {
@@ -406,5 +409,60 @@ describe("path reconstruction", () => {
     const p = buildPath([buy("X", 10, 10, "2024-01-02"), sell("X", 10, 11, "2024-01-10")], hx, hx.X);
     assert.equal(p.wealthNow, 0);
     assert.ok(p.neverSoldLast != null && Math.abs(p.neverSoldLast! - 120) < 1e-6);
+  });
+});
+
+function dayMap(rows: Record<string, number>) {
+  const m = new Map<string, { t: number; c: number }>();
+  for (const [day, px] of Object.entries(rows)) m.set(day, { t: Date.parse(day + "T00:00:00Z") / 1000, c: px });
+  return m;
+}
+
+describe("after-sale windows", () => {
+  it("uses the first session on or after a weekend target, never a session before it", () => {
+    const raw = dayMap({
+      "2025-01-08": 100,
+      "2025-02-07": 104,
+      "2025-02-10": 110,
+    });
+    const cell = afterSale(raw, raw, "2025-01-08", 100, 1);
+    assert.equal(cell.targetDate, "2025-02-08");
+    assert.equal(cell.observedDate, "2025-02-10");
+    assert.equal(cell.observedPx, 110);
+    assert.equal(cell.status, "calculated");
+    assert.ok(cell.pct != null && Math.abs(cell.pct - 10) < 0.01);
+  });
+
+  it("is insufficient history when the window has not elapsed — not today's price", () => {
+    const raw = dayMap({ "2025-01-10": 100, "2025-01-31": 140 });
+    const cell = afterSale(raw, raw, "2025-01-10", 100, 1);
+    assert.equal(cell.status, "insufficient");
+    assert.equal(cell.pct, null);
+    assert.equal(cell.observedPx, null);
+    assert.equal(cell.targetDate, "2025-02-10");
+  });
+
+  it("is unavailable when no session falls within 10 days after the target", () => {
+    const raw = dayMap({ "2025-01-10": 100, "2025-02-07": 105, "2025-02-25": 150 });
+    const cell = afterSale(raw, raw, "2025-01-10", 100, 1);
+    assert.equal(cell.status, "unavailable");
+    assert.equal(cell.pct, null);
+    assert.notEqual(cell.observedDate, "2025-02-07");
+  });
+
+  it("uses the adjusted ratio when a split changes raw versus adjusted", () => {
+    const raw = dayMap({ "2025-01-10": 200, "2025-02-10": 110 });
+    const adj = dayMap({ "2025-01-10": 100, "2025-02-10": 110 });
+    const cell = afterSale(raw, adj, "2025-01-10", 100, 1);
+    assert.equal(cell.status, "calculated");
+    assert.equal(cell.basis, "adjusted");
+    assert.ok(cell.pct != null && Math.abs(cell.pct - 10) < 0.01);
+    assert.ok(cell.observedPx != null && Math.abs(cell.observedPx - 110) < 0.01);
+  });
+
+  it("is not applicable without a sell price", () => {
+    const cell = afterSale(undefined, undefined, "", 0, 1);
+    assert.equal(cell.status, "na");
+    assert.equal(cell.pct, null);
   });
 });

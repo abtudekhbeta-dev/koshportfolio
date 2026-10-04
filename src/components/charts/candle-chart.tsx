@@ -22,7 +22,7 @@ import {
 import { detectPatterns, patternStatusLabel, type PatternHit } from "@/lib/kosh/patterns";
 import { applyDrag, channelOffFromThird, hitTest, magnetPrice, positionMetrics, type HitMode } from "@/lib/kosh/draw-hit";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
-import { panBy, zoomAround, zoomRightEdge, atLatest, resetView } from "@/lib/kosh/chart-nav";
+import { panBy, zoomRightEdge, atLatest, resetView } from "@/lib/kosh/chart-nav";
 import { applyHistoricalFx, adjustOhlcToBenchmark } from "@/lib/kosh/relative";
 import { resolveBench } from "@/lib/kosh/benchmarks";
 import { histInit, histPush, histRedo, histUndo, type DrawHist } from "@/lib/kosh/draw-history";
@@ -1467,24 +1467,47 @@ export function CandleChart({
     const el = overlayRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      const zoomGesture = e.ctrlKey || e.metaKey;
-      if (!zoomGesture && !e.shiftKey) return;
+      const pinch = e.ctrlKey || e.metaKey;
+      const absX = Math.abs(e.deltaX);
+      const absY = Math.abs(e.deltaY);
+      const pan = !pinch && (e.shiftKey || (absX > absY && absX > 0));
+      const zoom = pinch || (!e.shiftKey && absY > 0 && absY >= absX);
+      if (!pan && !zoom) return;
       e.preventDefault();
       if (nAll < 30) return;
-      const { x } = svgXY(e);
-      const L = layout.current;
-      const t = L ? (x - PAD.l) / (VW - PAD.l - PAD.r) : 0.5;
       const cur = count || nAll;
-      if (e.shiftKey) {
-        const dir = e.deltaY > 0 || e.deltaX > 0 ? 1 : -1;
+      if (pan) {
+        const raw = absX > absY ? e.deltaX : e.deltaY;
+        const dir = raw > 0 ? 1 : -1;
         const step = Math.max(1, Math.round(cur * 0.08)) * dir;
         setView(panBy({ start, count: cur }, nAll, step));
         return;
       }
-      setView(zoomAround({ start, count: cur }, nAll, Math.round(t * cur), e.deltaY < 0));
+      setView(zoomRightEdge({ start, count: cur }, nAll, e.deltaY < 0));
+    };
+    let gestureScale = 1;
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      gestureScale = 1;
+    };
+    const onGestureChange = (e: Event) => {
+      e.preventDefault();
+      if (nAll < 30) return;
+      const scale = Number((e as Event & { scale?: number }).scale || 1);
+      if (Math.abs(scale - gestureScale) < 0.03) return;
+      const zoomIn = scale > gestureScale;
+      gestureScale = scale;
+      const cur = count || nAll;
+      setView(zoomRightEdge({ start, count: cur }, nAll, zoomIn));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    el.addEventListener("gesturestart", onGestureStart, { passive: false });
+    el.addEventListener("gesturechange", onGestureChange, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("gesturestart", onGestureStart);
+      el.removeEventListener("gesturechange", onGestureChange);
+    };
   }, [nAll, count, start, vh]);
 
   useEffect(() => {

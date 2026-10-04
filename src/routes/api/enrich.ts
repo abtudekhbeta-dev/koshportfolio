@@ -70,7 +70,7 @@ export const Route = createFileRoute("/api/enrich")({
         const symbols = [...new Set((body.symbols || []).map((s) => String(s).trim()).filter(Boolean))].slice(0, 40);
         if (!symbols.length) return Response.json({ funds: {}, sources: {} });
         if (symbols.length > 3) {
-          const job = startEnrichJob(symbols);
+          const job = await startEnrichJob(symbols);
           return Response.json({ ...job, funds: {}, sources: {} });
         }
         const got = await fetchDeepMany(symbols);

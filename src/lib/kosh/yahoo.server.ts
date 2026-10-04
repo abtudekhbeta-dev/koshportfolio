@@ -13,13 +13,14 @@ import {
   pickMcxSpot,
   type MetalId,
 } from "./commodities.ts";
+import { delayMinutesFromMeta } from "./market-data.ts";
 import { istDay } from "./engine.ts";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 type ChartBar = { t: number; c: number; raw: number };
-type ChartPack = Omit<HistoryPack, "bars"> & { bars: ChartBar[]; marketCap?: number };
+type ChartPack = Omit<HistoryPack, "bars"> & { bars: ChartBar[]; marketCap?: number; delayMin?: number | null };
 
 const qCache = new Map<string, { at: number; data: Quote }>();
 const hCache = new Map<string, { at: number; data: ChartPack }>();
@@ -103,6 +104,7 @@ function parseChart(data: unknown): ChartPack | null {
     bars,
     missing: false,
     marketCap: Number(m.marketCap || 0) || undefined,
+    delayMin: delayMinutesFromMeta(m.exchangeDataDelayedBy),
   };
 }
 
@@ -418,6 +420,7 @@ async function resolveQuote(raw: string): Promise<Quote> {
           low52: d.low52,
           mcapCr: d.marketCap && d.marketCap > 0 ? d.marketCap / 1e7 : null,
           retrievedAt: Date.now(),
+          delayMin: d.delayMin ?? null,
         };
         qCache.set(ck, { at: Date.now(), data: out });
         return out;

@@ -342,8 +342,8 @@ export function MarketsDesk() {
           title={`${MARKET_PROVIDER.note} ${MARKET_PROVIDER.name}.`}
         >
           {tapeStatus === "session"
-            ? `● ${quoteStatusLabel(tapeStatus)} · ${istClock()}`
-            : quoteStatusLabel(tapeStatus)}
+            ? `● ${quoteStatusLabel(tapeStatus, activeQ?.delayMin)} · ${istClock()}`
+            : quoteStatusLabel(tapeStatus, activeQ?.delayMin)}
         </span>
         <Tooltip content={fs ? "Exit fullscreen" : "Fullscreen"}>
           <button

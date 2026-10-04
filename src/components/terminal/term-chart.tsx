@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { apiOhlc } from "@/lib/kosh/api";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
-import { panBy, zoomAround, zoomRightEdge, atLatest } from "@/lib/kosh/chart-nav";
+import { panBy, zoomRightEdge, atLatest } from "@/lib/kosh/chart-nav";
 import { adjustOhlcToBenchmark, applyHistoricalFx } from "@/lib/kosh/relative";
 import { histInit, histPush, histRedo, histUndo, type DrawHist } from "@/lib/kosh/draw-history";
 import { resolveBench } from "@/lib/kosh/benchmarks";
@@ -331,55 +331,76 @@ export function TermChart({
     const el = wrap.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      const zoomGesture = e.ctrlKey || e.metaKey;
-      if (!zoomGesture && !e.shiftKey) return;
+      const pinch = e.ctrlKey || e.metaKey;
+      const absX = Math.abs(e.deltaX);
+      const absY = Math.abs(e.deltaY);
+      const pan = !pinch && (e.shiftKey || (absX > absY && absX > 0));
+      const zoom = pinch || (!e.shiftKey && absY > 0 && absY >= absX);
+      if (!pan && !zoom) return;
       e.preventDefault();
       if (bars.length < 20) return;
-      if (e.shiftKey) {
-        const dir = e.deltaY > 0 || e.deltaX > 0 ? 1 : -1;
+      if (pan) {
+        const raw = absX > absY ? e.deltaX : e.deltaY;
+        const dir = raw > 0 ? 1 : -1;
         const step = Math.max(1, Math.round(view.count * 0.08)) * dir;
         setView(panBy(view, bars.length, step));
         return;
       }
-      const i = idxAt(e.clientX);
-      setView(zoomAround(view, bars.length, i, e.deltaY < 0));
+      setView(zoomRightEdge(view, bars.length, e.deltaY < 0));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
-    let pinch = 0;
+    let pinchDist = 0;
+    let gestureScale = 1;
     const dist = (e: TouchEvent) => {
       const a = e.touches[0];
       const b = e.touches[1];
       return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
     };
     const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) pinch = dist(e);
+      if (e.touches.length === 2) pinchDist = dist(e);
     };
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length !== 2 || bars.length < 20) return;
       e.preventDefault();
       const next = dist(e);
-      if (!pinch) {
-        pinch = next;
+      if (!pinchDist) {
+        pinchDist = next;
         return;
       }
-      const ratio = next / pinch;
+      const ratio = next / pinchDist;
       if (ratio > 1.04 || ratio < 0.96) {
-        const i = idxAt((e.touches[0].clientX + e.touches[1].clientX) / 2);
-        setView(zoomAround(view, bars.length, i, ratio > 1));
-        pinch = next;
+        setView(zoomRightEdge(view, bars.length, ratio > 1));
+        pinchDist = next;
       }
     };
     const onTouchEnd = () => {
-      pinch = 0;
+      pinchDist = 0;
+    };
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      gestureScale = 1;
+    };
+    const onGestureChange = (e: Event) => {
+      e.preventDefault();
+      if (bars.length < 20) return;
+      const scale = Number((e as Event & { scale?: number }).scale || 1);
+      if (Math.abs(scale - gestureScale) < 0.03) return;
+      const zoomIn = scale > gestureScale;
+      gestureScale = scale;
+      setView(zoomRightEdge(view, bars.length, zoomIn));
     };
     el.addEventListener("touchstart", onTouchStart, { passive: true });
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     el.addEventListener("touchend", onTouchEnd);
+    el.addEventListener("gesturestart", onGestureStart, { passive: false });
+    el.addEventListener("gesturechange", onGestureChange, { passive: false });
     return () => {
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("gesturestart", onGestureStart);
+      el.removeEventListener("gesturechange", onGestureChange);
     };
   }, [bars, view]);
 
@@ -499,6 +520,8 @@ export function TermChart({
   const card = (
     <section
       data-term-chart
+      data-chart-right={view.start + view.count}
+      data-chart-count={view.count}
       data-active={active ? "1" : "0"}
       onClick={onActivate}
       className={cn("flex h-full min-h-0 min-w-0 flex-col bg-bg", active && "ring-1 ring-inset ring-accent/50")}
@@ -517,7 +540,7 @@ export function TermChart({
             )}
             title="Latest print Kosh has. Refreshes during the cash session."
           >
-            {status === "session" ? `● ${quoteStatusLabel(status)} · ${istClock()}` : quoteStatusLabel(status)}
+            {status === "session" ? `● ${quoteStatusLabel(status, quote?.delayMin)} · ${istClock()}` : quoteStatusLabel(status, quote?.delayMin)}
           </span>
           {owned ? <span className="hidden rounded-sm bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted lg:inline">{owned}</span> : null}
           <Tooltip content={watched ? "Remove from watch" : "Add to watch"}>
@@ -705,6 +728,7 @@ export function TermChart({
 
       <div
         ref={wrap}
+        data-chart-surface
         className={cn("relative min-h-0 flex-1", tool === "pan" || tool === "crosshair" ? "cursor-crosshair" : "cursor-cell")}
         onPointerDown={(e) => {
           onActivate();

@@ -189,6 +189,18 @@ describe("skillCacheKey", () => {
     assert.ok(a.includes(SKILL_ENGINE_VERSION));
     assert.notEqual(a, skillCacheKey({ kind: "fund", symbol: "TCS", date: "2026-09-20" }));
   });
+
+  it("portfolio keys include version, provider, model, and source methodology", () => {
+    const book = skillCacheKey({ kind: "book", date: "2026-09-20", extra: "TCS:10,INFY:5" });
+    const holdings = skillCacheKey({ kind: "holdings", date: "2026-09-20", extra: "TCS:10,INFY:5" });
+    assert.ok(book.includes(SKILL_ENGINE_VERSION));
+    assert.ok(book.includes("xai"));
+    assert.ok(book.includes("grok-4.5"));
+    assert.ok(book.includes("search1"));
+    assert.ok(book.includes("TCS:10,INFY:5"));
+    assert.notEqual(book, holdings);
+    assert.notEqual(book, skillCacheKey({ kind: "book", date: "2026-09-21", extra: "TCS:10,INFY:5" }));
+  });
 });
 
 describe("rating helpers", () => {

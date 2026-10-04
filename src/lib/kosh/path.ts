@@ -17,6 +17,7 @@ import type {
   PathPoint,
   PathSlice,
   PathYear,
+  AfterSale,
   RiskMetrics,
   TradeLine,
   WindowPair,
@@ -119,28 +120,171 @@ export function pxOnOrNear(map: Map<string, { t: number; c: number }>, day: stri
   return null;
 }
 
-function addCalendarDays(day: string, n: number): string {
+function addCalendarMonths(day: string, months: number): string {
   const [y, m, d] = (day || "").split("-").map(Number);
-  if (!y || !m || !d) return day;
-  const dt = new Date(Date.UTC(y, m - 1, d + n));
-  return dt.toISOString().slice(0, 10);
+  if (!y || !m || !d) return "";
+  const monthIndex = m - 1 + months;
+  const year = y + Math.floor(monthIndex / 12);
+  const month = ((monthIndex % 12) + 12) % 12;
+  const last = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const dayN = Math.min(d, last);
+  return new Date(Date.UTC(year, month, dayN)).toISOString().slice(0, 10);
 }
 
-function postSaleWindow(
-  map: Map<string, { t: number; c: number }> | undefined,
-  sellDay: string,
+function daySpan(a: string, b: string): number {
+  const x = Date.parse(a + "T00:00:00Z");
+  const y = Date.parse(b + "T00:00:00Z");
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return Number.POSITIVE_INFINITY;
+  return Math.round((y - x) / 86400000);
+}
+
+type DayPx = Map<string, { t: number; c: number }>;
+
+/** First session on or after `day`, within `maxForward` calendar days. Never a session before the target. */
+function sessionOnOrAfter(map: DayPx | undefined, day: string, maxForward: number): { day: string; px: number } | null {
+  if (!map || !day) return null;
+  const days = [...map.keys()].sort();
+  const hit = days.find((d) => d >= day);
+  if (!hit) return null;
+  if (daySpan(day, hit) > maxForward) return null;
+  const row = map.get(hit);
+  if (!row || !(row.c > 0)) return null;
+  return { day: hit, px: row.c };
+}
+
+function sessionOnOrBefore(map: DayPx | undefined, day: string, maxBack: number): { day: string; px: number } | null {
+  if (!map || !day) return null;
+  const days = [...map.keys()].sort();
+  let hit = "";
+  for (const d of days) {
+    if (d <= day) hit = d;
+    else break;
+  }
+  if (!hit || daySpan(hit, day) > maxBack) return null;
+  const row = map.get(hit);
+  if (!row || !(row.c > 0)) return null;
+  return { day: hit, px: row.c };
+}
+
+function blankSale(sellDate: string, sellPx: number, status: AfterSale["status"], reason: string, targetDate: string | null = null): AfterSale {
+  return {
+    status,
+    pct: null,
+    sellDate,
+    sellPx,
+    targetDate,
+    observedDate: null,
+    observedPx: null,
+    basis: null,
+    reason,
+  };
+}
+
+/**
+ * After-sale return from the user's sell date and sell price.
+ * Target is that date plus N calendar months. The print is the first session
+ * on or after the target, within 10 days (weekend or holiday). If that window
+ * is still in the future, the result is insufficient history — never today's price.
+ * A split or bonus (raw/adjusted ratio changes) uses the adjusted series.
+ * If that series is missing, the result is unavailable. Prices are never invented.
+ */
+export function afterSale(
+  raw: DayPx | undefined,
+  adj: DayPx | undefined,
+  sellDate: string,
   sellPx: number,
-  days: number,
-): { pct: number | null; note: string } {
-  if (!map || !(sellPx > 0) || !sellDay) return { pct: null, note: "Unavailable · no price" };
-  const target = addCalendarDays(sellDay, days);
-  const lastDay = [...map.keys()].sort().at(-1) || "";
-  if (!lastDay || target > lastDay) return { pct: null, note: "Not yet mature" };
-  const hit = pxOnOrNear(map, target);
-  if (!hit || !(hit.px > 0) || hit.sessionDay <= sellDay) return { pct: null, note: "Unavailable · no history" };
-  const drift = Math.abs(Date.parse(hit.sessionDay + "T00:00:00Z") - Date.parse(target + "T00:00:00Z"));
-  if (drift > 12 * 86400000) return { pct: null, note: "Unavailable · no history" };
-  return { pct: (hit.px / sellPx - 1) * 100, note: hit.sessionDay };
+  months: number,
+): AfterSale {
+  if (!sellDate || !(sellPx > 0)) {
+    return blankSale(sellDate || "", sellPx || 0, "na", "Not applicable — this sale has no date or price.");
+  }
+  const target = addCalendarMonths(sellDate, months);
+  if (!target) return blankSale(sellDate, sellPx, "na", "Not applicable — the sell date is not a calendar date.");
+  const series = raw && raw.size ? raw : adj;
+  if (!series || !series.size) {
+    return blankSale(sellDate, sellPx, "unavailable", "Unavailable — no price history for this symbol.", target);
+  }
+  const last = [...series.keys()].sort().at(-1) || "";
+  if (!last || target > last) {
+    return blankSale(sellDate, sellPx, "insufficient", "Insufficient history — that window has not elapsed yet.", target);
+  }
+  const rawObs = sessionOnOrAfter(raw, target, 10);
+  const adjObs = sessionOnOrAfter(adj, target, 10);
+  const rawSell = sessionOnOrBefore(raw, sellDate, 5);
+  const adjSell = sessionOnOrBefore(adj, sellDate, 5);
+  const split =
+    Boolean(rawObs && adjObs && rawSell && adjSell) &&
+    rawSell!.px > 0 &&
+    adjSell!.px > 0 &&
+    rawObs!.px > 0 &&
+    adjObs!.px > 0 &&
+    Math.abs(rawObs!.px / adjObs!.px / (rawSell!.px / adjSell!.px) - 1) > 0.02;
+  if (split) {
+    if (!(adjSell && adjObs && adjSell.px > 0 && adjObs.px > 0)) {
+      return blankSale(
+        sellDate,
+        sellPx,
+        "unavailable",
+        "Unavailable — a corporate action is in the series and the adjusted prices are missing.",
+        target,
+      );
+    }
+    const ratio = adjObs.px / adjSell.px;
+    return {
+      status: "calculated",
+      pct: (ratio - 1) * 100,
+      sellDate,
+      sellPx,
+      targetDate: target,
+      observedDate: adjObs.day,
+      observedPx: sellPx * ratio,
+      basis: "adjusted",
+      reason: "Calculated from the adjusted series so a split or bonus is not a fake jump.",
+    };
+  }
+  const obs = rawObs || adjObs;
+  if (!obs) {
+    return blankSale(sellDate, sellPx, "unavailable", "Unavailable — no trading session within 10 days after the target date.", target);
+  }
+  const sellSession = rawObs ? rawSell : adjSell;
+  if (!raw && sellSession && sellSession.px > 0 && Math.abs(sellSession.px / sellPx - 1) > 0.25) {
+    return blankSale(
+      sellDate,
+      sellPx,
+      "unavailable",
+      "Unavailable — the only price series does not match the sell price, so a corporate action could not be checked.",
+      target,
+    );
+  }
+  return {
+    status: "calculated",
+    pct: (obs.px / sellPx - 1) * 100,
+    sellDate,
+    sellPx,
+    targetDate: target,
+    observedDate: obs.day,
+    observedPx: obs.px,
+    basis: rawObs ? "close" : "adjusted",
+    reason: rawObs ? "Calculated from the session close after the sell." : "Calculated from the adjusted close after the sell.",
+  };
+}
+
+function applyAfter(c: ClosedTrade, raw: DayPx | undefined, adj: DayPx | undefined) {
+  const windows: Array<[1 | 3 | 6 | 12, "1m" | "3m" | "6m" | "1y"]> = [
+    [1, "1m"],
+    [3, "3m"],
+    [6, "6m"],
+    [12, "1y"],
+  ];
+  for (const [months, key] of windows) {
+    const cell = afterSale(raw, adj, c.sellDate, c.sellPx, months);
+    const pctKey = key === "1m" ? "post1m" : key === "3m" ? "post3m" : key === "6m" ? "post6m" : "post1y";
+    const noteKey = key === "1m" ? "post1mNote" : key === "3m" ? "post3mNote" : key === "6m" ? "post6mNote" : "post1yNote";
+    const cellKey = key === "1m" ? "after1m" : key === "3m" ? "after3m" : key === "6m" ? "after6m" : "after1y";
+    c[pctKey] = cell.status === "calculated" ? cell.pct : null;
+    c[noteKey] = cell.status === "calculated" ? cell.observedDate : cell.reason;
+    c[cellKey] = cell;
+  }
 }
 
 /**
@@ -218,6 +362,7 @@ export function buildPath(
 
   const symbols = [...new Set(sorted.map((t) => baseSym(t.symbol)))];
   const maps: Record<string, Map<string, { t: number; c: number }>> = {};
+  const adjMaps: Record<string, Map<string, { t: number; c: number }>> = {};
   const missing: string[] = [];
   const used: string[] = [];
   let splitNote = false;
@@ -227,6 +372,7 @@ export function buildPath(
       used.push(s);
       maps[s] = toDayMap(bars, true);
       const adj = toDayMap(bars, false);
+      adjMaps[s] = adj;
       let seen = 0;
       for (const [day, raw] of maps[s]) {
         const a = adj.get(day);
@@ -482,18 +628,7 @@ export function buildPath(
     }
   }
 
-  for (const c of closed) {
-    const m = maps[c.symbol];
-    const m1 = postSaleWindow(m, c.sellDate, c.sellPx, 30);
-    const m3 = postSaleWindow(m, c.sellDate, c.sellPx, 90);
-    const y1 = postSaleWindow(m, c.sellDate, c.sellPx, 365);
-    c.post1m = m1.pct;
-    c.post3m = m3.pct;
-    c.post1y = y1.pct;
-    c.post1mNote = m1.note;
-    c.post3mNote = m3.note;
-    c.post1yNote = y1.note;
-  }
+  for (const c of closed) applyAfter(c, maps[c.symbol], adjMaps[c.symbol]);
 
   const stillHeld: PathHeld[] = [];
   for (const [sym, list] of lots) {

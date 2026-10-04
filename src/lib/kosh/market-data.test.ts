@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { OhlcBar } from "./types.ts";
 import {
   barBucket,
+  delayMinutesFromMeta,
   moveWatchSymbols,
   patchLastBar,
   quoteStatus,
@@ -19,6 +20,9 @@ describe("quoteStatus", () => {
   it("is session only when the cash session is open and a price exists", () => {
     assert.equal(quoteStatus({ session: true, price: 100 }), "session");
     assert.equal(quoteStatusLabel("session"), "SESSION · DELAYED");
+    assert.equal(quoteStatusLabel("session", null), "SESSION · DELAYED");
+    assert.equal(quoteStatusLabel("session", 15), "SESSION · DELAYED");
+    assert.equal(quoteStatusLabel("session", 0), "SESSION · LIVE");
   });
 
   it("is last available after the session when a price exists", () => {
@@ -34,6 +38,13 @@ describe("quoteStatus", () => {
 
   it("never treats a missing print as live", () => {
     assert.notEqual(quoteStatus({ session: true, price: 0 }), "session");
+  });
+
+  it("reads a provider delay only from the delay field", () => {
+    assert.equal(delayMinutesFromMeta(undefined), null);
+    assert.equal(delayMinutesFromMeta(0), 0);
+    assert.equal(delayMinutesFromMeta(15), 15);
+    assert.equal(delayMinutesFromMeta(900), 15);
   });
 });
 

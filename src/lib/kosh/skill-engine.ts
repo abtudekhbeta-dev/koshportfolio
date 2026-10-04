@@ -399,6 +399,9 @@ export function skillCacheKey(input: {
   if (kind === "qual") {
     return `${SKILL_CACHE_PREFIX}:qual:${QUAL_SKILL_ID}:${SKILL_ENGINE_VERSION}:${SKILL_PROVIDER}:${SKILL_MODEL}:${SKILL_SOURCE_METHOD}:${String(input.symbol || "").toUpperCase()}:${input.date}`;
   }
+  if (kind === "book" || kind === "holdings" || kind === "picks" || kind === "improve") {
+    return `${SKILL_CACHE_PREFIX}:${kind}:${SKILL_ENGINE_VERSION}:${SKILL_PROVIDER}:${SKILL_MODEL}:${SKILL_SOURCE_METHOD}:${input.extra || input.symbol || ""}:${input.date}`;
+  }
   return `${SKILL_CACHE_PREFIX}:${kind}:${input.extra || input.symbol || ""}:${input.date}`;
 }
 

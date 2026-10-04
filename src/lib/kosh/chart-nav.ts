@@ -20,8 +20,8 @@ export function zoomAround(
 }
 
 /**
- * Button zoom. The rightmost visible bar stays put.
- * Wheel zoom uses zoomAround so the candle under the cursor stays put.
+ * Zoom keeps the rightmost visible bar fixed. Wheel, pinch, and the +/- buttons
+ * all use this. Older bars expand or compress to the left.
  */
 export function zoomRightEdge(view: Viewport, nAll: number, zoomIn: boolean, minCount = 20): Viewport {
   if (nAll < 1) return { start: 0, count: 1 };

@@ -110,6 +110,15 @@ try {
     const resp = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
     const status = resp?.status() ?? 0;
     await page.waitForTimeout(1000);
+    const pathName = new URL(page.url()).pathname;
+    if (pathName === "/markets" || pathName.startsWith("/markets/")) {
+      try {
+        await page.waitForSelector("[data-term-chart]", { timeout: Math.min(20000, timeoutMs) });
+        await page.waitForSelector("[data-session-chip]", { timeout: 8000 });
+      } catch (err) {
+        errors.pageErrors.push(`markets UI did not render: ${err?.message || err}`);
+      }
+    }
 
     const title = await page.title();
     const hasCanvas = (await page.locator("canvas").count()) > 0;

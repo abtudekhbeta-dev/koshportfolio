@@ -10,6 +10,8 @@ import {
   researchPlan,
   SCREEN_FUND_FIELDS,
   seedCompletion,
+  listedSymbolFromResearch,
+  remainingJobs,
   usablePathPrice,
 } from "./complete.ts";
 import { mergeCloud, sanitizeForCloud, emptyCloud } from "./cloud-state.ts";
@@ -72,6 +74,7 @@ describe("completion plan", () => {
     ]);
     assert.equal(fund.roe, 28);
     assert.equal(fund.provenance?.fields.roe?.status, "researched");
+    assert.equal(fund.provenance?.fields.roe?.sourceUrl, "https://example.com/ar");
     assert.notEqual(fund.provenance?.fields.roe?.status, "verified");
     const again = applyResearchToFund(fund, []);
     assert.equal(again.roe, 28);
@@ -197,6 +200,43 @@ describe("completion plan", () => {
       usablePathPrice(item({ metric: "close on 2024-01-02", status: "researched", value: 100 })),
       null,
     );
+  });
+
+  it("maps a source-backed listed symbol and ignores a price-only reply", () => {
+    const hit = listedSymbolFromResearch(
+      "GMR",
+      item({
+        metric: "listed NSE or BSE symbol for GMR",
+        status: "researched",
+        evidence: "NSE symbol is GMRP&UI in the exchange list.",
+        sourceUrl: "https://www.nseindia.com/example",
+        sourceName: "NSE",
+      }),
+    );
+    assert.equal(hit, "GMRP&UI");
+    assert.equal(
+      listedSymbolFromResearch(
+        "GMR",
+        item({
+          metric: "listed symbol",
+          status: "researched",
+          evidence: "NSE symbol is GMRP&UI",
+          sourceUrl: "",
+          sourceName: "NSE",
+        }),
+      ),
+      null,
+    );
+  });
+
+  it("resume skips names already done and keeps paused names", () => {
+    const jobs = [{ symbol: "A" }, { symbol: "B" }, { symbol: "C" }];
+    const left = remainingJobs(jobs, [
+      { symbol: "A", phase: "done" },
+      { symbol: "B", phase: "paused" },
+      { symbol: "C", phase: "incomplete" },
+    ]);
+    assert.deepEqual(left.map((j) => j.symbol), ["B"]);
   });
 });
 

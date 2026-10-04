@@ -5,6 +5,7 @@ import {
   applyResearchToFund,
   explainGaps,
   pool,
+  remainingJobs,
   researchBatches,
   researchPlan,
   seedCompletion,
@@ -15,10 +16,23 @@ import type { Fundamentals, ScreenRow } from "@/lib/kosh/types";
 import { useKosh } from "@/lib/store";
 
 type Job = { symbol: string; missing: string[]; fields?: ScreenField[] };
-type RowState = { symbol: string; phase: "queued" | "market" | "filings" | "researching" | "done" | "incomplete" | "stopped"; gaps: Gap[]; error?: string };
+type RowState = { symbol: string; phase: "queued" | "market" | "filings" | "researching" | "done" | "incomplete" | "stopped" | "paused"; gaps: Gap[]; error?: string };
 
 function isRateLimit(message: string) {
   return /too many/i.test(message);
+}
+
+function vcpGapReason(row: ScreenRow | null): string {
+  const state = row?.vcpState;
+  if (state === "insufficient") return "Insufficient history — fewer than 80 daily bars.";
+  if (state === "na") return "Not applicable — the price history is not a VCP.";
+  if (state === "calculated") return "Calculated — this VCP figure was not produced from the pattern.";
+  if (state === "unavailable") return "Unavailable — no price history for a VCP check.";
+  return "Unavailable — VCP was not classified.";
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -61,7 +75,7 @@ export function CompleteMissing({
         key: field.key,
         label: field.label,
         reason: vcp
-          ? "Not applicable — the price history is not a VCP."
+          ? vcpGapReason(row)
           : stake
             ? "Unavailable — two reported shareholding periods are required. This is not asked of AI."
             : "Unavailable — price history did not produce this number.",
@@ -80,10 +94,22 @@ export function CompleteMissing({
     const fields = job.fields || [];
     const needsMarket = marketFields(job).length > 0;
     if (halt.phase === "market" && needsMarket && !marketReady) {
-      return { symbol: job.symbol, phase: "stopped", gaps: [], error: halt.reason };
+      return {
+        symbol: job.symbol,
+        phase: isRateLimit(halt.reason) ? "paused" : "stopped",
+        gaps: [],
+        error: halt.reason,
+      };
     }
     const mGaps = needsMarket && marketReady ? marketGaps(job, marketRow) : [];
-    if (halt.phase === "fund") return { symbol: job.symbol, phase: "stopped", gaps: mGaps, error: halt.reason };
+    if (halt.phase === "fund") {
+      return {
+        symbol: job.symbol,
+        phase: isRateLimit(halt.reason) ? "paused" : "stopped",
+        gaps: mGaps,
+        error: halt.reason,
+      };
+    }
     const fundLabels = fields.length
       ? job.missing.filter((label) => fields.some((f) => f.label === label && f.kind === "fund"))
       : job.missing;
@@ -103,28 +129,63 @@ export function CompleteMissing({
         halt.phase = "fund";
       }
     }
-    if (halt.phase === "fund") return { symbol: job.symbol, phase: "stopped", gaps: mGaps, error: halt.reason };
+    if (halt.phase === "fund") {
+      return {
+        symbol: job.symbol,
+        phase: isRateLimit(halt.reason) ? "paused" : "stopped",
+        gaps: mGaps,
+        error: halt.reason,
+      };
+    }
     let fund = seedCompletion(prev, fetched, job.symbol);
     const plan = researchPlan(fund, fundLabels);
     let error = "";
+    let hitLimit = false;
     if (plan.ask.length) {
       mark({ symbol: job.symbol, phase: "researching", gaps: [] });
       const items = [];
       for (const ask of researchBatches(plan.ask)) {
-        if (halt.phase === "fund") break;
-        try {
+        if (halt.phase === "fund") {
+          hitLimit = true;
+          break;
+        }
+        const pull = async () => {
           const res = await apiResearch(job.symbol, ask);
-          if (res.ok && res.items?.length) items.push(...res.items);
-          else error = res.error || "AI research unavailable";
-          if (isRateLimit(error)) {
-            halt.reason = error;
+          if (res.ok && res.items?.length) return { items: res.items, error: "" };
+          return { items: [], error: res.error || "AI research unavailable" };
+        };
+        try {
+          let got = await pull();
+          if (isRateLimit(got.error)) {
+            await sleep(1500);
+            got = await pull();
+          }
+          if (got.items.length) items.push(...got.items);
+          else error = got.error;
+          if (isRateLimit(got.error)) {
+            halt.reason = got.error;
             halt.phase = "fund";
+            hitLimit = true;
+            break;
           }
         } catch (err) {
           error = err instanceof Error ? err.message : "AI research unavailable";
           if (isRateLimit(error)) {
+            await sleep(1500);
+            try {
+              const again = await pull();
+              if (again.items.length) {
+                items.push(...again.items);
+                error = again.error;
+              } else error = again.error || error;
+              if (!isRateLimit(error)) continue;
+            } catch (err2) {
+              error = err2 instanceof Error ? err2.message : error;
+            }
             halt.reason = error;
             halt.phase = "fund";
+            hitLimit = true;
+            break;
           }
         }
       }
@@ -140,17 +201,23 @@ export function CompleteMissing({
       error = error || (err instanceof Error ? err.message : "Company cache did not save.");
     }
     const gaps = [...mGaps, ...explainGaps(fund, fundLabels)];
-    if (halt.reason) return { symbol: job.symbol, phase: "stopped", gaps, error: halt.reason };
+    if (hitLimit || (halt.phase === "fund" && isRateLimit(halt.reason))) {
+      return { symbol: job.symbol, phase: "paused", gaps, error: halt.reason || error };
+    }
+    if (halt.reason && halt.phase === "fund") return { symbol: job.symbol, phase: "stopped", gaps, error: halt.reason };
     return { symbol: job.symbol, phase: gaps.length ? "incomplete" : "done", gaps, error };
   }
 
-  async function run() {
-    const jobsNow = queue;
+  async function run(resume = false) {
+    const jobsNow = resume ? remainingJobs(queue, rows) : queue;
+    if (!resume && !jobsNow.length) return;
+    if (resume && !jobsNow.length) return;
+    const kept = resume ? rows.filter((r) => r.phase === "done" || r.phase === "incomplete") : [];
     const halt = { reason: "", phase: "" as "" | "market" | "fund" };
-    setBatch(jobsNow);
+    setBatch(resume ? queue : jobsNow);
     setBusy(true);
     setStopped("");
-    setRows(jobsNow.map((j) => ({ symbol: j.symbol, phase: "queued", gaps: [] })));
+    setRows([...kept, ...jobsNow.map((j) => ({ symbol: j.symbol, phase: "queued" as const, gaps: [] }))]);
     setOpen(false);
     const marketRows = new Map<string, ScreenRow | null>();
     const marketReady = new Set<string>();
@@ -205,6 +272,7 @@ export function CompleteMissing({
   const pending = shown.filter((r) => r.phase === "incomplete");
   const finished = shown.filter((r) => r.phase === "done").length;
   const halted = shown.filter((r) => r.phase === "stopped").length;
+  const pausedN = shown.filter((r) => r.phase === "paused").length;
   const current = shown.find((r) => r.phase === "researching" || r.phase === "filings" || r.phase === "market");
   const phaseLabel =
     current?.phase === "researching" ? "researching" : current?.phase === "market" ? "calculating market data" : current?.phase === "filings" ? "checking filings" : "";
@@ -220,9 +288,20 @@ export function CompleteMissing({
             Every name in this result is queued. Returns, RSI, volume, and VCP are calculated from price history. Filings and formulas run next. AI is asked only for a fact that is still blank, and only with a source.
           </p>
         </div>
-        <AIButton busy={busy} busyLabel={busy ? `${done} / ${total}` : undefined} onClick={() => void run()}>
-          {`Complete missing data for ${queue.length}`}
-        </AIButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <AIButton busy={busy} busyLabel={busy ? `${done} / ${total}` : undefined} onClick={() => void run(false)}>
+            {`Complete missing data for ${queue.length}`}
+          </AIButton>
+          {pausedN > 0 && !busy ? (
+            <button
+              type="button"
+              onClick={() => void run(true)}
+              className="h-9 rounded-sm bg-bg px-3 text-[13px] font-medium text-fg shadow-[var(--shadow-border)]"
+            >
+              Continue remaining ({pausedN})
+            </button>
+          ) : null}
+        </div>
       </div>
       {busy || shown.length ? (
         <div className="mt-3">
@@ -232,7 +311,7 @@ export function CompleteMissing({
           <p className="mt-2 font-mono text-[12px] tabular text-muted">
             {busy
               ? `${done} / ${total}${current ? ` · ${current.symbol} ${phaseLabel}` : ""}`
-              : `${finished} completed${pending.length ? ` · ${pending.length} still unavailable` : ""}${halted ? ` · ${halted} not run` : ""}`}
+              : `${finished} completed${pending.length ? ` · ${pending.length} still unavailable` : ""}${pausedN ? ` · ${pausedN} paused` : ""}${halted ? ` · ${halted} not run` : ""}`}
           </p>
           {stopped ? <p className="mt-1 text-[12px] text-down">{stopped} The rest of this result was not marked done.</p> : null}
           {shown.length > 24 ? (
@@ -242,7 +321,7 @@ export function CompleteMissing({
               {shown.filter((r) => r.phase !== "queued" || busy).slice(-24).map((r) => (
                 <li key={r.symbol}>
                   <span className="text-fg">{r.symbol}</span>
-                  {r.phase === "done" ? " · done" : r.phase === "researching" ? " · researching" : r.phase === "market" ? " · market" : r.phase === "filings" ? " · filings" : r.phase === "queued" ? " · queued" : r.phase === "stopped" ? " · not run" : ""}
+                  {r.phase === "done" ? " · done" : r.phase === "researching" ? " · researching" : r.phase === "market" ? " · market" : r.phase === "filings" ? " · filings" : r.phase === "queued" ? " · queued" : r.phase === "paused" ? " · paused" : r.phase === "stopped" ? " · not run" : ""}
                   {r.error ? ` · ${r.error}` : ""}
                   {open && r.gaps.length ? ` · ${r.gaps.map((g) => `${g.label}: ${g.reason}`).join("; ")}` : ""}
                 </li>

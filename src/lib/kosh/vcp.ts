@@ -115,3 +115,16 @@ export function detectVcp(bars: OhlcBar[] | null | undefined): VcpHit | null {
     pivot,
   };
 }
+
+export type VcpState = "calculated" | "insufficient" | "unavailable" | "na";
+
+/** Separate "no series", "too few bars", and "enough bars, not a VCP". */
+export function classifyVcp(bars: OhlcBar[] | null | undefined): { state: VcpState; hit: VcpHit | null } {
+  if (!bars || bars.length === 0) return { state: "unavailable", hit: null };
+  const src = bars.filter((b) => b && b.h > 0 && b.l > 0 && b.c > 0);
+  if (!src.length) return { state: "unavailable", hit: null };
+  if (src.length < 80) return { state: "insufficient", hit: null };
+  const hit = detectVcp(src);
+  if (!hit) return { state: "na", hit: null };
+  return { state: "calculated", hit };
+}
