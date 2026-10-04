@@ -507,7 +507,7 @@ function Landing() {
                 <HeroMix />
               </div>
               <WindowsPreview />
-              <p className="mt-3 text-[12px] text-subtle">Sample illustration · open a portfolio for live numbers.</p>
+              <p className="mt-3 text-[12px] text-subtle">Sample illustration · open a portfolio for your numbers.</p>
             </div>
           </div>
         </section>
@@ -541,7 +541,7 @@ function Landing() {
                 Start on Markets. Add a portfolio when you want.
               </h2>
               <p className="mt-3 max-w-md text-sm text-muted">
-                Live prices and any stock page work as a guest. Eight NSE names in the sample if you want holdings versus
+                Prices and any stock page work as a guest. Eight NSE names in the sample if you want holdings versus
                 Nifty 50. An account keeps it with you.
               </p>
             </div>

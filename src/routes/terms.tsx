@@ -13,7 +13,7 @@ function Terms() {
       <h2 className="text-fg">Not advice, not a broker</h2>
       <p>
         Nothing on Kosh is investment advice, a recommendation, a solicitation, or a SEBI-registered service. Past
-        portfolio paths are not a forecast. Live prices can lag, gap, or be wrong. You are responsible for what you do with a
+        portfolio paths are not a forecast. Prices can lag, gap, or be wrong. You are responsible for what you do with a
         chart.
       </p>
       <h2 className="text-fg">What the numbers are</h2>

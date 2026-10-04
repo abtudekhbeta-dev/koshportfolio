@@ -123,7 +123,7 @@ export function SiteFooter() {
       </div>
       <div className="border-t border-border">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 text-[12px] text-subtle">
-          <span>Kosh · live Indian prices · IST calendar</span>
+          <span>Kosh · Indian prices · IST calendar</span>
           <span>Not investment advice.</span>
         </div>
       </div>
