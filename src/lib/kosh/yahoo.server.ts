@@ -19,7 +19,7 @@ import { istDay } from "./engine.ts";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
-type ChartBar = { t: number; c: number; raw: number };
+type ChartBar = { t: number; c: number; raw: number; o?: number; h?: number; l?: number; v?: number };
 type ChartPack = Omit<HistoryPack, "bars"> & { bars: ChartBar[]; marketCap?: number; delayMin?: number | null };
 
 const qCache = new Map<string, { at: number; data: Quote }>();
@@ -68,7 +68,16 @@ function parseChart(data: unknown): ChartPack | null {
       result?: Array<{
         meta?: Record<string, unknown>;
         timestamp?: number[];
-        indicators?: { quote?: Array<{ close?: (number | null)[] }>; adjclose?: Array<{ adjclose?: (number | null)[] }> };
+        indicators?: {
+          quote?: Array<{
+            open?: (number | null)[];
+            high?: (number | null)[];
+            low?: (number | null)[];
+            close?: (number | null)[];
+            volume?: (number | null)[];
+          }>;
+          adjclose?: Array<{ adjclose?: (number | null)[] }>;
+        };
       }>;
     };
   };
@@ -76,14 +85,29 @@ function parseChart(data: unknown): ChartPack | null {
   if (!r) return null;
   const m = r.meta || {};
   const ts = r.timestamp || [];
-  const close = r.indicators?.quote?.[0]?.close || [];
+  const q = r.indicators?.quote?.[0];
+  const open = q?.open || [];
+  const high = q?.high || [];
+  const low = q?.low || [];
+  const close = q?.close || [];
+  const vol = q?.volume || [];
   const adj = r.indicators?.adjclose?.[0]?.adjclose || [];
-  const bars: { t: number; c: number; raw: number }[] = [];
+  const bars: { t: number; c: number; raw: number; o?: number; h?: number; l?: number; v?: number }[] = [];
   for (let i = 0; i < ts.length; i++) {
     const a = adj[i];
     const c = close[i];
     const px = a != null && a > 0 ? Number(a) : c != null && c > 0 ? Number(c) : null;
-    if (px != null) bars.push({ t: ts[i], c: px, raw: c != null && c > 0 ? Number(c) : px });
+    if (px == null) continue;
+    const bar: { t: number; c: number; raw: number; o?: number; h?: number; l?: number; v?: number } = {
+      t: ts[i],
+      c: px,
+      raw: c != null && c > 0 ? Number(c) : px,
+    };
+    if (open[i] != null && Number(open[i]) > 0) bar.o = Number(open[i]);
+    if (high[i] != null && Number(high[i]) > 0) bar.h = Number(high[i]);
+    if (low[i] != null && Number(low[i]) > 0) bar.l = Number(low[i]);
+    if (vol[i] != null && Number.isFinite(Number(vol[i])) && Number(vol[i]) >= 0) bar.v = Number(vol[i]);
+    bars.push(bar);
   }
   const price = Number(m.regularMarketPrice || 0) || bars.at(-1)?.raw || 0;
   const prev = Number(m.chartPreviousClose || m.previousClose || 0);

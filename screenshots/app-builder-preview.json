@@ -7,8 +7,8 @@
       "status": 200,
       "title": "Kosh · Indian markets and portfolios",
       "hasCanvas": false,
-      "bodyTextLen": 4527,
-      "bodyTextHash": "f6852cbbd505dc7aaf70331b5cf2165e0e054cf27d62784f6826966aa22cbd06",
+      "bodyTextLen": 4552,
+      "bodyTextHash": "f4a5a9ac3a87d82404d2d2ba140af52b0daa2caa7d84545a412783e448651279",
       "bodyTextPrefix": "Skip to content Kosh Markets Screener Portfolios Search any NSE ",
       "horizontalOverflow": false,
       "consoleErrors": [],
@@ -21,9 +21,9 @@
       "status": 200,
       "title": "Kosh · Indian markets and portfolios",
       "hasCanvas": false,
-      "bodyTextLen": 5714,
-      "bodyTextHash": "121e919c4460e54757a121a7fc446427790ddf30ecf4b71fd3edfad46c8cadfd",
-      "bodyTextPrefix": "Skip to content Kosh Search any NSE or BSE name… Sign in Create ",
+      "bodyTextLen": 4509,
+      "bodyTextHash": "169b8d239baa2d19608cf4cb6f68e5f5a1c1ac3855b3a6f17938c01a32a17e90",
+      "bodyTextPrefix": "Skip to content Kosh Search any NSE or BSE name… Classic Termina",
       "horizontalOverflow": false,
       "consoleErrors": [],
       "pageErrors": [],
@@ -32,9 +32,5 @@
   },
   "brandWarnings": [],
   "authWarnings": [],
-  "verdictFile": "/workspace/screenshots/app-builder-preview.json",
-  "divergesFromBaseline": true,
-  "baselineReasons": [
-    "baseline unreadable: ENOENT"
-  ]
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
 }

@@ -20,6 +20,7 @@ const TABS = [
   { to: "/p/$id" as const, label: "Overview", exact: true },
   { to: "/p/$id/path" as const, label: "Path" },
   { to: "/p/$id/performance" as const, label: "Performance" },
+  { to: "/p/$id/seasonality" as const, label: "Seasonality" },
   { to: "/p/$id/holdings" as const, label: "Holdings" },
   { to: "/p/$id/improve" as const, label: "Improve Portfolio" },
   { to: "/p/$id/sectors" as const, label: "Sectors" },

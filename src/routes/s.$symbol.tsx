@@ -11,6 +11,7 @@ import { SnapshotCard, ValuationModels, CoverageLine, FieldCoverage } from "@/co
 import { AddToPortfolio } from "@/components/add-to-portfolio";
 import { CompleteMissing } from "@/components/complete-missing";
 import { AttentionStrip } from "@/components/attention-strip";
+import { SeasonalityDesk } from "@/components/seasonality-desk";
 import { LivePrice } from "@/components/live-price";
 import { NewsBoard } from "@/components/news-board";
 import { NoteDesk } from "@/components/note-desk";
@@ -102,7 +103,7 @@ function StockBody({
   const [alertPx, setAlertPx] = useState("");
   const [alertDir, setAlertDir] = useState<"above" | "below">("above");
   const [alertKind, setAlertKind] = useState<AlertKind>("price");
-  const [tab, setTab] = useState<"chart" | "business" | "financials" | "news">("chart");
+  const [tab, setTab] = useState<"chart" | "business" | "financials" | "seasonality" | "news">("chart");
   const interval = useKosh((s) => s.chartPrefs.interval);
 
   const stats = useMemo(() => {
@@ -343,6 +344,7 @@ function StockBody({
             ["chart", "Chart"],
             ["business", "Business"],
             ["financials", "Financials"],
+            ["seasonality", "Seasonality"],
             ["news", "News"],
           ] as const
         ).map(([id, label]) => (
@@ -363,6 +365,10 @@ function StockBody({
           </button>
         ))}
       </nav>
+
+      <section id="seasonality" className={cn(tab !== "seasonality" && "hidden")}>
+        <SeasonalityDesk mode="stock" names={[{ symbol, name }]} />
+      </section>
 
       <div id="desk">
         <NoteDesk symbol={symbol} compact={tab !== "chart"} />

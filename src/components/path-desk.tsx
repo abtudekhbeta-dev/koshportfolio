@@ -1,9 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { Fragment, useMemo, useState } from "react";
-import { PathStack } from "@/components/charts/path-stack";
+import { NavChart } from "@/components/charts/nav-chart";
 import { MonthHeatmap } from "@/components/charts/heatmap";
 import { fmtInr, fmtPct } from "@/lib/kosh/engine";
-import { mixVsPathGaps } from "@/lib/kosh/path";
+import { mixVsPathGaps, pathToChartNav } from "@/lib/kosh/path";
 import type { AfterSale, ClosedTrade, PathEvent, PathName, PathPack, PathSlice } from "@/lib/kosh/types";
 import { cn } from "@/lib/utils";
 
@@ -158,7 +158,19 @@ export function PathDesk({
             />
           </div>
         ) : null}
-        {path.snapshots?.length ? <PathStack slices={path.snapshots} /> : null}
+        <h2 className="mb-1 mt-4 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Your path</h2>
+        <p className="mb-3 text-[13px] leading-relaxed text-muted">
+          The holdings marked at each session’s close, against the same money in {benchName}. Not this mix taken back.
+        </p>
+        <NavChart
+          nav={pathToChartNav(path)}
+          portLabel="Your path"
+          benchLabel={`Same money in ${benchName}`}
+          coverage={path.coverage}
+          nowValue={path.wealthNow}
+          pathPrimary
+          modes={["inr", "cum", "dd", "roll1y", "roll3m", "m", "w", "gap"]}
+        />
       </section>
 
       <section>
@@ -180,7 +192,7 @@ export function PathDesk({
       <section>
         <h2 className="mb-1 text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">History</h2>
         <p className="mb-3 text-[13px] leading-relaxed text-muted">
-          Month by month versus {benchName}, then each year, then what you actually held at year-end.
+          Month by month versus {benchName}, then each year, then the year-end book.
         </p>
         {path.months?.length ? (
           <>

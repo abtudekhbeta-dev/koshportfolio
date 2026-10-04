@@ -35,6 +35,7 @@ import { Route as ApiQuoteRouteImport } from './routes/api/quote'
 import { Route as ApiScreenBuildRouteImport } from './routes/api/screen-build'
 import { Route as ApiScreenerRouteImport } from './routes/api/screener'
 import { Route as ApiSearchRouteImport } from './routes/api/search'
+import { Route as ApiSeasonalityRouteImport } from './routes/api/seasonality'
 import { Route as ApiSkillBoardRouteImport } from './routes/api/skill-board'
 import { Route as ApiTapeRouteImport } from './routes/api/tape'
 import { Route as ApiWikiRouteImport } from './routes/api/wiki'
@@ -47,6 +48,7 @@ import { Route as PIdImproveRouteImport } from './routes/p.$id.improve'
 import { Route as PIdPathRouteImport } from './routes/p.$id.path'
 import { Route as PIdPerformanceRouteImport } from './routes/p.$id.performance'
 import { Route as PIdRiskRouteImport } from './routes/p.$id.risk'
+import { Route as PIdSeasonalityRouteImport } from './routes/p.$id.seasonality'
 import { Route as PIdSectorsRouteImport } from './routes/p.$id.sectors'
 
 const IndexRoute = IndexRouteImport.update({
@@ -179,6 +181,11 @@ const ApiSearchRoute = ApiSearchRouteImport.update({
   path: '/api/search',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSeasonalityRoute = ApiSeasonalityRouteImport.update({
+  id: '/api/seasonality',
+  path: '/api/seasonality',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSkillBoardRoute = ApiSkillBoardRouteImport.update({
   id: '/api/skill-board',
   path: '/api/skill-board',
@@ -239,6 +246,11 @@ const PIdRiskRoute = PIdRiskRouteImport.update({
   path: '/risk',
   getParentRoute: () => PIdRoute,
 } as any)
+const PIdSeasonalityRoute = PIdSeasonalityRouteImport.update({
+  id: '/seasonality',
+  path: '/seasonality',
+  getParentRoute: () => PIdRoute,
+} as any)
 const PIdSectorsRoute = PIdSectorsRouteImport.update({
   id: '/sectors',
   path: '/sectors',
@@ -272,6 +284,7 @@ export interface FileRoutesByFullPath {
   '/api/screen-build': typeof ApiScreenBuildRoute
   '/api/screener': typeof ApiScreenerRoute
   '/api/search': typeof ApiSearchRoute
+  '/api/seasonality': typeof ApiSeasonalityRoute
   '/api/skill-board': typeof ApiSkillBoardRoute
   '/api/tape': typeof ApiTapeRoute
   '/api/wiki': typeof ApiWikiRoute
@@ -283,6 +296,7 @@ export interface FileRoutesByFullPath {
   '/p/$id/path': typeof PIdPathRoute
   '/p/$id/performance': typeof PIdPerformanceRoute
   '/p/$id/risk': typeof PIdRiskRoute
+  '/p/$id/seasonality': typeof PIdSeasonalityRoute
   '/p/$id/sectors': typeof PIdSectorsRoute
   '/p/$id/': typeof PIdIndexRoute
 }
@@ -313,6 +327,7 @@ export interface FileRoutesByTo {
   '/api/screen-build': typeof ApiScreenBuildRoute
   '/api/screener': typeof ApiScreenerRoute
   '/api/search': typeof ApiSearchRoute
+  '/api/seasonality': typeof ApiSeasonalityRoute
   '/api/skill-board': typeof ApiSkillBoardRoute
   '/api/tape': typeof ApiTapeRoute
   '/api/wiki': typeof ApiWikiRoute
@@ -323,6 +338,7 @@ export interface FileRoutesByTo {
   '/p/$id/path': typeof PIdPathRoute
   '/p/$id/performance': typeof PIdPerformanceRoute
   '/p/$id/risk': typeof PIdRiskRoute
+  '/p/$id/seasonality': typeof PIdSeasonalityRoute
   '/p/$id/sectors': typeof PIdSectorsRoute
   '/p/$id': typeof PIdIndexRoute
 }
@@ -354,6 +370,7 @@ export interface FileRoutesById {
   '/api/screen-build': typeof ApiScreenBuildRoute
   '/api/screener': typeof ApiScreenerRoute
   '/api/search': typeof ApiSearchRoute
+  '/api/seasonality': typeof ApiSeasonalityRoute
   '/api/skill-board': typeof ApiSkillBoardRoute
   '/api/tape': typeof ApiTapeRoute
   '/api/wiki': typeof ApiWikiRoute
@@ -365,6 +382,7 @@ export interface FileRoutesById {
   '/p/$id/path': typeof PIdPathRoute
   '/p/$id/performance': typeof PIdPerformanceRoute
   '/p/$id/risk': typeof PIdRiskRoute
+  '/p/$id/seasonality': typeof PIdSeasonalityRoute
   '/p/$id/sectors': typeof PIdSectorsRoute
   '/p/$id/': typeof PIdIndexRoute
 }
@@ -397,6 +415,7 @@ export interface FileRouteTypes {
     | '/api/screen-build'
     | '/api/screener'
     | '/api/search'
+    | '/api/seasonality'
     | '/api/skill-board'
     | '/api/tape'
     | '/api/wiki'
@@ -408,6 +427,7 @@ export interface FileRouteTypes {
     | '/p/$id/path'
     | '/p/$id/performance'
     | '/p/$id/risk'
+    | '/p/$id/seasonality'
     | '/p/$id/sectors'
     | '/p/$id/'
   fileRoutesByTo: FileRoutesByTo
@@ -438,6 +458,7 @@ export interface FileRouteTypes {
     | '/api/screen-build'
     | '/api/screener'
     | '/api/search'
+    | '/api/seasonality'
     | '/api/skill-board'
     | '/api/tape'
     | '/api/wiki'
@@ -448,6 +469,7 @@ export interface FileRouteTypes {
     | '/p/$id/path'
     | '/p/$id/performance'
     | '/p/$id/risk'
+    | '/p/$id/seasonality'
     | '/p/$id/sectors'
     | '/p/$id'
   id:
@@ -478,6 +500,7 @@ export interface FileRouteTypes {
     | '/api/screen-build'
     | '/api/screener'
     | '/api/search'
+    | '/api/seasonality'
     | '/api/skill-board'
     | '/api/tape'
     | '/api/wiki'
@@ -489,6 +512,7 @@ export interface FileRouteTypes {
     | '/p/$id/path'
     | '/p/$id/performance'
     | '/p/$id/risk'
+    | '/p/$id/seasonality'
     | '/p/$id/sectors'
     | '/p/$id/'
   fileRoutesById: FileRoutesById
@@ -520,6 +544,7 @@ export interface RootRouteChildren {
   ApiScreenBuildRoute: typeof ApiScreenBuildRoute
   ApiScreenerRoute: typeof ApiScreenerRoute
   ApiSearchRoute: typeof ApiSearchRoute
+  ApiSeasonalityRoute: typeof ApiSeasonalityRoute
   ApiSkillBoardRoute: typeof ApiSkillBoardRoute
   ApiTapeRoute: typeof ApiTapeRoute
   ApiWikiRoute: typeof ApiWikiRoute
@@ -712,6 +737,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSearchRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/seasonality': {
+      id: '/api/seasonality'
+      path: '/api/seasonality'
+      fullPath: '/api/seasonality'
+      preLoaderRoute: typeof ApiSeasonalityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/skill-board': {
       id: '/api/skill-board'
       path: '/api/skill-board'
@@ -796,6 +828,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PIdRiskRouteImport
       parentRoute: typeof PIdRoute
     }
+    '/p/$id/seasonality': {
+      id: '/p/$id/seasonality'
+      path: '/seasonality'
+      fullPath: '/p/$id/seasonality'
+      preLoaderRoute: typeof PIdSeasonalityRouteImport
+      parentRoute: typeof PIdRoute
+    }
     '/p/$id/sectors': {
       id: '/p/$id/sectors'
       path: '/sectors'
@@ -812,6 +851,7 @@ interface PIdRouteChildren {
   PIdPathRoute: typeof PIdPathRoute
   PIdPerformanceRoute: typeof PIdPerformanceRoute
   PIdRiskRoute: typeof PIdRiskRoute
+  PIdSeasonalityRoute: typeof PIdSeasonalityRoute
   PIdSectorsRoute: typeof PIdSectorsRoute
   PIdIndexRoute: typeof PIdIndexRoute
 }
@@ -822,6 +862,7 @@ const PIdRouteChildren: PIdRouteChildren = {
   PIdPathRoute: PIdPathRoute,
   PIdPerformanceRoute: PIdPerformanceRoute,
   PIdRiskRoute: PIdRiskRoute,
+  PIdSeasonalityRoute: PIdSeasonalityRoute,
   PIdSectorsRoute: PIdSectorsRoute,
   PIdIndexRoute: PIdIndexRoute,
 }
@@ -855,6 +896,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiScreenBuildRoute: ApiScreenBuildRoute,
   ApiScreenerRoute: ApiScreenerRoute,
   ApiSearchRoute: ApiSearchRoute,
+  ApiSeasonalityRoute: ApiSeasonalityRoute,
   ApiSkillBoardRoute: ApiSkillBoardRoute,
   ApiTapeRoute: ApiTapeRoute,
   ApiWikiRoute: ApiWikiRoute,

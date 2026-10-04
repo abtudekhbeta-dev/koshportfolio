@@ -1,7 +1,7 @@
 import { o as __toESM } from "../_runtime.mjs";
 import { u as require_react } from "./@floating-ui/react-dom+[...].mjs";
 import { t as composeRefs } from "./radix-ui__react-compose-refs.mjs";
-import { a as DialogPortal, d as useId, h as Primitive, i as DialogOverlay, r as DialogContent, t as Dialog } from "./@radix-ui/react-dialog+[...].mjs";
+import { a as DialogPortal, f as Primitive, i as DialogOverlay, m as useId, r as DialogContent, t as Dialog } from "./@radix-ui/react-dialog+[...].mjs";
 //#region node_modules/cmdk/dist/chunk-NZJY6EH4.mjs
 var U = 1;
 var Y$1 = .9;

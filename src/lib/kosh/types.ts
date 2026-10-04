@@ -16,7 +16,7 @@ export type ScanName = {
   why: string;
 };
 
-export type Bar = { t: number; c: number; raw?: number };
+export type Bar = { t: number; c: number; raw?: number; o?: number; h?: number; l?: number; v?: number };
 
 export type OhlcBar = { t: number; o: number; h: number; l: number; c: number; v: number; adj?: number };
 

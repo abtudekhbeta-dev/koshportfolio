@@ -53,6 +53,52 @@ export async function apiHistory(symbol: string, range = "max") {
   return json<HistoryPack>("/api/history?symbol=" + encodeURIComponent(symbol) + "&range=" + encodeURIComponent(range));
 }
 
+type SeasonSeries = {
+  symbol: string;
+  firstDay: string | null;
+  lastDay: string | null;
+  source: string;
+  note: string;
+  sessions: number;
+  aiDays?: number;
+  conflicts?: number;
+  monthly: import("./seasonality").PeriodCell[];
+  quarterly: import("./seasonality").PeriodCell[];
+};
+
+export type { SeasonSeries };
+
+export async function apiSeasonality(symbols: string[], opts?: { benchmark?: boolean; refresh?: boolean }) {
+  return json<{
+    version: number;
+    asOf: string;
+    series: SeasonSeries[];
+    benchmark: SeasonSeries | null;
+    error?: string;
+  }>("/api/seasonality", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbols, benchmark: Boolean(opts?.benchmark), refresh: Boolean(opts?.refresh) }),
+  });
+}
+
+export async function apiSeasonalityRecover(body: {
+  symbol: string;
+  year: number;
+  month: number;
+  value: number;
+  sourceUrl: string;
+  sourceName: string;
+  evidence: string;
+  methodology?: string;
+}) {
+  return json<{ ok: boolean; reason: string }>("/api/seasonality", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recover: body }),
+  });
+}
+
 export async function apiSearch(q: string) {
   const d = await json<{ quotes: { symbol: string; name: string; exch: string }[] }>(
     "/api/search?q=" + encodeURIComponent(q),
