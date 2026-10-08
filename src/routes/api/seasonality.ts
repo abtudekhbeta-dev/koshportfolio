@@ -67,7 +67,7 @@ export const Route = createFileRoute("/api/seasonality")({
           });
           return Response.json(saved);
         }
-        const symbols = [...new Set((body.symbols || []).map((s) => String(s || "").trim()).filter(Boolean))].slice(0, 24);
+        const symbols = [...new Set((body.symbols || []).map((s) => String(s || "").trim()).filter(Boolean))].slice(0, 72);
         if (!symbols.length) return Response.json({ error: "symbol required" }, { status: 400 });
         const want = body.benchmark ? [...symbols, "^NSEI"] : symbols;
         const rows = await ensureMany(want, Boolean(body.refresh));

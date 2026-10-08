@@ -10,7 +10,6 @@ import type { PatternHit } from "@/lib/kosh/patterns";
 import type { Quote } from "@/lib/kosh/types";
 import { bareSymbol, useKosh, type DeskLayout } from "@/lib/store";
 import { TERM_HEIGHT, snapTermHeight, termHeightName } from "@/lib/kosh/term-height";
-import { useAppLayout } from "@/lib/layout-mode";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useChartFullscreen } from "@/components/charts/use-fullscreen";
 import { cn } from "@/lib/utils";
@@ -61,9 +60,6 @@ export function MarketsDesk() {
   const setDeskPane = useKosh((s) => s.setDeskPane);
   const setDeskSymbol = useKosh((s) => s.setDeskSymbol);
   const termHeight = snapTermHeight(useKosh((s) => s.chartPrefs.termHeight || TERM_HEIGHT.standard));
-  const appLayout = useAppLayout();
-  const deskSplit =
-    appLayout === "terminal" ? { main: 82, watch: 18 } : appLayout === "research" ? { main: 62, watch: 38 } : DESK_SPLIT;
   const patchChartPrefs = useKosh((s) => s.patchChartPrefs);
   const watch = useKosh((s) => s.watch);
   const ports = useKosh((s) => s.portfolios);
@@ -363,7 +359,7 @@ export function MarketsDesk() {
       </div>
 
       {wide && watchOpen ? (
-        <Group key={appLayout} orientation="horizontal" className="min-h-0 flex-1" defaultLayout={deskSplit}>
+        <Group orientation="horizontal" className="min-h-0 flex-1" defaultLayout={DESK_SPLIT}>
           <Panel id="main" minSize="42%" className="min-h-0 overflow-hidden">
             {mainCol}
           </Panel>

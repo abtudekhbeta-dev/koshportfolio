@@ -13,6 +13,7 @@ import { fmtInr, fmtPct } from "@/lib/kosh/engine";
 import { useKosh, usePortfolio } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { UnresolvedHoldings } from "@/components/unresolved-holdings";
+import { useAppLayout } from "@/lib/layout-mode";
 
 export const Route = createFileRoute("/p/$id")({ ssr: false, component: PortfolioLayout });
 
@@ -38,6 +39,7 @@ function PortfolioLayout() {
   const duplicatePortfolio = useKosh((s) => s.duplicatePortfolio);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const intel = useAppLayout() === "intelligence";
 
   if (!portfolio) {
     return (
@@ -131,6 +133,9 @@ function PortfolioLayout() {
         </div>
       </div>
 
+      {intel ? (
+        <IntelPortfolioNav id={id} pathname={pathname} />
+      ) : (
       <nav className="-mx-3 mb-5 flex gap-1 overflow-x-auto px-3 sm:-mx-4 sm:px-4">
         {TABS.map((t) => {
           const href = t.to.replace("$id", id);
@@ -150,6 +155,7 @@ function PortfolioLayout() {
           );
         })}
       </nav>
+      )}
 
       {book?.missing?.length ? (
         <UnresolvedHoldings portfolioId={id} missing={book.missing} holdings={portfolio.holdings} />
@@ -182,5 +188,93 @@ function PortfolioLayout() {
         <p className="text-sm text-muted">Add stocks to this portfolio to draw the chart.</p>
       )}
     </AppShell>
+  );
+}
+
+const GROUPS = [
+  { id: "overview", label: "Overview", links: [{ to: "/p/$id" as const, label: "Overview", exact: true }] },
+  {
+    id: "performance",
+    label: "Performance",
+    links: [
+      { to: "/p/$id/performance" as const, label: "Performance" },
+      { to: "/p/$id/risk" as const, label: "Risk" },
+      { to: "/p/$id/sectors" as const, label: "Sectors" },
+      { to: "/p/$id/seasonality" as const, label: "Seasonality" },
+    ],
+  },
+  {
+    id: "decisions",
+    label: "Decisions",
+    links: [
+      { to: "/p/$id/improve" as const, label: "Improve" },
+      { to: "/p/$id/path" as const, label: "Path" },
+    ],
+  },
+  { id: "holdings", label: "Holdings", links: [{ to: "/p/$id/holdings" as const, label: "Holdings" }] },
+];
+
+function groupOf(pathname: string, id: string) {
+  const base = `/p/${id}`;
+  if (pathname === base || pathname === `${base}/`) return "overview";
+  if (
+    pathname.startsWith(`${base}/performance`) ||
+    pathname.startsWith(`${base}/risk`) ||
+    pathname.startsWith(`${base}/sectors`) ||
+    pathname.startsWith(`${base}/seasonality`)
+  ) {
+    return "performance";
+  }
+  if (pathname.startsWith(`${base}/improve`) || pathname.startsWith(`${base}/path`)) return "decisions";
+  if (pathname.startsWith(`${base}/holdings`)) return "holdings";
+  return "overview";
+}
+
+function IntelPortfolioNav({ id, pathname }: { id: string; pathname: string }) {
+  const current = groupOf(pathname, id);
+  const group = GROUPS.find((g) => g.id === current) || GROUPS[0];
+  return (
+    <nav className="mb-5 border-b border-border" aria-label="Portfolio">
+      <div className="-mx-3 flex gap-1 overflow-x-auto px-3">
+        {GROUPS.map((g) => {
+          const on = g.id === current;
+          const first = g.links[0];
+          return (
+            <Link
+              key={g.id}
+              to={first.to}
+              params={{ id }}
+              className={cn(
+                "inline-flex h-9 shrink-0 items-center border-b-2 px-2.5 text-[13px] font-medium",
+                on ? "border-fg text-fg" : "border-transparent text-muted hover:text-fg",
+              )}
+            >
+              {g.label}
+            </Link>
+          );
+        })}
+      </div>
+      {group.links.length > 1 ? (
+        <div className="-mx-3 flex gap-1 overflow-x-auto px-3 pb-2">
+          {group.links.map((t) => {
+            const href = t.to.replace("$id", id);
+            const active = "exact" in t && t.exact ? pathname === `/p/${id}` || pathname === `/p/${id}/` : pathname.startsWith(href);
+            return (
+              <Link
+                key={t.to}
+                to={t.to}
+                params={{ id }}
+                className={cn(
+                  "inline-flex h-8 shrink-0 items-center px-2 text-[12px]",
+                  active ? "text-fg" : "text-muted hover:text-fg",
+                )}
+              >
+                {t.label}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
+    </nav>
   );
 }

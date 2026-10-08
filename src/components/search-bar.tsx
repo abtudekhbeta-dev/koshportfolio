@@ -8,7 +8,23 @@ import { NIFTY50, searchNse } from "@/lib/kosh/universe";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-export function SearchBar() {
+const ACTIONS = [
+  { id: "screener", label: "Open Screener", to: "/screen" as const },
+  { id: "compare", label: "Open Compare", to: "/compare" as const },
+  { id: "watch", label: "Open Watch", to: "/watch" as const },
+  { id: "markets", label: "Open Terminal", to: "/markets" as const },
+  { id: "portfolios", label: "Open Portfolios", to: "/app" as const },
+];
+
+export function SearchBar({
+  hint = "/",
+  dense = false,
+  placeholder = "Search any NSE or BSE name…",
+}: {
+  hint?: string;
+  dense?: boolean;
+  placeholder?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<{ symbol: string; name: string; exch: string }[]>([]);
@@ -17,6 +33,7 @@ export function SearchBar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const recents = useKosh((s) => s.recents);
   const watch = useKosh((s) => s.watch);
+  const portfolios = useKosh((s) => s.portfolios);
   const pushRecent = useKosh((s) => s.pushRecent);
   const timer = useRef<number>(0);
 
@@ -72,21 +89,30 @@ export function SearchBar() {
     if (nseSyms.has(bare)) return false;
     return /\.(NS|BO)$/i.test(h.symbol) || /NSE|BSE|India/i.test(h.exch || "");
   });
-  const shownHits = indianHits.length ? indianHits : hits.filter((h) => {
-    const bare = h.symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
-    return !nseSyms.has(bare) && !/\.KL$/i.test(h.symbol);
-  });
+  const actions = ACTIONS.filter((a) => !needle || a.label.toUpperCase().includes(needle) || a.id.includes(needle.toLowerCase()));
+  const shownHits = indianHits.length
+    ? indianHits
+    : hits.filter((h) => {
+        const bare = h.symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
+        return !nseSyms.has(bare) && !/\.KL$/i.test(h.symbol);
+      });
+  const portHits = portfolios
+    .filter((p) => !needle || p.name.toUpperCase().includes(needle))
+    .slice(0, needle ? 8 : 4);
 
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex h-11 min-w-0 w-full items-center gap-2 rounded-sm bg-bg-elevated px-3 text-left text-[14px] text-muted shadow-[var(--shadow-border)] hover:text-fg"
+        className={cn(
+          "flex min-w-0 w-full items-center gap-2 rounded-sm bg-bg-elevated px-3 text-left text-muted shadow-[var(--shadow-border)] hover:text-fg",
+          dense ? "h-8 text-[13px]" : "h-11 text-[14px]",
+        )}
       >
         <Search className="size-3.5 shrink-0" />
-        <span className="min-w-0 flex-1 truncate">Search any NSE or BSE name…</span>
-        <kbd className="hidden rounded-[4px] bg-bg px-1.5 font-mono text-[10px] text-subtle sm:inline">/</kbd>
+        <span className="min-w-0 flex-1 truncate">{placeholder}</span>
+        <kbd className="hidden rounded-[4px] bg-bg px-1.5 font-mono text-[10px] text-subtle sm:inline">{hint}</kbd>
       </button>
       {open ? (
         <div className="fixed inset-0 z-50">
@@ -133,6 +159,42 @@ export function SearchBar() {
                   <Command.Group heading="Recent">
                     {recents.map((r) => (
                       <Row key={"r" + r.symbol} symbol={r.symbol} name={r.name} onPick={go} />
+                    ))}
+                  </Command.Group>
+                ) : null}
+                {actions.length ? (
+                  <Command.Group heading="Go to">
+                    {actions.map((a) => (
+                      <Command.Item
+                        key={a.id}
+                        value={a.label}
+                        onSelect={() => {
+                          setOpen(false);
+                          setQ("");
+                          void nav({ to: a.to });
+                        }}
+                        className="flex cursor-pointer items-center rounded-sm px-2.5 py-2 text-[13px] data-[selected=true]:bg-surface"
+                      >
+                        {a.label}
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                ) : null}
+                {portHits.length ? (
+                  <Command.Group heading="Portfolios">
+                    {portHits.map((p) => (
+                      <Command.Item
+                        key={p.id}
+                        value={"portfolio " + p.name}
+                        onSelect={() => {
+                          setOpen(false);
+                          setQ("");
+                          void nav({ to: "/p/$id", params: { id: p.id } });
+                        }}
+                        className="flex cursor-pointer items-center rounded-sm px-2.5 py-2 text-[13px] data-[selected=true]:bg-surface"
+                      >
+                        {p.name}
+                      </Command.Item>
                     ))}
                   </Command.Group>
                 ) : null}

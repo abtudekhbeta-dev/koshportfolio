@@ -11,8 +11,10 @@ import { BrandLink } from "@/components/mark";
 import { SearchBar } from "@/components/search-bar";
 import { TapeQuote } from "@/components/tape-quote";
 import { LayoutSwitch } from "@/components/layout-switch";
+import { IntelligenceShell } from "@/components/intelligence-shell";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { useAppLayout } from "@/lib/layout-mode";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
@@ -36,6 +38,22 @@ function navOn(to: string, pathname: string) {
 }
 
 export function AppShell({ children, wide, full }: { children: ReactNode; wide?: boolean; full?: boolean }) {
+  const layout = useAppLayout();
+  if (layout === "intelligence") {
+    return (
+      <IntelligenceShell wide={wide} full={full}>
+        {children}
+      </IntelligenceShell>
+    );
+  }
+  return (
+    <ClassicShell wide={wide} full={full}>
+      {children}
+    </ClassicShell>
+  );
+}
+
+function ClassicShell({ children, wide, full }: { children: ReactNode; wide?: boolean; full?: boolean }) {
   const tape = useQuery({
     queryKey: ["tape"],
     queryFn: apiTape,

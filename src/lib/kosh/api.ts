@@ -82,6 +82,29 @@ export async function apiSeasonality(symbols: string[], opts?: { benchmark?: boo
   });
 }
 
+/** One request stays small. The desk waits for every chunk so holdings are not silently dropped. */
+export async function apiSeasonalityAll(symbols: string[], opts?: { benchmark?: boolean; refresh?: boolean }) {
+  const unique = [...new Set(symbols.map((s) => s.trim()).filter(Boolean))];
+  const chunks: string[][] = [];
+  for (let i = 0; i < unique.length; i += 12) chunks.push(unique.slice(i, i + 12));
+  if (!chunks.length) return apiSeasonality([], opts);
+  let version = 1;
+  let asOf = "";
+  const series: SeasonSeries[] = [];
+  let benchmark: SeasonSeries | null = null;
+  for (let i = 0; i < chunks.length; i++) {
+    const part = await apiSeasonality(chunks[i], {
+      benchmark: Boolean(opts?.benchmark) && i === 0,
+      refresh: Boolean(opts?.refresh),
+    });
+    version = part.version;
+    asOf = part.asOf || asOf;
+    if (part.series?.length) series.push(...part.series);
+    if (part.benchmark) benchmark = part.benchmark;
+  }
+  return { version, asOf, series, benchmark };
+}
+
 export async function apiSeasonalityRecover(body: {
   symbol: string;
   year: number;

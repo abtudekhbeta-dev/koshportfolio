@@ -1,7 +1,7 @@
 import { useMemo, useState, type ButtonHTMLAttributes } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AIButton } from "@/components/ui/ai-button";
-import { apiResearch, apiSeasonality, apiSeasonalityRecover, type SeasonSeries } from "@/lib/kosh/api";
+import { apiResearch, apiSeasonalityAll, apiSeasonalityRecover, type SeasonSeries } from "@/lib/kosh/api";
 import { fmtPct } from "@/lib/kosh/engine";
 import { BENCH_STROKE, plotChrome } from "@/lib/kosh/plot";
 import {
@@ -50,7 +50,6 @@ export function SeasonalityDesk({ mode, names }: { mode: "stock" | "portfolio"; 
   const [lookback, setLookback] = useState<Lookback>(5);
   const [includeCurrent, setIncludeCurrent] = useState(false);
   const [compare, setCompare] = useState(false);
-  const [normalize, setNormalize] = useState(false);
   const [windowEnd, setWindowEnd] = useState<number | null>(null);
   const [selected, setSelected] = useState(0);
   const [busy, setBusy] = useState<"refresh" | "ai" | null>(null);
@@ -69,13 +68,12 @@ export function SeasonalityDesk({ mode, names }: { mode: "stock" | "portfolio"; 
     }
     return out;
   }, [names]);
-  const dropped = Math.max(0, ranked.length - 24);
-  const symbols = ranked.slice(0, 24);
+  const symbols = ranked;
   const key = symbols.map((s) => canonSymbol(s.symbol)).join("|");
 
   const q = useQuery({
     queryKey: ["seasonality", key],
-    queryFn: () => apiSeasonality(symbols.map((s) => s.symbol), { benchmark: true }),
+    queryFn: () => apiSeasonalityAll(symbols.map((s) => s.symbol), { benchmark: true }),
     enabled: symbols.length > 0,
     staleTime: 6 * 60 * 60 * 1000,
   });
@@ -112,9 +110,9 @@ export function SeasonalityDesk({ mode, names }: { mode: "stock" | "portfolio"; 
         lastDay: s.lastDay,
       })),
       symbols.map((n) => ({ symbol: n.symbol, name: n.name, weight: n.weight || 0 })),
-      { kind, lookback, windowEnd: end, includeCurrent, asOfDay: q.data.asOf, normalize, bench },
+      { kind, lookback, windowEnd: end, includeCurrent, asOfDay: q.data.asOf, bench },
     );
-  }, [q.data, bounds, windowEnd, compare, mode, kind, lookback, includeCurrent, normalize, symbols]);
+  }, [q.data, bounds, windowEnd, compare, mode, kind, lookback, includeCurrent, symbols]);
 
   const asOfYear = Number(q.data?.asOf?.slice(0, 4) || 0);
   const coveredNames =
@@ -137,7 +135,7 @@ export function SeasonalityDesk({ mode, names }: { mode: "stock" | "portfolio"; 
     setBusy("refresh");
     setNote("");
     try {
-      const data = await apiSeasonality(
+      const data = await apiSeasonalityAll(
         symbols.map((s) => s.symbol),
         { benchmark: true, refresh: true },
       );
@@ -269,12 +267,6 @@ export function SeasonalityDesk({ mode, names }: { mode: "stock" | "portfolio"; 
           <input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} />
           Compare with Nifty 50
         </label>
-        {mode === "portfolio" ? (
-          <label className="inline-flex items-center gap-2">
-            <input type="checkbox" checked={normalize} onChange={(e) => setNormalize(e.target.checked)} />
-            Normalize weights to 100%
-          </label>
-        ) : null}
       </div>
 
       {q.isPending ? <p className="text-[13px] text-muted">Reading stored history. The window slider will not download it again.</p> : null}
@@ -302,12 +294,6 @@ export function SeasonalityDesk({ mode, names }: { mode: "stock" | "portfolio"; 
           {portView ? (
             <p className="max-w-2xl text-[13px] leading-relaxed text-muted">
               {coveredNames}/{q.data?.series.length || 0} holdings have a return inside {view.windowStart}–{view.windowEnd}. {portView.method}
-            </p>
-          ) : null}
-          {dropped > 0 ? (
-            <p className="text-[13px] text-muted">
-              {symbols.length} of {ranked.length} holdings are in this pass, largest weights first. The other {dropped}{" "}
-              {dropped === 1 ? "is" : "are"} not included.
             </p>
           ) : null}
           {compare && !q.data?.benchmark?.monthly.length ? (

@@ -2,7 +2,7 @@ import { o as __toESM } from "../../_runtime.mjs";
 import { a as offset, c as useFloating, i as limitShift, n as flip, o as shift, r as hide, s as size, t as arrow, u as require_react } from "../@floating-ui/react-dom+[...].mjs";
 import { n as require_jsx_runtime, t as createContextScope } from "../radix-ui__react-context+react.mjs";
 import { n as useComposedRefs } from "../radix-ui__react-compose-refs.mjs";
-import { d as useCallbackRef, f as Primitive, h as useLayoutEffect2 } from "./react-dialog+[...].mjs";
+import { f as useLayoutEffect2, h as Primitive, m as useCallbackRef } from "./react-dialog+[...].mjs";
 import { n as autoUpdate } from "../@floating-ui/dom+[...].mjs";
 //#region node_modules/@radix-ui/react-use-size/dist/index.mjs
 var import_react = /* @__PURE__ */ __toESM(require_react(), 1);

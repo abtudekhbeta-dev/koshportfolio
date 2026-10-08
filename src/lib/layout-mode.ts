@@ -1,19 +1,30 @@
 import { useEffect, useState } from "react";
 
-export const APP_LAYOUTS = ["classic", "terminal", "research", "compact"] as const;
+/** Presentation only. Retired layouts migrate to Classic. */
+export const APP_LAYOUTS = ["classic", "intelligence"] as const;
 export type AppLayout = (typeof APP_LAYOUTS)[number];
 
 const KEY = "kosh-layout";
+const RETIRED = new Set(["terminal", "research", "compact"]);
 
-export function isAppLayout(v: string | null | undefined): v is AppLayout {
-  return v === "classic" || v === "terminal" || v === "research" || v === "compact";
+export function normalizeLayout(v: string | null | undefined): AppLayout {
+  if (v === "intelligence") return "intelligence";
+  return "classic";
 }
 
 export function readLayout(): AppLayout {
   if (typeof localStorage === "undefined") return "classic";
   try {
     const v = localStorage.getItem(KEY);
-    return isAppLayout(v) ? v : "classic";
+    const next = normalizeLayout(v);
+    if (v && (RETIRED.has(v) || (v !== "classic" && v !== "intelligence"))) {
+      try {
+        localStorage.setItem(KEY, "classic");
+      } catch {
+        /* private mode */
+      }
+    }
+    return next;
   } catch {
     return "classic";
   }

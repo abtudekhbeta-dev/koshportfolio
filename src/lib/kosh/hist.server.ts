@@ -265,7 +265,7 @@ async function conflictCount(symbol: string) {
 export async function ensureMany(symbols: string[], refresh = false): Promise<StoredSeries[]> {
   const out: StoredSeries[] = [];
   let i = 0;
-  const list = [...new Set(symbols.map(canon).filter(Boolean))].slice(0, 30);
+  const list = [...new Set(symbols.map(canon).filter(Boolean))].slice(0, 80);
   async function worker() {
     while (i < list.length) {
       const n = i++;

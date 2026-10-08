@@ -12,6 +12,8 @@ import { quoteStatus, quoteStatusLabel } from "@/lib/kosh/market-data";
 import { applyScreen } from "@/lib/kosh/screens";
 import { cn } from "@/lib/utils";
 import { MixNudge } from "@/components/mix-nudge";
+import { IntelLanding } from "@/components/intel-landing";
+import { useAppLayout } from "@/lib/layout-mode";
 import { Plus } from "lucide-react";
 
 export const Route = createFileRoute("/")({ component: Landing });
@@ -332,6 +334,12 @@ function Board({
 }
 
 function Landing() {
+  const layout = useAppLayout();
+  if (layout === "intelligence") return <IntelLanding />;
+  return <ClassicLanding />;
+}
+
+function ClassicLanding() {
   return (
     <div className="min-h-dvh overflow-x-hidden">
       <SkipToMain />

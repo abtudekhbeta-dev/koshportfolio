@@ -2,7 +2,7 @@ import { o as __toESM } from "../_runtime.mjs";
 import { u as require_react } from "../_libs/@floating-ui/react-dom+[...].mjs";
 import { n as require_jsx_runtime } from "../_libs/radix-ui__react-context+react.mjs";
 import { S as Maximize2, b as Minimize2 } from "../_libs/lucide-react.mjs";
-import { J as sliceNav, Qt as useKosh, gn as cn, i as Seg } from "./router-g4ySYeAB2.mjs";
+import { J as sliceNav, Qt as useKosh, gn as cn, i as Seg } from "./router-B40wiopi2.mjs";
 import { a as SAME_STROKE, c as buildSvgDoc, d as extremes, f as niceY, g as yearMarks, h as smaRows, i as PATH_STROKE, l as countable, m as seriesPath, n as DOWN_STROKE, o as SMA_STROKE, p as plotChrome, r as MIX_STROKE, s as buildRows, t as BENCH_STROKE, u as domain } from "./plot-BzhEnD2T.mjs";
 import { t as useChartFullscreen } from "./use-fullscreen-DQ7DYulI.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/nav-chart-h7HS7Nib.js

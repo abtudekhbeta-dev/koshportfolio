@@ -391,44 +391,8 @@ main.kosh-main {
   min-width: 0;
 }
 
-/* Layouts change spacing and density only. Classic is the unset default. */
-html[data-layout="compact"] .kosh-app-header {
-  height: 3.25rem;
-}
-html[data-layout="compact"] .kosh-main {
-  padding-top: 0.75rem;
-}
-html[data-layout="compact"] .kosh-page {
-  gap: 1.25rem;
-}
-html[data-layout="compact"] .kosh-table th,
-html[data-layout="compact"] .kosh-table td {
-  padding-top: 0.35rem;
-  padding-bottom: 0.35rem;
-}
-html[data-layout="compact"] [data-term-height] {
-  max-height: 480px;
-}
-html[data-layout="research"] .kosh-main {
-  padding-top: 1.75rem;
-}
-html[data-layout="research"] .kosh-page {
-  gap: 2.75rem;
-}
-html[data-layout="research"] .kosh-table td {
-  padding-top: 0.7rem;
-  padding-bottom: 0.7rem;
-}
-html[data-layout="terminal"] [data-term-height] {
-  min-height: 720px;
-}
+/* Classic spacing is the default. Retired layouts no longer change density. */
 @media (max-width: 767px) {
-  html[data-layout="terminal"] [data-term-height] {
-    min-height: 420px;
-  }
-  html[data-layout="research"] .kosh-main {
-    padding-top: 1rem;
-  }
   .kosh-app-header,
   .kosh-topbar {
     max-width: 100%;
@@ -712,4 +676,34 @@ html.kosh-fs-lock {
   html {
     scroll-behavior: auto;
   }
+}
+
+/* Intelligence is a second presentation. Tokens only — Classic markup is untouched. */
+html[data-layout="intelligence"] {
+  --k-bg: #0b0d11;
+  --k-bg-elevated: #10131a;
+  --k-surface: #141820;
+  --k-surface-2: #1b2030;
+  --k-border: rgba(255, 255, 255, 0.08);
+  --k-border-strong: rgba(255, 255, 255, 0.14);
+  --k-shadow-border: 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --k-shadow-border-hover: 0 0 0 1px rgba(255, 255, 255, 0.12);
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+}
+html[data-layout="intelligence"][data-theme="light"] {
+  --k-bg: #f4f5f7;
+  --k-bg-elevated: #ffffff;
+  --k-surface: #ffffff;
+  --k-surface-2: #eef0f4;
+  --k-border: rgba(16, 18, 24, 0.08);
+  --k-border-strong: rgba(16, 18, 24, 0.14);
+  --k-shadow-border: 0 0 0 1px rgba(16, 18, 24, 0.08);
+  --k-shadow-border-hover: 0 0 0 1px rgba(16, 18, 24, 0.14);
+}
+html[data-layout="intelligence"] .kosh-card:hover {
+  transform: none;
 }

@@ -14,6 +14,8 @@ import { apiNews, apiScreener, apiFundamentals } from "@/lib/kosh/api";
 import { mixVsNifty, niftyOverlap, bareSym } from "@/lib/kosh/portfolio-stats";
 import type { NiftySnap } from "@/lib/kosh/nifty-snap";
 import { AttentionStrip } from "@/components/attention-strip";
+import { IntelOverview } from "@/components/intel-overview";
+import { useAppLayout } from "@/lib/layout-mode";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -50,6 +52,7 @@ function Overview() {
   const hasMetals = book.commodityValue > 0;
   const screen = useQuery({ queryKey: ["screener"], queryFn: apiScreener, staleTime: 10 * 60 * 1000 });
   const chartNav = book.mix.nav;
+  const intel = useAppLayout() === "intelligence";
 
   return (
     <div className="kosh-page grid gap-8">
@@ -59,6 +62,14 @@ function Overview() {
         <Kpi metricId="day" label="Today" value={fmtInr(dayAbs)} hint={book.dayWarn ? `${fmtPct(dayPct)} · check print` : fmtPct(dayPct)} tone={toneOf(dayAbs)} />
         <Kpi metricId="unreal" label="Unrealised P&L" value={fmtInr(unreal)} hint={invested ? unrealPct.toFixed(2) + "%" : "Cost unavailable"} tone={toneOf(unreal)} />
       </section>
+      {intel ? (
+        <IntelOverview
+          book={book}
+          portfolioId={portfolio.id}
+          screen={screen.data?.rows || []}
+          nifty={screen.data?.nifty ?? null}
+        />
+      ) : null}
       {book.dayWarn ? <p className="text-[13px] text-amber-700 dark:text-amber-400">{book.dayWarn}</p> : null}
       {book.costMissing ? (
         <p className="text-[13px] text-muted">
