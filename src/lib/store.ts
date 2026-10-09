@@ -10,7 +10,7 @@ import { cleanHoldSort } from "@/lib/kosh/instrument-nav";
 import { baseSym, storedSymbol } from "@/lib/kosh/sectors";
 import type { SymbolBook } from "@/lib/kosh/symbol-map";
 import { loadTradeBooks, saveTradeBook } from "@/lib/kosh/trade-book";
-import { unionCloudTrades } from "@/lib/kosh/cloud-state";
+import { applyDrops, emptyDrops, tradeIdentity, unionCloudTrades, withHoldingDrop, withPortfolioDrop, withTradeDrops, type CloudDrops } from "@/lib/kosh/cloud-state";
 
 export type IconId = "k-path" | "bowl" | "twin" | "ledger" | "coin" | "fold";
 export const ICON_IDS: IconId[] = ["k-path", "bowl", "twin", "ledger", "coin", "fold"];
@@ -260,6 +260,7 @@ type KoshState = {
   deepFunds: Record<string, DeepFundSnap>;
   symbolAliases: Record<string, string>;
   symbolSkips: string[];
+  cloudDrops: CloudDrops;
   tradeCounts: Record<string, number>;
   tradeError: string | null;
   tradesReady: boolean;
@@ -298,6 +299,7 @@ type KoshState = {
     deepFunds: Record<string, DeepFundSnap>;
     symbolAliases?: Record<string, string>;
     symbolSkips?: string[];
+    drops?: CloudDrops;
   }) => void;
   toggleWatch: (symbol: string) => void;
   addWatchList: (name: string) => string;
@@ -373,6 +375,7 @@ export const useKosh = create<KoshState>()(
       deepFunds: {},
       symbolAliases: {},
       symbolSkips: [],
+      cloudDrops: emptyDrops(),
       tradeCounts: {},
       tradeError: null,
       tradesReady: false,
@@ -412,7 +415,13 @@ export const useKosh = create<KoshState>()(
         if (!p) return null;
         return get().addPortfolio(`${p.name} copy`, p.holdings, p.bench, p.trades);
       },
-      deletePortfolio: (id) => set({ portfolios: get().portfolios.filter((p) => p.id !== id) }),
+      deletePortfolio: (id) => {
+        const at = Date.now();
+        set({
+          portfolios: get().portfolios.filter((p) => p.id !== id),
+          cloudDrops: withPortfolioDrop(get().cloudDrops, id, at),
+        });
+      },
       setBench: (id, bench) =>
         set({ portfolios: get().portfolios.map((p) => (p.id === id ? { ...p, bench } : p)) }),
       setIncludeCommodities: (id, on) =>
@@ -451,20 +460,42 @@ export const useKosh = create<KoshState>()(
               : p,
           ),
         }),
-      removeHolding: (id, symbol) =>
+      removeHolding: (id, symbol) => {
+        const at = Date.now();
         set({
+          cloudDrops: withHoldingDrop(get().cloudDrops, { portfolioId: id, symbol, at }),
           portfolios: get().portfolios.map((p) =>
-            p.id === id ? { ...p, holdings: p.holdings.filter((h) => h.symbol !== symbol) } : p,
+            p.id === id ? { ...p, updatedAt: at, holdings: p.holdings.filter((h) => h.symbol !== symbol) } : p,
           ),
-        }),
-      replaceHoldings: (id, holdings) =>
-        set({ portfolios: get().portfolios.map((p) => (p.id === id ? { ...p, holdings } : p)) }),
+        });
+      },
+      replaceHoldings: (id, holdings) => {
+        const prev = get().portfolios.find((p) => p.id === id);
+        const nextSyms = new Set((holdings || []).map((h) => h.symbol));
+        const at = Date.now();
+        let drops = get().cloudDrops;
+        for (const h of prev?.holdings || []) {
+          if (!nextSyms.has(h.symbol)) drops = withHoldingDrop(drops, { portfolioId: id, symbol: h.symbol, at });
+        }
+        set({
+          cloudDrops: drops,
+          portfolios: get().portfolios.map((p) => (p.id === id ? { ...p, holdings, updatedAt: at } : p)),
+        });
+      },
       setTrades: (id, trades) => {
+        const prev = get().portfolios.find((p) => p.id === id);
         const next = sanitizeTrades(trades);
+        const nextKeys = new Set(next.map((t) => tradeIdentity(t)));
+        const at = Date.now();
+        const removed = (prev?.trades || [])
+          .map((t) => tradeIdentity(t))
+          .filter((key) => !nextKeys.has(key))
+          .map((key) => ({ portfolioId: id, key, at }));
         set({
           tradeError: null,
           tradeCounts: { ...get().tradeCounts, [id]: next.length },
-          portfolios: get().portfolios.map((p) => (p.id === id ? { ...p, trades: next, updatedAt: Date.now() } : p)),
+          cloudDrops: removed.length ? withTradeDrops(get().cloudDrops, removed) : get().cloudDrops,
+          portfolios: get().portfolios.map((p) => (p.id === id ? { ...p, trades: next, updatedAt: at } : p)),
         });
         saveBook(id, next);
       },
@@ -535,14 +566,18 @@ export const useKosh = create<KoshState>()(
           journal: doc.journal || get().journal,
           bookNotes: doc.bookNotes || get().bookNotes,
           deepFunds: (doc.deepFunds || get().deepFunds) as KoshState["deepFunds"],
+          cloudDrops: doc.drops || get().cloudDrops || emptyDrops(),
         });
         const incoming = portfolios.filter((p) => p.id !== "sample");
         void (async () => {
           try {
             const books = await loadTradeBooks();
             const merged = incoming.map((p) => {
-              const trades = unionCloudTrades(books[p.id], p.trades);
-              return trades.length ? { ...p, trades } : p;
+              const trades = applyDrops(
+                { ...p, trades: unionCloudTrades(books[p.id], p.trades) },
+                useKosh.getState().cloudDrops,
+              ).trades;
+              return trades?.length || p.trades?.length ? { ...p, trades: trades || [] } : p;
             });
             if (merged.some((p, i) => (p.trades?.length || 0) !== (incoming[i]?.trades?.length || 0))) {
               useKosh.setState((s) => ({
@@ -832,6 +867,7 @@ export const useKosh = create<KoshState>()(
           deepFunds: p.deepFunds || {},
           symbolAliases: p.symbolAliases || {},
           symbolSkips: p.symbolSkips || [],
+          cloudDrops: p.cloudDrops || emptyDrops(),
           tradeCounts: p.tradeCounts || {},
           tradeError: null,
           tradesReady: false,

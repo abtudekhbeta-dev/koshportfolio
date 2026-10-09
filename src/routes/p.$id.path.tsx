@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useBookCtx } from "@/components/book-context";
 import { PathDesk } from "@/components/path-desk";
+import { PathTimeline } from "@/components/path-timeline";
 import { PathUpload } from "@/components/path-upload";
 import { fmtInr } from "@/lib/kosh/engine";
 import { apiResearch } from "@/lib/kosh/api";
@@ -168,6 +169,16 @@ function PathPage() {
       </section>
 
       <PathUpload portfolioId={portfolio.id} />
+
+      {path?.nav?.length ? (
+        <PathTimeline
+          nav={path.nav}
+          trades={trades}
+          events={path.events || []}
+          benchName={book.benchName}
+          splitNote={path.splitNote}
+        />
+      ) : null}
 
       {trades.length && path ? (
         <PathDesk

@@ -12,6 +12,8 @@ import { SearchBar } from "@/components/search-bar";
 import { TapeQuote } from "@/components/tape-quote";
 import { LayoutSwitch } from "@/components/layout-switch";
 import { IntelligenceShell } from "@/components/intelligence-shell";
+import { StudioShell } from "@/components/studio-shell";
+import { SyncChip } from "@/components/sync-chip";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useAppLayout } from "@/lib/layout-mode";
@@ -39,6 +41,13 @@ function navOn(to: string, pathname: string) {
 
 export function AppShell({ children, wide, full }: { children: ReactNode; wide?: boolean; full?: boolean }) {
   const layout = useAppLayout();
+  if (layout === "studio") {
+    return (
+      <StudioShell wide={wide} full={full}>
+        {children}
+      </StudioShell>
+    );
+  }
   if (layout === "intelligence") {
     return (
       <IntelligenceShell wide={wide} full={full}>
@@ -141,6 +150,7 @@ function ClassicShell({ children, wide, full }: { children: ReactNode; wide?: bo
               }
             />
             <ThemeToggle />
+            <SyncChip />
             <LayoutSwitch />
             <AuthSlot />
           </div>

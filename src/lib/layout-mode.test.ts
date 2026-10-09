@@ -6,6 +6,7 @@ describe("layout preference", () => {
   it("keeps classic and intelligence and retires the old layouts", () => {
     assert.equal(normalizeLayout("classic"), "classic");
     assert.equal(normalizeLayout("intelligence"), "intelligence");
+    assert.equal(normalizeLayout("studio"), "studio");
     assert.equal(normalizeLayout("terminal"), "classic");
     assert.equal(normalizeLayout("research"), "classic");
     assert.equal(normalizeLayout("compact"), "classic");

@@ -35,27 +35,34 @@ function legacyDoc(rows: PortRow[]): CloudDoc {
 
 export const loadCloudState = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
-  .handler(async ({ context }) => {
+  .validator((input: { knownRev?: number } | undefined) => ({
+    knownRev: Number(input?.knownRev) || 0,
+  }))
+  .handler(async ({ context, data }) => {
     const sql = await getSql();
     await ensure(sql);
     const rows = await sql<StateRow>`
       select rev, payload from kosh_state where user_id = ${context.userId}
     `;
     if (rows.length) {
+      const rev = Number(rows[0].rev) || 0;
+      if (data.knownRev > 0 && data.knownRev === rev) {
+        return { rev, doc: emptyCloud(), unchanged: true as const };
+      }
       let doc = emptyCloud();
       try {
         doc = { ...emptyCloud(), ...JSON.parse(rows[0].payload || "{}") };
       } catch {
         doc = emptyCloud();
       }
-      return { rev: Number(rows[0].rev) || 0, doc };
+      return { rev, doc, unchanged: false as const };
     }
     const old = await sql<PortRow>`
       select id, name, bench, holdings from portfolios
       where user_id = ${context.userId}
       order by updated_at desc
     `;
-    return { rev: 0, doc: old.length ? legacyDoc(old) : emptyCloud() };
+    return { rev: 0, doc: old.length ? legacyDoc(old) : emptyCloud(), unchanged: false as const };
   });
 
 export const saveCloudState = createServerFn({ method: "POST" })

@@ -10,6 +10,7 @@ import { AlertBanner } from "@/components/alert-banner";
 import { AuthSlot } from "@/components/auth-slot";
 import { SearchBar } from "@/components/search-bar";
 import { LayoutSwitch } from "@/components/layout-switch";
+import { SyncChip } from "@/components/sync-chip";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useKosh } from "@/lib/store";
@@ -89,6 +90,7 @@ export function IntelligenceShell({ children, full }: { children: ReactNode; wid
             <span data-tape-status className="hidden shrink-0 text-[11px] text-subtle lg:inline">
               {tapeLabel}
             </span>
+            <SyncChip />
             <AlertMenu />
             <AddHoldings
               trigger={

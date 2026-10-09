@@ -37,6 +37,11 @@ export type CloudDesk = {
   style: "candle" | "line";
 };
 
+export type CloudDrop = { id: string; at: number };
+export type TradeDrop = { portfolioId: string; key: string; at: number };
+export type HoldingDrop = { portfolioId: string; symbol: string; at: number };
+export type CloudDrops = { portfolios: CloudDrop[]; trades: TradeDrop[]; holdings: HoldingDrop[] };
+
 export type CloudDoc = {
   portfolios: Portfolio[];
   watchlists: CloudWatch[];
@@ -52,6 +57,8 @@ export type CloudDoc = {
   symbolSkips: string[];
   deviceId?: string;
   savedAt?: number;
+  /** Deletes that must win over a stale copy of the same record. */
+  drops?: CloudDrops;
 };
 
 export function emptyCloud(): CloudDoc {
@@ -68,6 +75,7 @@ export function emptyCloud(): CloudDoc {
     deepFunds: {},
     symbolAliases: {},
     symbolSkips: [],
+    drops: emptyDrops(),
   };
 }
 
@@ -91,6 +99,8 @@ export function sanitizeForCloud(input: {
   symbolSkips?: string[];
   deviceId?: string;
   savedAt?: number;
+  drops?: CloudDrops;
+  cloudDrops?: CloudDrops;
 }): CloudDoc {
   const funds: CloudDoc["deepFunds"] = {};
   for (const [sym, snap] of Object.entries(input.deepFunds || {})) {
@@ -122,6 +132,7 @@ export function sanitizeForCloud(input: {
     symbolSkips: input.symbolSkips || [],
     deviceId: input.deviceId || thisDevice(),
     savedAt: input.savedAt || Date.now(),
+    drops: clampDrops(input.drops || input.cloudDrops),
   };
 }
 
@@ -141,7 +152,66 @@ function thisDevice(): string | undefined {
 }
 
 function tradeKey(t: TradeLine) {
-  return [t.symbol, t.date || "", t.side, t.qty, t.price, t.boughtAt || "", t.src ?? ""].join("|");
+  return tradeIdentity(t);
+}
+
+export function emptyDrops(): CloudDrops {
+  return { portfolios: [], trades: [], holdings: [] };
+}
+
+/** Broker id wins. Without one, economics plus file order identify the row. Two different ids stay two trades. */
+export function tradeIdentity(t: TradeLine): string {
+  const id = String(t.id || "").trim();
+  if (id) return "id:" + id.slice(0, 80);
+  return "k:" + [t.symbol, t.date || "", t.side, t.qty, t.price, t.boughtAt || "", t.src ?? ""].join("|");
+}
+
+function fresher<T extends { at: number }>(rows: T[], key: (row: T) => string, cap = 200): T[] {
+  const map = new Map<string, T>();
+  for (const row of rows) {
+    if (!(row.at > 0)) continue;
+    const k = key(row);
+    const prev = map.get(k);
+    if (!prev || row.at >= prev.at) map.set(k, row);
+  }
+  return [...map.values()].sort((a, b) => b.at - a.at).slice(0, cap);
+}
+
+export function clampDrops(input?: Partial<CloudDrops> | null): CloudDrops {
+  return {
+    portfolios: fresher(input?.portfolios || [], (d) => d.id),
+    trades: fresher(input?.trades || [], (d) => d.portfolioId + "|" + d.key),
+    holdings: fresher(input?.holdings || [], (d) => d.portfolioId + "|" + baseSym(d.symbol)),
+  };
+}
+
+export function withPortfolioDrop(drops: CloudDrops | undefined, id: string, at: number): CloudDrops {
+  return clampDrops({ ...(drops || emptyDrops()), portfolios: [...(drops?.portfolios || []), { id, at }] });
+}
+
+export function withTradeDrops(drops: CloudDrops | undefined, rows: TradeDrop[]): CloudDrops {
+  return clampDrops({ ...(drops || emptyDrops()), trades: [...(drops?.trades || []), ...rows] });
+}
+
+export function withHoldingDrop(drops: CloudDrops | undefined, row: HoldingDrop): CloudDrops {
+  return clampDrops({ ...(drops || emptyDrops()), holdings: [...(drops?.holdings || []), row] });
+}
+
+/** A newer book keeps what it currently lists. A stale copy loses the deleted row. */
+export function applyDrops(p: Portfolio, drops: CloudDrops | undefined): Portfolio {
+  const d = drops || emptyDrops();
+  const newer = (at: number) => (p.updatedAt || 0) > at;
+  const deadT = new Set(d.trades.filter((x) => x.portfolioId === p.id && !newer(x.at)).map((x) => x.key));
+  const deadH = d.holdings.filter((x) => x.portfolioId === p.id && !newer(x.at));
+  return {
+    ...p,
+    trades: (p.trades || []).filter((t) => !deadT.has(tradeIdentity(t))),
+    holdings: (p.holdings || []).filter((h) => {
+      const hit = deadH.find((x) => baseSym(x.symbol) === baseSym(h.symbol));
+      if (!hit) return true;
+      return (h.updatedAt || 0) > hit.at;
+    }),
+  };
 }
 
 /** Union of two trade books. A failed or empty write must not erase the other side. */
@@ -239,6 +309,21 @@ export function mergeCloud(local: CloudDoc, remote: CloudDoc): { doc: CloudDoc; 
     }
   }
   const localFresh = !localPorts.length && !(local.customScreens || []).length && !Object.keys(local.deepFunds || {}).length;
+  const drops = clampDrops({
+    portfolios: [...(local.drops?.portfolios || []), ...(remote.drops?.portfolios || [])],
+    trades: [...(local.drops?.trades || []), ...(remote.drops?.trades || [])],
+    holdings: [...(local.drops?.holdings || []), ...(remote.drops?.holdings || [])],
+  });
+  for (const [id, p] of [...byId]) {
+    const gone = drops.portfolios.find((d) => d.id === id);
+    if (gone && !((p.updatedAt || 0) > gone.at)) {
+      byId.delete(id);
+      notes.push(`Removed ${p.name} after a delete`);
+      continue;
+    }
+    if (gone) notes.push(`Kept ${p.name} — a newer edit beat a delete`);
+    byId.set(id, applyDrops(p, drops));
+  }
   const doc: CloudDoc = {
     portfolios: [...byId.values()],
     watchlists: [...lists.values()],
@@ -256,6 +341,7 @@ export function mergeCloud(local: CloudDoc, remote: CloudDoc): { doc: CloudDoc; 
     symbolSkips: [...new Set([...(remote.symbolSkips || []), ...(local.symbolSkips || [])])],
     deviceId: local.deviceId || remote.deviceId,
     savedAt: Math.max(local.savedAt || 0, remote.savedAt || 0) || Date.now(),
+    drops,
   };
   const dirty = JSON.stringify(doc) !== JSON.stringify(remote);
   return { doc, dirty, notes };

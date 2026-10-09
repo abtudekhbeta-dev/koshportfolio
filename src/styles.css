@@ -707,3 +707,45 @@ html[data-layout="intelligence"][data-theme="light"] {
 html[data-layout="intelligence"] .kosh-card:hover {
   transform: none;
 }
+
+html[data-layout="studio"] {
+  --k-bg: #14120e;
+  --k-bg-elevated: #1b1814;
+  --k-surface: #211e18;
+  --k-surface-2: #2b261e;
+  --k-fg: #f4efe6;
+  --k-muted: #b7ad9c;
+  --k-subtle: #8d8474;
+  --k-border: rgba(244, 239, 230, 0.12);
+  --k-border-strong: rgba(244, 239, 230, 0.22);
+  --k-accent: #e0a45a;
+  --k-chart: #e0a45a;
+  --k-shadow-border: 0 0 0 1px rgba(244, 239, 230, 0.08);
+  --k-shadow-border-hover: 0 0 0 1px rgba(224, 164, 90, 0.45);
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+}
+html[data-layout="studio"][data-theme="light"] {
+  --k-bg: #f4efe6;
+  --k-bg-elevated: #fbf7f0;
+  --k-surface: #fffaf3;
+  --k-surface-2: #efe7da;
+  --k-fg: #1c1812;
+  --k-muted: #5e564b;
+  --k-subtle: #7a7166;
+  --k-border: rgba(28, 24, 18, 0.12);
+  --k-border-strong: rgba(28, 24, 18, 0.22);
+  --k-accent: #8a5a12;
+  --k-chart: #8a5a12;
+  --k-shadow-border: 0 0 0 1px rgba(28, 24, 18, 0.08);
+  --k-shadow-border-hover: 0 0 0 1px rgba(138, 90, 18, 0.45);
+}
+html[data-layout="studio"] .studio-word,
+html[data-layout="studio"] h1 {
+  font-family: Georgia, "Iowan Old Style", Palatino, "Palatino Linotype", serif;
+}
+html[data-layout="studio"] .kosh-card:hover {
+  transform: none;
+}

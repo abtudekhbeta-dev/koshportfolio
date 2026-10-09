@@ -13,6 +13,7 @@ import { applyScreen } from "@/lib/kosh/screens";
 import { cn } from "@/lib/utils";
 import { MixNudge } from "@/components/mix-nudge";
 import { IntelLanding } from "@/components/intel-landing";
+import { StudioLanding } from "@/components/studio-shell";
 import { useAppLayout } from "@/lib/layout-mode";
 import { Plus } from "lucide-react";
 
@@ -335,6 +336,7 @@ function Board({
 
 function Landing() {
   const layout = useAppLayout();
+  if (layout === "studio") return <StudioLanding />;
   if (layout === "intelligence") return <IntelLanding />;
   return <ClassicLanding />;
 }
