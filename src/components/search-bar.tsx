@@ -6,6 +6,7 @@ import { apiSearch } from "@/lib/kosh/api";
 import { terminalSearch } from "@/lib/kosh/instrument-nav";
 import { NIFTY50, searchNse } from "@/lib/kosh/universe";
 import { useKosh } from "@/lib/store";
+import { CompanyLogo } from "@/components/company-logo";
 import { cn } from "@/lib/utils";
 
 const ACTIONS = [
@@ -235,7 +236,10 @@ function Row({
         "data-[selected=true]:bg-surface",
       )}
     >
-      <span className="font-medium">{s}</span>
+      <span className="flex min-w-0 items-center gap-2">
+        <CompanyLogo symbol={s} name={name} size={18} />
+        <span className="font-medium">{s}</span>
+      </span>
       <span className="ml-3 min-w-0 truncate text-muted">
         {name}
         {exch ? ` · ${exch}` : ""}

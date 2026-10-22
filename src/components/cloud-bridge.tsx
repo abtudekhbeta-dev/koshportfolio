@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { loadCloudState, saveCloudState } from "@/lib/kosh/cloud";
-import { mergeCloud, sanitizeForCloud, type CloudDoc } from "@/lib/kosh/cloud-state";
+import { docFingerprint, mergeCloud, sanitizeForCloud, type CloudDoc } from "@/lib/kosh/cloud-state";
+import { ackSave, beginSave, failSave } from "@/lib/kosh/outbox";
 import { useSyncStatus } from "@/lib/kosh/sync-status";
 import { useKosh } from "@/lib/store";
 
@@ -28,22 +29,34 @@ export function CloudBridge() {
     let cancelled = false;
 
     async function commit(doc: CloudDoc, baseRev: number): Promise<boolean> {
-      setSync({ state: "syncing", detail: "Saving…" });
+      const pending = beginSave(docFingerprint(doc));
+      const sent = { ...doc, mutationId: pending.id };
+      setSync({ state: "syncing", detail: pending.attempts ? "Retrying a queued save…" : "Saving…" });
       try {
-        const saved = await saveCloudState({ data: { baseRev, doc } });
+        const saved = await saveCloudState({ data: { baseRev, doc: sent } });
         if (cancelled) return false;
         if (saved.ok) {
+          ackSave(pending.id);
           rev.current = saved.rev;
-          setSync({ state: "synced", detail: "Synced", at: Date.now() });
+          const over = sent.omitted && Object.values(sent.omitted).some((n) => (n || 0) > 0);
+          setSync({
+            state: over ? "attention" : "synced",
+            detail: over ? "Part of this account is over the sync limit and was not uploaded." : "Synced",
+            at: Date.now(),
+          });
           return true;
         }
         if (saved.conflict) {
           ready.current = false;
           const again = mergeCloud(sanitizeForCloud(useKosh.getState()), saved.doc as CloudDoc);
           applyCloud(again.doc as Parameters<typeof applyCloud>[0]);
-          const retry = await saveCloudState({ data: { baseRev: saved.rev, doc: again.doc } });
+          const retryPending = beginSave(docFingerprint(again.doc));
+          const retry = await saveCloudState({
+            data: { baseRev: saved.rev, doc: { ...again.doc, mutationId: retryPending.id } },
+          });
           ready.current = true;
           if (retry.ok) {
+            ackSave(retryPending.id);
             rev.current = retry.rev;
             setSync({
               state: again.notes.length ? "attention" : "synced",
@@ -52,11 +65,15 @@ export function CloudBridge() {
             });
             return true;
           }
+          failSave(retryPending.id);
+        } else {
+          failSave(pending.id);
         }
-        setSync({ state: "attention", detail: "Save was not acknowledged" });
+        setSync({ state: "attention", detail: "Save was not acknowledged. It stays queued on this device." });
         return false;
       } catch {
-        if (!cancelled) setSync({ state: "offline", detail: "Offline — changes stay on this device until the next save" });
+        failSave(pending.id);
+        if (!cancelled) setSync({ state: "offline", detail: "Offline — changes stay queued on this device until the next save" });
         return false;
       }
     }
@@ -144,21 +161,33 @@ export function CloudBridge() {
       setSync({ state: "syncing", detail: "Saving…" });
       timer.current = window.setTimeout(() => {
         const doc = sanitizeForCloud(s);
+        const pending = beginSave(docFingerprint(doc));
+        const sent = { ...doc, mutationId: pending.id };
         saving.current = true;
-        void saveCloudState({ data: { baseRev: rev.current, doc } })
+        void saveCloudState({ data: { baseRev: rev.current, doc: sent } })
           .then(async (saved) => {
             if (saved.ok) {
+              ackSave(pending.id);
               rev.current = saved.rev;
-              setSync({ state: "synced", detail: "Synced", at: Date.now() });
+              const over = sent.omitted && Object.values(sent.omitted).some((n) => (n || 0) > 0);
+              setSync({
+                state: over ? "attention" : "synced",
+                detail: over ? "Part of this account is over the sync limit and was not uploaded." : "Synced",
+                at: Date.now(),
+              });
               return;
             }
             if (saved.conflict) {
               ready.current = false;
               const merged = mergeCloud(doc, saved.doc as CloudDoc);
               applyCloud(merged.doc as Parameters<typeof applyCloud>[0]);
-              const retry = await saveCloudState({ data: { baseRev: saved.rev, doc: merged.doc } });
+              const retryPending = beginSave(docFingerprint(merged.doc));
+              const retry = await saveCloudState({
+                data: { baseRev: saved.rev, doc: { ...merged.doc, mutationId: retryPending.id } },
+              });
               ready.current = true;
               if (retry.ok) {
+                ackSave(retryPending.id);
                 rev.current = retry.rev;
                 setSync({
                   state: merged.notes.length ? "attention" : "synced",
@@ -167,11 +196,13 @@ export function CloudBridge() {
                 });
                 return;
               }
-            }
-            setSync({ state: "attention", detail: "Save was not acknowledged" });
+              failSave(retryPending.id);
+            } else failSave(pending.id);
+            setSync({ state: "attention", detail: "Save was not acknowledged. It stays queued on this device." });
           })
           .catch(() => {
-            setSync({ state: "offline", detail: "Offline — this edit is still on this device" });
+            failSave(pending.id);
+            setSync({ state: "offline", detail: "Offline — this edit is still queued on this device" });
           })
           .finally(() => {
             saving.current = false;

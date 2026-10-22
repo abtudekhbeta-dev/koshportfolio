@@ -1,17 +1,27 @@
 /** One way to open a market instrument. Indices go to Terminal via the URL so a late store reload cannot overwrite the request. */
 
 import { BENCH } from "./benchmarks.ts";
+import { NIFTY_CATALOGUE } from "./nifty-catalogue.ts";
 
 export type InstrumentKind = "index" | "stock" | "commodity";
 
-const INDEX_SYMBOLS = new Set(Object.values(BENCH).map((b) => b.symbol.toUpperCase()));
+let indexSymbols: Set<string> | null = null;
+function indexSymbolSet() {
+  // Same rule as niftySymbols(): do not read imported arrays while the module is loading.
+  indexSymbols ??= new Set(
+    [...Object.values(BENCH).map((b) => b.symbol), ...NIFTY_CATALOGUE.map((row) => row.symbol)].map((s) =>
+      s.toUpperCase().replace(/\.(NS|BO)$/i, ""),
+    ),
+  );
+  return indexSymbols;
+}
 
 export function instrumentKind(symbol: string): InstrumentKind {
   const s = String(symbol || "")
     .toUpperCase()
     .replace(/\.(NS|BO)$/i, "");
   if (s === "GOLD" || s === "SILVER") return "commodity";
-  if (s.startsWith("^") || INDEX_SYMBOLS.has(s)) return "index";
+  if (s.startsWith("^") || indexSymbolSet().has(s)) return "index";
   return "stock";
 }
 

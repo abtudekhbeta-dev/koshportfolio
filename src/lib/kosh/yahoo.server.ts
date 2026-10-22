@@ -20,7 +20,7 @@ const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 type ChartBar = { t: number; c: number; raw: number; o?: number; h?: number; l?: number; v?: number };
-type ChartPack = Omit<HistoryPack, "bars"> & { bars: ChartBar[]; marketCap?: number; delayMin?: number | null };
+type ChartPack = Omit<HistoryPack, "bars"> & { bars: ChartBar[]; marketCap?: number; delayMin?: number | null; marketTime?: number | null };
 
 const qCache = new Map<string, { at: number; data: Quote }>();
 const hCache = new Map<string, { at: number; data: ChartPack }>();
@@ -110,7 +110,7 @@ function parseChart(data: unknown): ChartPack | null {
     bars.push(bar);
   }
   const price = Number(m.regularMarketPrice || 0) || bars.at(-1)?.raw || 0;
-  const prev = Number(m.chartPreviousClose || m.previousClose || 0);
+  const prev = Number(m.regularMarketPreviousClose || m.previousClose || m.chartPreviousClose || 0);
   let changePct = Number(m.regularMarketChangePercent || 0);
   if (!Number.isFinite(changePct)) changePct = 0;
   return {
@@ -129,6 +129,7 @@ function parseChart(data: unknown): ChartPack | null {
     missing: false,
     marketCap: Number(m.marketCap || 0) || undefined,
     delayMin: delayMinutesFromMeta(m.exchangeDataDelayedBy),
+    marketTime: Number(m.regularMarketTime) > 0 ? Number(m.regularMarketTime) * 1000 : null,
   };
 }
 
@@ -445,6 +446,7 @@ async function resolveQuote(raw: string): Promise<Quote> {
           mcapCr: d.marketCap && d.marketCap > 0 ? d.marketCap / 1e7 : null,
           retrievedAt: Date.now(),
           delayMin: d.delayMin ?? null,
+          marketTime: d.marketTime ?? null,
         };
         qCache.set(ck, { at: Date.now(), data: out });
         return out;
@@ -557,6 +559,7 @@ export async function fetchTape(): Promise<TapeRow[]> {
             price: spot.display,
             changePct: spot.changePct,
             unit: spec.displayLabel,
+            retrievedAt: Date.now(),
           };
         }
         const d = await resolveMetal(metal, "5d");
@@ -567,12 +570,22 @@ export async function fetchTape(): Promise<TapeRow[]> {
             price: d.price * spec.displayG,
             changePct: d.changePct,
             unit: spec.displayLabel,
+            retrievedAt: Date.now(),
+            marketTime: d.marketTime ?? null,
+            delayMin: d.delayMin ?? null,
           };
         }
-        return { ...i, price: 0, changePct: 0, unit: spec.displayLabel };
+        return { ...i, price: 0, changePct: 0, unit: spec.displayLabel, retrievedAt: Date.now() };
       }
       const d = await fetchChart(i.symbol, "5d");
-      return { ...i, price: d.price, changePct: d.changePct };
+      return {
+        ...i,
+        price: d.price,
+        changePct: d.changePct,
+        marketTime: d.marketTime ?? null,
+        retrievedAt: Date.now(),
+        delayMin: d.delayMin ?? null,
+      };
     } catch {
       return { ...i, price: 0, changePct: 0 };
     }
@@ -609,7 +622,7 @@ export async function closeOnDay(symbol: string, day: string): Promise<{ day: st
     if (k <= day) hit = { t: b.t, c: b.c };
     if (k === day) break;
   }
-  if (!hit) hit = d.bars[0];
+  if (!hit || !(hit.c > 0)) return null;
   return { day: istDay(hit.t), price: hit.c, name: d.name };
 }
 
@@ -739,7 +752,7 @@ function parseOhlc(data: unknown, input: string): OhlcPack | null {
     bars.push({ t: ts[i], o, h, l, c: raw, v: vol != null && vol > 0 ? Number(vol) : 0, adj: adjC });
   }
   const price = Number(m.regularMarketPrice || 0) || bars.at(-1)?.c || 0;
-  const prev = Number(m.chartPreviousClose || m.previousClose || 0);
+  const prev = Number(m.regularMarketPreviousClose || m.previousClose || m.chartPreviousClose || 0);
   let changePct = Number(m.regularMarketChangePercent || 0);
   if (!Number.isFinite(changePct) && prev > 0 && price > 0) changePct = (price / prev - 1) * 100;
   if (!Number.isFinite(changePct)) changePct = 0;

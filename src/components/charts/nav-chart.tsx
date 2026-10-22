@@ -135,6 +135,7 @@ export function NavChart({
   pathPrimary,
   hideBench,
   modes,
+  onCommit,
 }: {
   nav: NavPoint[];
   portLabel?: string;
@@ -150,6 +151,7 @@ export function NavChart({
   pathPrimary?: boolean;
   hideBench?: boolean;
   modes?: ChartMode[];
+  onCommit?: (day: string) => void;
 }) {
   const prefs = useKosh((s) => s.navPrefs);
   const theme = useKosh((s) => s.theme);
@@ -523,6 +525,14 @@ export function NavChart({
         data-dlen={bar ? String(n) : seriesPath(rows, visKeys[0] || "port", lo, hi).length}
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
+        onClick={(e) => {
+          if (!onCommit || n < 2) return;
+          const rect = e.currentTarget.getBoundingClientRect();
+          const t = (e.clientX - rect.left) / (rect.width || 1);
+          const i = Math.round(Math.min(1, Math.max(0, t)) * (n - 1));
+          const day = rows[i]?.day;
+          if (day) onCommit(day);
+        }}
       >
         {drawnN < 2 ? (
           <div className="grid h-full place-items-center px-6 text-center text-sm text-muted">

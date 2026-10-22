@@ -14,7 +14,7 @@ export function AuthSlot() {
   return (
     <>
       <SignedOut>
-        <Link to="/login" className="grid h-8 place-items-center rounded-sm px-2.5 text-[13px] text-muted hover:text-fg">
+        <Link to="/login" className="grid h-8 shrink-0 place-items-center rounded-sm px-2.5 text-[13px] whitespace-nowrap text-muted hover:text-fg">
           Sign in
         </Link>
         <Button asChild size="sm" className="hidden sm:inline-flex">

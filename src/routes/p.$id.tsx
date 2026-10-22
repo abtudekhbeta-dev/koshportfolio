@@ -39,7 +39,9 @@ function PortfolioLayout() {
   const duplicatePortfolio = useKosh((s) => s.duplicatePortfolio);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const intel = useAppLayout() === "intelligence";
+  const layout = useAppLayout();
+  const studio = layout === "studio";
+  const ledger = layout === "ledger";
 
   if (!portfolio) {
     return (
@@ -133,10 +135,10 @@ function PortfolioLayout() {
         </div>
       </div>
 
-      {intel ? (
+      {studio ? (
         <IntelPortfolioNav id={id} pathname={pathname} />
       ) : (
-      <nav className="-mx-3 mb-5 flex gap-1 overflow-x-auto px-3 sm:-mx-4 sm:px-4">
+      <nav className={ledger ? "mb-8 flex flex-wrap gap-x-5 border-b border-border" : "-mx-3 mb-5 flex gap-1 overflow-x-auto px-3 sm:-mx-4 sm:px-4"}>
         {TABS.map((t) => {
           const href = t.to.replace("$id", id);
           const active = t.exact ? pathname === `/p/${id}` || pathname === `/p/${id}/` : pathname.startsWith(href);
@@ -146,8 +148,16 @@ function PortfolioLayout() {
               to={t.to}
               params={{ id }}
               className={cn(
-                "inline-flex h-9 shrink-0 items-center justify-center rounded-sm px-3 text-[13px] font-medium leading-none",
-                active ? "bg-surface text-fg shadow-[var(--shadow-border)]" : "text-muted hover:text-fg",
+                ledger
+                  ? "inline-flex h-9 items-end border-b-2 pb-2 text-[14px]"
+                  : "inline-flex h-9 shrink-0 items-center justify-center rounded-sm px-3 text-[13px] font-medium leading-none",
+                active
+                  ? ledger
+                    ? "border-accent text-fg"
+                    : "bg-surface text-fg shadow-[var(--shadow-border)]"
+                  : ledger
+                    ? "border-transparent text-muted hover:text-fg"
+                    : "text-muted hover:text-fg",
               )}
             >
               {t.label}

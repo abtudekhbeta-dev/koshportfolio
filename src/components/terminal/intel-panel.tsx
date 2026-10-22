@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { apiFundamentals, apiNews, apiOhlc, apiScreener } from "@/lib/kosh/api";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { isIstSession } from "@/lib/kosh/market-hours";
-import { quoteStatus, quoteStatusLabel } from "@/lib/kosh/market-data";
+import { classifyFreshness } from "@/lib/kosh/market-data";
 import { NEWS_BUCKETS, filterNews, newsBucket, newsMaterial, type NewsBucket } from "@/lib/kosh/news";
 import { patternStatusLabel, type PatternHit } from "@/lib/kosh/patterns";
 import { buildSnapshot } from "@/lib/kosh/snapshot";
@@ -84,7 +84,12 @@ export function IntelPanel({
   const eq = earningsQualityRead(fund);
   const sh = stakeDelta(fund?.shareholding);
   const active = TABS.some((t) => t.id === tab) ? tab : "overview";
-  const status = quoteStatus({ session: isIstSession(), price: px });
+  const fresh = classifyFreshness({
+    session: isIstSession(),
+    price: px,
+    marketTime: quote?.marketTime,
+    retrievedAt: quote?.retrievedAt,
+  });
   const hits = patternsOn ? patterns || [] : [];
 
   const facts = [
@@ -108,10 +113,11 @@ export function IntelPanel({
             <span
               className={cn(
                 "rounded-sm px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em]",
-                status === "session" ? "bg-up/15 text-up" : status === "last" ? "bg-surface-2 text-muted" : "bg-down/15 text-down",
+                fresh.state === "live" ? "bg-up/15 text-up" : fresh.state === "off" ? "bg-down/15 text-down" : "bg-surface-2 text-muted",
               )}
+              title={fresh.title}
             >
-              {quoteStatusLabel(status, quote?.delayMin)}
+              {fresh.label}
             </span>
           </div>
           <p className="mt-0.5 text-[11px] text-subtle">Kosh intelligence — numbers on file, not a forecast.</p>

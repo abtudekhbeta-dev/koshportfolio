@@ -24,6 +24,7 @@ import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { panBy, zoomRightEdge, atLatest } from "@/lib/kosh/chart-nav";
 import { adjustOhlcToBenchmark, applyHistoricalFx } from "@/lib/kosh/relative";
 import { histInit, histPush, histRedo, histUndo, type DrawHist } from "@/lib/kosh/draw-history";
+import { projectTimeToX, projectXToTime } from "@/lib/kosh/draw-coords";
 import { resolveBench } from "@/lib/kosh/benchmarks";
 import { AdjustMenu } from "@/components/charts/adjust-menu";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -32,9 +33,8 @@ import { isIstSession, istClock } from "@/lib/kosh/market-hours";
 import { applyDrag, channelOffFromThird, hitTest, positionMetrics, type HitMode } from "@/lib/kosh/draw-hit";
 import { detectPatterns, patternStatusLabel, type PatternHit } from "@/lib/kosh/patterns";
 import {
+  classifyFreshness,
   patchLastBar,
-  quoteStatus,
-  quoteStatusLabel,
   TERM_INTERVALS,
   termBars,
   termFetchSpec,
@@ -121,6 +121,7 @@ export function TermChart({
   onInterval,
   onStyle,
   onPatterns,
+  embed,
 }: {
   symbol: string;
   name: string;
@@ -133,6 +134,8 @@ export function TermChart({
   onInterval: (id: string) => void;
   onStyle?: (style: "candle" | "line") => void;
   onPatterns?: (hits: PatternHit[]) => void;
+  /** Side panel: keep the timeframe row in normal flow so it cannot overlap the quote. */
+  embed?: boolean;
 }) {
   const spec = useMemo(() => termFetchSpec(interval), [interval]);
   const session = isIstSession();
@@ -175,7 +178,12 @@ export function TermChart({
   }, [chartMode, priceBars, usdPack]);
   const px = quote?.price && quote.price > 0 ? quote.price : (ohlc.data?.price || bars.at(-1)?.c || 0);
   const chg = quote?.changePct ?? ohlc.data?.changePct ?? 0;
-  const status = quoteStatus({ session, price: px, retrievedAt: quote?.retrievedAt });
+  const fresh = classifyFreshness({
+    session,
+    price: px,
+    marketTime: quote?.marketTime,
+    retrievedAt: quote?.retrievedAt,
+  });
   const missing = Boolean(ohlc.data?.missing) || (!ohlc.isPending && bars.length < 2);
   const volMissing = bars.length > 0 && bars.every((b) => !(b.v > 0));
   const exch = /BSE|Bombay/i.test(ohlc.data?.exchange || "") ? "BSE" : "NSE";
@@ -323,8 +331,8 @@ export function TermChart({
     const x = clientX - r.left;
     const y = clientY - r.top;
     const i = idxAt(clientX);
-    const bar = shown[i];
-    return { x, y, i, t: bar?.t || 0, p: yInv(y) };
+    const t = shown.length ? projectXToTime(x, shown, xAt) : 0;
+    return { x, y, i, t, p: yInv(y) };
   }
 
   useEffect(() => {
@@ -526,23 +534,29 @@ export function TermChart({
       onClick={onActivate}
       className={cn("flex h-full min-h-0 min-w-0 flex-col bg-bg", active && "ring-1 ring-inset ring-accent/50")}
     >
-      <header className="flex shrink-0 flex-col gap-1 border-b border-border px-2 py-1.5 sm:flex-row sm:items-center sm:gap-2">
+      <header className={cn("flex shrink-0 flex-col gap-1 border-b border-border px-2 py-1.5", !embed && "sm:flex-row sm:items-center sm:gap-2")}>
         <div className="flex min-w-0 flex-1 items-baseline gap-2">
           <h2 className="truncate text-[15px] font-semibold">{bareSymbol(symbol)}</h2>
           <span className="hidden text-[10px] text-subtle sm:inline">{exch}</span>
-          <span className="hidden min-w-0 truncate text-[11px] text-muted lg:inline">{name}</span>
+          <span className={cn("hidden min-w-0 truncate text-[11px] text-muted", !embed && "lg:inline")}>{name}</span>
           <span className="font-mono text-[15px] tabular">{fmtPx(px)}</span>
           <span className={cn("font-mono text-[12px] tabular", chg >= 0 ? "text-up" : "text-down")}>{fmtPct(chg)}</span>
           <span
             className={cn(
               "rounded-sm px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em]",
-              status === "session" ? "bg-up/15 text-up" : status === "last" ? "bg-surface-2 text-muted" : "bg-down/15 text-down",
+              fresh.state === "live" ? "bg-up/15 text-up" : fresh.state === "off" ? "bg-down/15 text-down" : "bg-surface-2 text-muted",
             )}
-            title="Latest print Kosh has. Refreshes during the cash session."
+            title={fresh.title}
           >
-            {status === "session" ? `● ${quoteStatusLabel(status, quote?.delayMin)} · ${istClock()}` : quoteStatusLabel(status, quote?.delayMin)}
+            {fresh.state === "last"
+              ? embed
+                ? `Last session${quote?.marketTime ? ` · ${istClock(quote.marketTime)}` : ""}`
+                : fresh.label
+              : fresh.state === "live" || fresh.state === "delayed" || fresh.state === "stale"
+                ? `● ${fresh.label} · ${istClock()}`
+                : fresh.label}
           </span>
-          {owned ? <span className="hidden rounded-sm bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted lg:inline">{owned}</span> : null}
+          {owned && !embed ? <span className="hidden rounded-sm bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted lg:inline">{owned}</span> : null}
           <Tooltip content={watched ? "Remove from watch" : "Add to watch"}>
             <button
               type="button"
@@ -994,23 +1008,7 @@ export function TermChart({
 }
 
 function tToX(t: number, src: OhlcBar[], xAt: (i: number) => number) {
-  if (!src.length) return xAt(0);
-  if (t <= src[0].t) return xAt(0);
-  const last = src.length - 1;
-  if (t >= src[last].t) return xAt(last);
-  let lo = 0;
-  let hi = last;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (src[mid].t < t) lo = mid + 1;
-    else hi = mid;
-  }
-  const i = lo;
-  if (i <= 0) return xAt(0);
-  const a = src[i - 1];
-  const b = src[i];
-  const f = (t - a.t) / (b.t - a.t || 1);
-  return xAt(i - 1) + f * (xAt(i) - xAt(i - 1));
+  return projectTimeToX(t, src, xAt);
 }
 
 function PatternOverlay({

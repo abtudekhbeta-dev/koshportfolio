@@ -146,3 +146,75 @@ export function dayChange(rows: PathPoint[], events: PathEvent[], day: string) {
   const priceDriven = delta == null ? null : delta - bought + sold;
   return { point, prev, today, bought, sold, delta, priceDriven };
 }
+
+export type ClosePrint = { d: string; px: number };
+
+/** Last close on or before `day`. Never a later session. Order of the series does not matter. */
+export function closeOnOrBefore(series: ClosePrint[] | undefined, day: string): ClosePrint | null {
+  const rows = [...(series || [])]
+    .filter((row) => row && row.px > 0 && row.d)
+    .sort((a, b) => a.d.localeCompare(b.d));
+  let hit: ClosePrint | null = null;
+  for (const row of rows) {
+    if (row.d <= day) hit = row;
+    else break;
+  }
+  return hit;
+}
+
+function daySpan(a: string, b: string) {
+  const x = Date.parse(a + "T00:00:00Z");
+  const y = Date.parse(b + "T00:00:00Z");
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return 0;
+  return Math.round((y - x) / 86400000);
+}
+
+export type ValuedLine = EodLine & {
+  px: number | null;
+  value: number | null;
+  weight: number | null;
+  sessionDay: string | null;
+  staleDays: number | null;
+  status: "close" | "stale" | "missing";
+};
+
+/** Quantity × last unadjusted close on or before the session. Missing is not zero. */
+export function valueSnapshot(
+  lines: EodLine[],
+  closes: Record<string, ClosePrint[] | undefined>,
+  day: string,
+) {
+  const rows: ValuedLine[] = [];
+  let total = 0;
+  let priced = 0;
+  let stale = 0;
+  let missing = 0;
+  for (const line of lines) {
+    if (!(line.qty > 0)) continue;
+    const hit = closeOnOrBefore(closes[line.symbol], day);
+    if (!hit) {
+      missing += 1;
+      rows.push({ ...line, px: null, value: null, weight: null, sessionDay: null, staleDays: null, status: "missing" });
+      continue;
+    }
+    const staleDays = daySpan(hit.d, day);
+    const value = line.qty * hit.px;
+    if (staleDays > 0) stale += 1;
+    else priced += 1;
+    total += value;
+    rows.push({
+      ...line,
+      px: hit.px,
+      value,
+      weight: null,
+      sessionDay: hit.d,
+      staleDays,
+      status: staleDays > 0 ? "stale" : "close",
+    });
+  }
+  for (const row of rows) {
+    if (row.value != null && total > 0) row.weight = (row.value / total) * 100;
+  }
+  const sum = rows.reduce((s, r) => s + (r.value || 0), 0);
+  return { rows, total, sum, priced, stale, missing };
+}

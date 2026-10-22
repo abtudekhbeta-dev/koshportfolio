@@ -177,6 +177,7 @@ function PathPage() {
           events={path.events || []}
           benchName={book.benchName}
           splitNote={path.splitNote}
+          closes={path.closes}
         />
       ) : null}
 

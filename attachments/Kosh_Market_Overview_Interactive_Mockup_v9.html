@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kosh — Market Overview Concept</title>
+<style>
+:root{
+  --bg:#f3f0e8; --surface:#fffcf6; --surface-2:#f5f1e8; --line:#ded9cf;
+  --ink:#102b4a; --muted:#758196; --green:#078b68; --green-bg:#c6dfce;
+  --red:#e34e50; --red-bg:#ecc5c0; --neutral:#e7e3d9; --accent:#1e466a;
+  --shadow:0 5px 20px rgba(34,44,56,.045); --radius:17px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.35 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+.app{max-width:1510px;margin:auto;padding:18px 24px 32px}
+.topnav{height:42px;display:flex;align-items:center;gap:26px;border-bottom:1px solid var(--line);margin:-18px -24px 18px;padding:0 24px;background:rgba(255,252,246,.7)}
+.brand{font-weight:850;letter-spacing:.12em;font-size:17px}
+.navitem{color:var(--muted);padding:12px 0}
+.navitem.active{color:var(--ink);font-weight:700;border-bottom:2px solid var(--accent)}
+.spacer{flex:1}
+.pill{border:1px solid var(--line);border-radius:999px;padding:6px 10px;background:var(--surface);font-size:11px;color:var(--muted)}
+.header{display:flex;justify-content:space-between;align-items:end;margin-bottom:14px;gap:16px}
+h1{font-size:23px;line-height:1.15;margin:0 0 5px;letter-spacing:-.035em}
+.sub{color:var(--muted);font-size:12px}
+.asof{text-align:right;color:var(--muted);font-size:11px}
+.summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-bottom:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.index-summary{padding:11px 14px;min-height:78px}
+.eyebrow{font-size:9px;letter-spacing:.13em;color:var(--muted);font-weight:700;text-transform:uppercase}
+.big-num{font-size:21px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:-.045em;margin:6px 0 1px}
+.positive{color:var(--green)} .negative{color:var(--red)} .muted{color:var(--muted)}
+.smallmono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.breadthline{display:flex;justify-content:space-between;gap:8px;margin:8px 0 7px;font-size:11px}
+.bar{height:5px;border-radius:99px;overflow:hidden;background:#efcbc5;display:flex}.bar span{background:#178f66}
+.section{margin:0 0 15px}
+.section-head{display:flex;align-items:end;justify-content:space-between;gap:16px;margin-bottom:9px}
+.section-title{font-size:12px;letter-spacing:.13em;font-weight:800;text-transform:uppercase;margin:0 0 3px}
+.heatmap-head{align-items:center}
+.controls{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.btn,.control{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:7px 10px;font-size:11px}
+.btn:hover,.control:hover{border-color:#9ba7b4}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn.ghost{background:transparent}
+.btn.small{padding:5px 8px;font-size:10px}
+.btn.active{background:#e9e5db;border-color:#c9c2b6;font-weight:700}
+.heat-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}
+.heat-tile{min-height:76px;border-radius:11px;padding:10px 11px;border:1px solid transparent;position:relative;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;transition:transform .12s,border-color .12s;overflow:hidden}
+.heat-tile:hover,.heat-tile:focus-within{transform:translateY(-1px);border-color:#8b9aa9;outline:none}
+.tile-name{font-size:11px;font-weight:650;color:#183550}
+.tile-return{font-size:18px;letter-spacing:-.04em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:10px;color:#112f4b}
+.tile-foot{font-size:9px;color:#445e70;margin-top:3px}
+.tile-actions{position:absolute;inset:0;background:rgba(255,252,246,.96);display:flex;align-items:center;justify-content:center;gap:5px;opacity:0;transition:opacity .12s}
+.heat-tile:hover .tile-actions,.heat-tile:focus-within .tile-actions{opacity:1}
+.up-strong{background:#5aaa8a}.up-mid{background:#9dcdb4}.up-light{background:#c7dfce}.down-light{background:#ecc8c2}.down-strong{background:#d97878}.flat{background:#e7e3d9}
+.treemap-wrap{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(240px,.65fr);gap:12px}
+.treemap{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;grid-template-rows:112px 92px 75px;gap:5px;min-height:290px}
+.stock-tile{border-radius:8px;padding:8px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;min-width:0;color:#17344d;border:1px solid rgba(255,255,255,.25)}
+.stock-tile .symbol{font-size:11px;font-weight:800}
+.stock-tile .weight{font-size:10px;opacity:.85}
+.stock-tile .ret{font-size:13px;font-family:ui-monospace,monospace}
+.stock-tile:nth-child(1){grid-row:span 2}.stock-tile:nth-child(2){grid-column:span 2}.stock-tile:nth-child(4){grid-column:span 2}
+.comp-side{padding:15px}
+.comp-side h3{margin:0 0 7px;font-size:16px}
+.meta-list{display:grid;gap:10px;margin:16px 0}
+.meta-row{display:flex;justify-content:space-between;gap:10px;font-size:11px}
+.note{font-size:10px;color:var(--muted);line-height:1.5}
+.legend{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--muted);margin-top:8px}
+.legend-dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+.table-card{overflow:hidden;margin-bottom:15px;border-radius:15px;border:1px solid #d2ccbf;box-shadow:0 7px 24px rgba(31,43,54,.065);background:#fffdf8}
+.table-top{padding:15px 16px 10px;border-bottom:1px solid #d6cfc2;background:linear-gradient(180deg,#fffefb 0%,#f7f3ea 100%)}
+.table-titleline{display:flex;justify-content:space-between;gap:12px;align-items:center}
+h2{font-size:16px;margin:0 0 4px;letter-spacing:-.025em}
+.table-tools{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.table-tools .control{background:#fffdf8;border-color:#ded7cb;box-shadow:0 1px 2px rgba(30,40,50,.025)}
+.table-tools .control:focus{border-color:#8ea1ad;box-shadow:0 0 0 3px rgba(95,124,143,.12)}
+input.control{width:175px;outline:none}
+select.control{min-width:92px}
+.tabs{display:flex;align-items:center;gap:4px;margin-top:11px;padding:3px;background:#eee9df;border:1px solid #dfd8cb;border-radius:9px;width:max-content;max-width:100%}
+.tab{border:1px solid transparent;background:transparent;border-radius:7px;padding:6px 10px;font-size:11px;color:var(--muted);white-space:nowrap}
+.tab.active{background:#fffdf8;border-color:#d2cabc;color:var(--ink);font-weight:750;box-shadow:0 1px 3px rgba(20,40,55,.06)}
+.count{font-size:10px;color:var(--muted);margin-left:6px}
+.view-toggle{display:flex;gap:3px;padding:3px;background:#eee9df;border:1px solid #dfd8cb;border-radius:9px}
+.view-toggle .btn{border-color:transparent;background:transparent}
+.view-toggle .btn.active{background:#fffdf8;border-color:#d2cabc;font-weight:750;box-shadow:0 1px 3px rgba(20,40,55,.06)}
+.table-wrap{overflow:auto;background:#fffdf8}
+.stock-heatmap-panel{padding:12px;background:#fffdf8}
+.stock-heat-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}
+.stock-heat-tile{min-height:84px;border:1px solid rgba(30,50,60,.08);border-radius:9px;padding:10px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.stock-heat-tile .heat-stock-name{font-size:11px;font-weight:750;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stock-heat-tile .heat-stock-symbol{font-size:9px;color:#37566a;opacity:.9}
+.stock-heat-tile .heat-stock-return{font-size:16px;font-family:ui-monospace,monospace;font-weight:750}
+
+.stock-heat-tile .heat-stock-price{font-size:10px;color:#29465f}
+.fii-dii-card{padding:12px 14px;margin:20px 0 22px}
+.fii-dii-compact .fii-chart-placeholder{min-height:60px}
+.fii-dii-compact .fii-chart-area{margin-top:8px;padding:9px}
+.fii-dii-compact .fii-metric{padding:8px 10px}
+.fii-dii-compact .fii-metric strong{font-size:16px}
+.fii-dii-compact .fii-chart-placeholder span{max-width:760px}
+
+.fii-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.fii-controls{display:flex;align-items:center;gap:8px}
+.fii-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.fii-metric{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);display:flex;flex-direction:column;gap:4px}
+.fii-metric span{font-size:10px;color:var(--muted)}
+.fii-metric strong{font-size:19px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:-.03em}
+.fii-metric small{font-size:9px;color:var(--muted)}
+.fii-chart-area{margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:11px}
+.fii-chart-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+.fii-chart-heading strong{font-size:11px}
+.fii-chart-placeholder{min-height:96px;border:1px dashed #d3cbbd;border-radius:8px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:14px;gap:5px}
+.fii-placeholder-icon{font-size:18px;color:var(--muted)}
+.fii-chart-placeholder strong{font-size:11px}
+.fii-chart-placeholder span{font-size:10px;color:var(--muted);max-width:620px;line-height:1.45}
+.fii-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:9px;font-size:9px;color:var(--muted)}
+.fii-foot a{color:var(--ink);text-decoration:none;font-weight:750}
+@media(max-width:650px){.fii-head{align-items:flex-start;flex-direction:column}.fii-metrics{grid-template-columns:1fr}.fii-foot{align-items:flex-start;flex-direction:column}}
+.stock-sector-section{margin-top:22px}
+.sector-stock-heat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.sector-stock-group{border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:10px;min-width:0}
+.sector-stock-group-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.sector-stock-group-head strong{font-size:11px;font-weight:800}
+.sector-stock-group-head span{font-size:9px;color:var(--muted)}
+.sector-stock-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:minmax(72px,auto);gap:6px}
+.sector-stock-tile{border-radius:8px;padding:8px;display:flex;flex-direction:column;justify-content:space-between;min-width:0;border:1px solid rgba(255,255,255,.35);color:#17344d;cursor:pointer;transition:transform .12s}
+.sector-stock-tile:hover{transform:translateY(-1px);outline:1px solid #8b9aa9}
+.sector-stock-tile .sector-tile-name{font-size:10px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sector-stock-tile .sector-tile-symbol{font-size:9px;opacity:.8;margin-top:2px}
+.sector-stock-tile .sector-tile-return{font-size:14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:750;margin-top:8px}
+.sector-stock-tile .sector-tile-price{font-size:9px;opacity:.85}
+.sector-stock-empty{padding:18px;text-align:center;color:var(--muted);font-size:11px}
+@media(max-width:850px){.sector-stock-heat-grid{grid-template-columns:1fr}.sector-stock-tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:540px){.sector-stock-heat-grid{grid-template-columns:1fr}.sector-stock-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:850px){.stock-heat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:540px){.stock-heat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+table{border-collapse:collapse;width:100%;table-layout:fixed}
+thead th{font-size:10px;color:#53677e;font-weight:750;text-align:right;padding:8px 11px;border-bottom:1px solid #d4cec2;background:#f0ece3;white-space:nowrap}
+thead th:first-child{text-align:left;width:48%}
+thead th:nth-child(2){width:13%}thead th:nth-child(3){width:13%}thead th:nth-child(4){width:13%}thead th:last-child{width:13%}
+tbody tr{height:28px;transition:background .12s ease}
+tbody tr:nth-child(even){background:#fdfaf4}
+tbody tr:hover{background:#f2eee5}
+tbody td{padding:3px 11px;border-bottom:1px solid #e3ddd2;text-align:right;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:34px}
+tbody tr:last-child td{border-bottom:0}
+tbody td:first-child{box-shadow:inset 3px 0 0 transparent}
+tbody tr:hover td:first-child{box-shadow:inset 3px 0 0 #9aaeb9}
+tbody td:first-child{text-align:left}
+.stock-name{font-weight:700;color:#17344f;display:inline-block;max-width:calc(100% - 90px);vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:-.01em}
+.symbol{font-size:9px;color:#7c8997;margin-left:7px;font-weight:550}
+.symbol{font-size:9px;color:var(--muted);margin-left:7px}
+.chart-btn{padding:5px 9px;border:1px solid #d9d2c6;border-radius:7px;background:#f4f0e7;color:#29465f;font-size:10px;line-height:1.15;font-weight:650;box-shadow:0 1px 1px rgba(30,40,50,.025);transition:background .12s,border-color .12s,transform .12s}
+.chart-btn:hover{background:#e9e5db;border-color:#bfb5a5;transform:translateY(-1px)}
+.change-chip{display:inline-block;min-width:53px;text-align:right;padding:3px 6px;border-radius:5px;font-size:10px;font-weight:700}
+.change-chip.pos{background:#e4f0e7;color:#08734f}
+.change-chip.neg{background:#f7e7e3;color:#b84240}
+
+.table-foot{padding:9px 13px;display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:10px;background:#fbf8f1;border-top:1px solid #e3ddd2}
+.movers{padding:0;display:block;overflow:hidden}
+.movers-head{padding:13px 14px 10px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line)}
+.movers-title{font-size:11px;letter-spacing:.12em;font-weight:800}
+.mover-toggle{display:flex;gap:3px;background:var(--surface-2);padding:3px;border-radius:9px}
+.mover-list{display:grid;grid-template-columns:1fr;gap:0}
+.mover{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:center;font-size:11px;padding:9px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+.mover:last-child{border-bottom:0}
+.mover-rank{color:var(--muted);font-size:10px}
+.mover b{font-weight:700;overflow:hidden;text-overflow:ellipsis}
+.mover-foot{padding:9px 14px;border-top:1px solid var(--line);font-size:10px;color:var(--muted)}
+.movers-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,360px);gap:14px;align-items:stretch}
+.market-context{padding:15px 16px;min-height:100%;display:flex;flex-direction:column}
+.context-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.context-kicker{font-size:10px;letter-spacing:.12em;font-weight:800;text-transform:uppercase;color:var(--muted)}
+.context-title{font-size:17px;font-weight:750;letter-spacing:-.025em;margin:5px 0}
+.context-copy{font-size:11px;color:var(--muted);max-width:520px;line-height:1.55}
+.context-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:16px}
+.context-stat{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px}
+.context-stat strong{display:block;font-size:15px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:4px}
+.context-stat span{font-size:9px;color:var(--muted)}
+.context-extra{margin-top:11px;border-top:1px solid #e4ded2;padding-top:7px;display:grid;gap:2px}
+.context-extra-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 0;font-size:10px;color:#66768a}
+.context-extra-row>span{display:flex;align-items:center;gap:6px}
+.context-extra-row strong{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#183550;font-size:11px;font-weight:750}
+.context-extra-row em{font-style:normal;font-size:10px;margin-left:5px}
+.mini-icon{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;background:#eee9df;border:1px solid #e0d9cd;color:#526a7f;font-size:8px;font-weight:800}
+.context-bottom{margin-top:auto;padding-top:12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.market-dot{width:7px;height:7px;border-radius:50%;display:inline-block;background:#c69b47;margin-right:5px}
+
+
+.footer-note{font-size:10px;color:var(--muted);margin-top:14px;text-align:right}
+.modal-backdrop{position:fixed;inset:0;background:rgba(12,25,38,.42);z-index:20;display:none;align-items:center;justify-content:center;padding:22px}
+.modal-backdrop.open{display:flex}
+.modal{width:min(1000px,96vw);max-height:90vh;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:18px;box-shadow:0 20px 80px #0b1d2d45}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;border-bottom:1px solid var(--line);background:var(--surface)}
+.modal-body{padding:16px 18px}
+.close{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:6px 10px}
+.chart-modal{width:min(1200px,97vw)}
+.chart-head-controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.chart-area{height:360px;background:#fffdf8;border:1px solid var(--line);border-radius:12px;position:relative;overflow:hidden;margin-top:12px}
+.chart-area svg{width:100%;height:100%;display:block}
+.chart-status{position:absolute;top:12px;left:14px;font-size:11px;color:var(--muted);background:#fffdf0dd;padding:5px 8px;border-radius:6px}
+.composition-modal{width:min(1120px,97vw)}
+.searchline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.hidden{display:none!important}
+@media(max-width:900px){
+ .app{padding:14px}.topnav{margin:-14px -14px 15px;padding:0 14px;gap:15px}
+ .summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .heat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .table-titleline{flex-direction:column}.table-tools{width:100%}input.control{flex:1}
+ .treemap-wrap{grid-template-columns:1fr}.treemap{grid-template-rows:100px 80px 70px}
+}
+@media(max-width:560px){
+ .navitem{display:none}.header{align-items:start;flex-direction:column}.asof{text-align:left}
+ .heat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .summary{gap:6px}.index-summary{padding:10px}.big-num{font-size:18px}
+ .mover-list{gap:0}
+ .movers-layout{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="topnav">
+    <div class="brand">KOSH</div>
+    <div class="navitem active">Overview</div><div class="navitem">Portfolio</div><div class="navitem">Watchlist</div><div class="navitem">Market Terminal</div><div class="navitem">Research</div>
+    <div class="spacer"></div><span class="pill">CLASSIC · CONCEPT</span>
+  </nav>
+
+  <header class="header">
+    <div><h1>Market Overview</h1><div class="sub">Track your portfolio and watchlist stocks with market context.</div></div>
+    <div class="asof">Latest session · 13 Oct 2026, 15:31 IST<br><span class="muted">Illustrative data · not live quotes</span></div>
+  </header>
+
+  <section class="summary">
+    <div class="card index-summary"><div class="eyebrow">Nifty 50</div><div class="big-num">22,721.95</div><div class="positive smallmono">+1.60%</div></div>
+    <div class="card index-summary"><div class="eyebrow">Sensex</div><div class="big-num">73,033.78</div><div class="positive smallmono">+1.54%</div></div>
+    <div class="card index-summary"><div class="eyebrow">Bank Nifty</div><div class="big-num">55,481.05</div><div class="positive smallmono">+1.02%</div></div>
+    <div class="card index-summary"><div class="eyebrow">Market Breadth</div><div class="breadthline"><span class="positive">1513 up</span><span>58%</span><span class="negative">1093 down</span></div><div class="bar"><span style="width:58%"></span></div></div>
+  </section>
+
+
+
+  <section class="section" id="indexHeatmap">
+    <div class="section-head heatmap-head">
+      <div><div class="section-title">Nifty Index Heatmap</div><div class="sub" id="heatCaption">Official Nifty indices · latest completed session</div></div>
+      <div class="controls">
+        <button class="btn active" id="keyIndicesBtn" onclick="showKeyIndices()">Key sectoral</button>
+        <button class="btn" id="allIndicesBtn" onclick="showAllIndices()">All indices <span id="allCount">30+</span></button>
+        <input class="control hidden" id="indexSearch" placeholder="Search indices…" oninput="renderIndices()">
+        <select class="control hidden" id="familyFilter" onchange="renderIndices()"><option value="All">All families</option><option>Broad market</option><option>Large cap</option><option>Mid / small cap</option><option>Sectoral</option><option>Thematic</option><option>Strategy / factor</option></select>
+      </div>
+    </div>
+    <div class="heat-grid" id="heatGrid"></div>
+    <div class="legend"><span class="legend-dot" style="background:#5aaa8a"></span> Stronger gain <span class="legend-dot" style="background:#c7dfce"></span> Gain <span class="legend-dot" style="background:#e7e3d9"></span> Near flat / unavailable <span class="legend-dot" style="background:#ecc8c2"></span> Loss <span class="muted" style="margin-left:auto">Hover or focus a tile for actions · figures are illustrative</span></div>
+  </section>
+
+  <section class="card table-card">
+    <div class="table-top">
+      <div class="table-titleline">
+        <div><h2>Your stocks</h2><div class="sub">Compact one-line rows · Change and % change use one consistent quote calculation.</div></div>
+        <div class="table-tools">
+          <input id="stockSearch" class="control" placeholder="Search symbol or name" oninput="renderStocks()">
+          <select id="portfolioSelect" class="control"><option>All portfolios</option><option>Long-term</option><option>Research basket</option></select>
+          <select id="watchSelect" class="control"><option>Main</option><option>Breakouts</option><option>Long-term</option></select>
+          <button class="btn" onclick="toggleFilters()">Filters</button>
+        </div>
+      </div>
+      <div class="tabs">
+        <button class="tab" data-tab="All stocks" onclick="setTab('All stocks')">All stocks <span>22</span></button>
+        <button class="tab active" data-tab="Owned" onclick="setTab('Owned')">Owned <span>5</span></button>
+        <button class="tab" data-tab="Watchlist" onclick="setTab('Watchlist')">Watchlist <span>17</span></button>
+        <span class="count" id="stockCount">1–5 of 5</span><div class="spacer"></div>
+        <div class="view-toggle" aria-label="Your stocks view">
+          <button class="btn small active" id="stocksTableViewBtn" onclick="setStocksView('table')">Table</button>
+          <button class="btn small" id="stocksHeatmapViewBtn" onclick="setStocksView('heatmap')">Heatmap</button>
+        </div>
+      </div>
+      <div id="filterPanel" class="hidden" style="margin-top:9px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select class="control"><option>All changes</option><option>Gainers</option><option>Losers</option></select>
+        <select class="control"><option>All sectors</option><option>IT</option><option>Financials</option><option>Industrials</option></select>
+        <button class="btn small" onclick="document.getElementById('filterPanel').classList.add('hidden')">Apply / close</button>
+      </div>
+    </div>
+    <div class="table-wrap" id="stocksTableWrap">
+      <table><thead><tr><th><button class="btn ghost small" onclick="sortStocks()">Stock ↕</button></th><th>Price</th><th>Change</th><th>% Change</th><th></th></tr></thead><tbody id="stockRows"></tbody></table>
+    </div>
+    <div id="stocksHeatmap" class="stock-heatmap-panel hidden">
+      <div class="legend" style="margin:0 0 10px"><span class="legend-dot" style="background:#5aaa8a"></span> Stronger gain <span class="legend-dot" style="background:#c7dfce"></span> Gain <span class="legend-dot" style="background:#ecc8c2"></span> Loss <span class="note">Colour reflects latest-session return · illustrative data</span></div>
+      <div id="stockHeatGrid" class="stock-heat-grid"></div>
+    </div>
+    <div class="table-foot"><span id="tableFootText">Quotes shown for concept demonstration only.</span><span>Previous　 <b>1 / 1</b>　Next</span></div>
+  </section>
+
+  <section class="movers-layout">
+    <div class="card market-context">
+      <div class="context-top"><div><div class="context-kicker">Sector pulse</div><div class="context-title" id="pulseTitle">IT leads the session</div></div><span class="pill">Demo data</span></div>
+      <div class="context-copy">A concise summary calculated from the 10 sectoral index tiles shown above. In the live app, populate these figures from the same verified market-data snapshot.</div>
+      <div class="context-stats">
+        <div class="context-stat"><span>Strongest sector</span><strong class="positive" id="pulseTop" style="font-size:14px">IT +5.22%</strong></div>
+        <div class="context-stat"><span>Weakest sector</span><strong class="negative" id="pulseWeak" style="font-size:14px">Pharma −0.01%</strong></div>
+        <div class="context-stat"><span>Advancing sectors</span><strong id="pulseAdvancing">9 / 10</strong></div>
+      </div>
+      <div class="context-extra">
+        <div class="context-extra-row"><span><span class="mini-icon">Ø</span> Average sector return</span><strong id="pulseAverage">+1.41%</strong></div>
+        <div class="context-extra-row"><span><span class="mini-icon">↕</span> Leadership gap</span><strong id="pulseGap">5.23 pp</strong></div>
+      </div>
+      <div class="context-bottom"><span class="note"><span class="market-dot"></span>1D · derived from sector tiles · demo values</span><button class="btn small" onclick="document.getElementById('indexHeatmap').scrollIntoView({behavior:'smooth'})">Explore indices ↗</button></div>
+    </div>
+    <section class="card movers">
+      <div class="movers-head">
+        <div><div class="movers-title">TOP MOVERS</div><div class="sub" style="margin-top:3px">Daily performance</div></div>
+        <div class="mover-toggle"><button class="btn small active" id="gainersBtn" onclick="setMovers('gainers')">Gainers</button><button class="btn small" id="losersBtn" onclick="setMovers('losers')">Losers</button></div>
+      </div>
+      <div class="mover-list" id="moverList"></div>
+      <div class="mover-foot">Illustrative values · 1D · Select Gainers or Losers</div>
+    </section>
+  </section>
+  <section class="card fii-dii-card fii-dii-compact" id="fiiDiiPanel">
+    <div class="fii-head">
+      <div><div class="section-title">Institutional Flows · FII/FPI &amp; DII</div><div class="sub">Cash-market activity · gross buys, gross sells and net flow</div></div>
+      <div class="fii-controls"><select class="control" id="fiiPeriod" onchange="setFiiPeriod(this.value)"><option value="daily">Daily</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select><span class="pill" id="fiiStatus">Live feed required</span></div>
+    </div>
+    <div class="fii-metrics">
+      <div class="fii-metric"><span>FII/FPI net</span><strong class="muted" id="fiiNet">—</strong><small id="fiiNetCaption">Not connected</small></div>
+      <div class="fii-metric"><span>DII net</span><strong class="muted" id="diiNet">—</strong><small id="diiNetCaption">Not connected</small></div>
+      <div class="fii-metric"><span>Combined net</span><strong class="muted" id="combinedNet">—</strong><small id="combinedCaption">Not connected</small></div>
+    </div>
+    <div class="fii-chart-area">
+      <div class="fii-chart-heading"><strong id="fiiChartTitle">Net institutional flow</strong><span class="note" id="fiiDateLabel">Awaiting verified data</span></div>
+      <div class="fii-chart-placeholder"><div class="fii-placeholder-icon">↗</div><strong>Institutional-flow data is not connected in this prototype</strong><span>Connect the official exchange/depository feed to populate FII/FPI and DII values. No sample numbers are shown as actual market data.</span></div>
+    </div>
+    <div class="fii-foot"><span>Preferred sources: NSE provisional daily activity; NSDL/CDSL confirmed FPI reports.</span><a href="https://www.nseindia.com/reports/fii-dii" target="_blank" rel="noreferrer">NSE FII/DII report ↗</a></div>
+  </section>
+
+  <section class="section stock-sector-section" id="stockSectorHeatmap">
+    <div class="section-head heatmap-head">
+      <div><div class="section-title">Sector-wise Stock Heatmap</div><div class="sub">Individual stocks grouped by business sector · 1D return · separate from Nifty index heatmap</div></div>
+      <div class="controls">
+        <select class="control" id="sectorStockFilter" onchange="renderSectorStocks()">
+          <option value="All">All sectors</option><option value="IT">IT</option><option value="Financials">Financials</option><option value="Industrials">Industrials</option><option value="Infrastructure & Power">Infrastructure &amp; Power</option><option value="Logistics">Logistics</option><option value="Pharma">Pharma</option><option value="Defence">Defence</option><option value="Real Estate">Real Estate</option>
+        </select>
+        <select class="control" id="sectorStockSort" onchange="renderSectorStocks()"><option value="sector">Group by sector</option><option value="return">Sort by daily return</option></select>
+      </div>
+    </div>
+    <div id="sectorStockHeatGrid" class="sector-stock-heat-grid"></div>
+    <div class="legend"><span class="legend-dot" style="background:#5aaa8a"></span> Stronger gain <span class="legend-dot" style="background:#c7dfce"></span> Gain <span class="legend-dot" style="background:#e7e3d9"></span> Near flat <span class="legend-dot" style="background:#ecc8c2"></span> Loss <span class="muted" style="margin-left:auto">Tile colour reflects 1D % change · illustrative stock data</span></div>
+  </section>
+
+  <div class="footer-note">Kosh Classic UI concept · All prices, weights and returns in this mockup are illustrative, not investment data.</div>
+</div>
+
+<div class="modal-backdrop" id="chartModal" onclick="if(event.target===this)closeModal('chartModal')">
+  <div class="modal chart-modal">
+    <div class="modal-head">
+      <div><div class="eyebrow">CHART VIEW</div><h2 id="chartTitle" style="margin-top:3px">NIFTY BANK</h2><div class="sub">Wide chart layout · illustrative candles</div></div>
+      <div class="chart-head-controls">
+        <select class="control" id="chartTf" onchange="drawChart()"><option>1m</option><option>3m</option><option>5m</option><option>15m</option><option>1h</option><option selected>1D</option><option>1W</option><option>1M</option></select>
+        <button class="btn" onclick="toggleFullscreen()">Fullscreen</button>
+        <button class="btn" onclick="openTerminal()">Open in Terminal</button>
+        <button class="close" onclick="closeModal('chartModal')">✕</button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div class="sub">Drawings are conceptually anchored to absolute time and price, so they should remain at the same coordinates across timeframes in the real implementation.</div>
+      <div class="chart-area" id="chartArea"><div class="chart-status" id="chartStatus">NIFTY BANK · 1D · Demo visualization</div><svg id="chartSvg" viewBox="0 0 1000 360" preserveAspectRatio="none" aria-label="Illustrative chart"></svg></div>
+      <div class="legend"><span class="legend-dot" style="background:#178f66"></span> Illustrative price path <span class="muted">Actual market feed and drawing engine are not connected in this static concept.</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="compositionModal" onclick="if(event.target===this)closeModal('compositionModal')">
+  <div class="modal composition-modal">
+    <div class="modal-head">
+      <div><div class="eyebrow">INDEX COMPOSITION</div><h2 id="compositionTitle" style="margin-top:3px">Nifty Bank — constituents</h2><div class="sub">Rectangle area = index weight · colour = constituent 1D return</div></div>
+      <div class="controls"><input class="control" id="constSearch" placeholder="Find constituent…" oninput="filterConstituents()"><button class="close" onclick="closeModal('compositionModal')">✕</button></div>
+    </div>
+    <div class="modal-body">
+      <div class="treemap-wrap">
+        <div><div class="treemap" id="treemap"></div><div class="legend"><span class="legend-dot" style="background:#5aaa8a"></span> Positive <span class="legend-dot" style="background:#e17878"></span> Negative <span class="muted">Illustrative weights and returns</span></div></div>
+        <aside class="card comp-side"><h3 id="sideIndex">Nifty Bank</h3><div class="sub">Index composition preview</div><div class="meta-list"><div class="meta-row"><span>Constituents shown</span><b id="constCount">12</b></div><div class="meta-row"><span>Weight coverage</span><b>Illustrative</b></div><div class="meta-row"><span>Return window</span><b>1D</b></div><div class="meta-row"><span>As of</span><b>Demo data</b></div></div><p class="note">In production, tile area must be computed from official constituent weights and tile colour from verified daily returns. Do not show equal-sized rectangles as weight-proportional. A missing weight or quote should be visibly marked.</p><button class="btn primary" onclick="closeModal('compositionModal');openChart(currentIndex)">View index chart</button></aside>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const indices = [
+ {name:'Nifty Bank',family:'Sectoral',ret:1.02,cls:'up-light'},
+ {name:'Nifty Financial Services',family:'Sectoral',ret:1.54,cls:'up-strong'},
+ {name:'Nifty IT',family:'Sectoral',ret:5.22,cls:'up-strong'},
+ {name:'Nifty Pharma',family:'Sectoral',ret:-0.01,cls:'flat'},
+ {name:'Nifty Auto',family:'Sectoral',ret:1.23,cls:'up-light'},
+ {name:'Nifty FMCG',family:'Sectoral',ret:1.40,cls:'up-light'},
+ {name:'Nifty Energy',family:'Sectoral',ret:0.33,cls:'up-light'},
+ {name:'Nifty Metal',family:'Sectoral',ret:1.15,cls:'up-light'},
+ {name:'Nifty Realty',family:'Sectoral',ret:2.46,cls:'up-strong'},
+ {name:'Nifty Infrastructure',family:'Sectoral',ret:0.93,cls:'up-light'},
+ {name:'Nifty 50',family:'Broad market',ret:1.60,cls:'up-light'},
+ {name:'Nifty Next 50',family:'Broad market',ret:1.31,cls:'up-light'},
+ {name:'Nifty 100',family:'Broad market',ret:1.44,cls:'up-light'},
+ {name:'Nifty 200',family:'Broad market',ret:1.29,cls:'up-light'},
+ {name:'Nifty 500',family:'Broad market',ret:1.18,cls:'up-light'},
+ {name:'Nifty LargeMidcap 250',family:'Large cap',ret:1.27,cls:'up-light'},
+ {name:'Nifty Midcap 50',family:'Mid / small cap',ret:1.82,cls:'up-light'},
+ {name:'Nifty Midcap 100',family:'Mid / small cap',ret:1.68,cls:'up-light'},
+ {name:'Nifty Midcap 150',family:'Mid / small cap',ret:1.51,cls:'up-light'},
+ {name:'Nifty Smallcap 50',family:'Mid / small cap',ret:0.83,cls:'up-light'},
+ {name:'Nifty Smallcap 100',family:'Mid / small cap',ret:0.69,cls:'up-light'},
+ {name:'Nifty Smallcap 250',family:'Mid / small cap',ret:0.47,cls:'up-light'},
+ {name:'Nifty Microcap 250',family:'Mid / small cap',ret:0.38,cls:'up-light'},
+ {name:'Nifty India Defence',family:'Thematic',ret:2.18,cls:'up-light'},
+ {name:'Nifty India Tourism',family:'Thematic',ret:1.07,cls:'up-light'},
+ {name:'Nifty Consumption',family:'Thematic',ret:0.91,cls:'up-light'},
+ {name:'Nifty EV & New Age Automotive',family:'Thematic',ret:1.76,cls:'up-light'},
+ {name:'Nifty Quality 30',family:'Strategy / factor',ret:0.74,cls:'up-light'},
+ {name:'Nifty 200 Momentum 30',family:'Strategy / factor',ret:1.94,cls:'up-light'},
+ {name:'Nifty Alpha 50',family:'Strategy / factor',ret:1.36,cls:'up-light'}
+];
+const stocks=[
+ {name:'GMR Power And Urban Infra Limited',sym:'GMRP&UI',price:'102.45',chg:'+4.30',pct:4.38,owned:true},
+ {name:'Allcargo Logistics',sym:'ALLCARGO',price:'10.61',chg:'+0.09',pct:.86,owned:true},
+ {name:'Lloyds Engineering Works Limited',sym:'LLOYDSENGG',price:'92.93',chg:'+0.70',pct:.76,owned:true},
+ {name:'Shukra Pharmaceuticals',sym:'SHUKRAPHAR',price:'66.69',chg:'+0.22',pct:.33,owned:true},
+ {name:'Krishna Defence and Allied Industries Limited',sym:'KRISHNADEF',price:'1,201.00',chg:'−20.99',pct:-1.72,owned:true},
+ {name:'Tanla Platforms Limited',sym:'TANLA',price:'535.15',chg:'+40.60',pct:7.24,owned:false},
+ {name:'Ujjivan Small Finance Bank',sym:'UJJIVANSFB',price:'65.25',chg:'+0.31',pct:4.65,owned:false},
+ {name:'Mastek Limited',sym:'MASTEK',price:'1,715.70',chg:'+90.80',pct:4.26,owned:false},
+ {name:'Ratnaveer Precision Engineering',sym:'RATNAVEER',price:'168.30',chg:'+4.80',pct:2.92,owned:false},
+ {name:'Techno Electric & Engineering',sym:'TECHNOE',price:'1,423.00',chg:'−17.80',pct:-1.24,owned:false},
+ {name:'Anant Raj Limited',sym:'ANANTRAJ',price:'633.25',chg:'−7.70',pct:-1.21,owned:false}
+];
+const gainers=[['TANLA','+7.24%'],['UJJIVANSFB','+4.65%'],['GMRP&UI','+4.38%'],['MASTEK','+4.26%'],['RATNAVEER','+2.92%']];
+const losers=[['KRISHNADEF','−1.72%'],['JNKINDIA','−1.31%'],['TECHNOE','−1.24%'],['ANANTRAJ','−1.21%'],['RADHIKAJWE','−0.73%']];
+let showAll=false, currentTab='Owned', moversMode='gainers', currentIndex='Nifty Bank', chartSymbol='NIFTY BANK', sortAsc=true, stocksView='table';
+const stockSectorMap = {
+ 'GMRP&UI':'Infrastructure & Power',
+ 'ALLCARGO':'Logistics',
+ 'LLOYDSENGG':'Industrials',
+ 'SHUKRAPHAR':'Pharma',
+ 'KRISHNADEF':'Defence',
+ 'TANLA':'IT',
+ 'UJJIVANSFB':'Financials',
+ 'MASTEK':'IT',
+ 'RATNAVEER':'Industrials',
+ 'TECHNOE':'Industrials',
+ 'ANANTRAJ':'Real Estate'
+};
+function setFiiPeriod(period){
+ const labels={daily:'Daily',monthly:'Monthly',yearly:'Yearly'};
+ document.getElementById('fiiChartTitle').textContent=`${labels[period]} net institutional flow`;
+ document.getElementById('fiiDateLabel').textContent='Awaiting verified data';
+ document.getElementById('fiiStatus').textContent='Live feed required';
+ document.getElementById('fiiNetCaption').textContent='Not connected';
+ document.getElementById('diiNetCaption').textContent='Not connected';
+ document.getElementById('combinedCaption').textContent='Not connected';
+}
+function pulseFmt(v){return `${v>=0?'+':''}${v.toFixed(2)}%`}
+function updateSectorPulse(){
+ const sectorIndices=indices.filter(i=>i.family==='Sectoral');
+ if(!sectorIndices.length)return;
+ const sorted=sectorIndices.slice().sort((a,b)=>b.ret-a.ret);
+ const top=sorted[0], weak=sorted[sorted.length-1];
+ const advancing=sectorIndices.filter(i=>i.ret>0).length;
+ const avg=sectorIndices.reduce((sum,i)=>sum+i.ret,0)/sectorIndices.length;
+ const gap=top.ret-weak.ret;
+ document.getElementById('pulseTitle').textContent=`${top.name.replace(/^Nifty /,'')} leads the session`;
+ document.getElementById('pulseTop').textContent=`${top.name.replace(/^Nifty /,'')} ${pulseFmt(top.ret)}`;
+ document.getElementById('pulseWeak').textContent=`${weak.name.replace(/^Nifty /,'')} ${pulseFmt(weak.ret)}`;
+ document.getElementById('pulseAdvancing').textContent=`${advancing} / ${sectorIndices.length}`;
+ document.getElementById('pulseAverage').textContent=pulseFmt(avg);
+ document.getElementById('pulseGap').textContent=`${gap.toFixed(2)} pp`;
+ document.getElementById('pulseTop').className=top.ret>=0?'positive':'negative';
+ document.getElementById('pulseWeak').className=weak.ret>=0?'positive':'negative';
+}
+function renderSectorStocks(){
+ const filter=document.getElementById('sectorStockFilter').value;
+ const sort=document.getElementById('sectorStockSort').value;
+ const filtered=stocks.filter(s=>filter==='All'||stockSectorMap[s.sym]===filter);
+ const sectors={};
+ filtered.forEach(s=>{const sector=stockSectorMap[s.sym]||'Other';(sectors[sector]||(sectors[sector]=[])).push(s)});
+ Object.keys(sectors).forEach(k=>sectors[k].sort((a,b)=>sort==='return'?b.pct-a.pct:a.name.localeCompare(b.name)));
+ const names=Object.keys(sectors).sort((a,b)=>{
+   if(sort==='return')return Math.max(...sectors[b].map(s=>s.pct))-Math.max(...sectors[a].map(s=>s.pct));
+   return a.localeCompare(b);
+ });
+ const tone=p=>p>=4?'up-strong':p>=1?'up-light':p>0?'up-mid':p<=-1.5?'down-strong':p<0?'down-light':'flat';
+ const target=document.getElementById('sectorStockHeatGrid');
+ if(!names.length){target.innerHTML='<div class="sector-stock-empty">No stocks in this sector.</div>';return;}
+ target.innerHTML=names.map(sector=>{
+   const items=sectors[sector];
+   const avg=items.reduce((sum,s)=>sum+s.pct,0)/items.length;
+   return `<div class="sector-stock-group"><div class="sector-stock-group-head"><strong>${sector}</strong><span>${items.length} stocks · average ${avg>=0?'+':''}${avg.toFixed(2)}%</span></div><div class="sector-stock-tiles">${items.map(s=>`<div class="sector-stock-tile ${tone(s.pct)}" tabindex="0" role="button" title="${s.name} · illustrative data" onclick="openChart('${s.sym}')" onkeydown="if(event.key==='Enter')openChart('${s.sym}')"><div><div class="sector-tile-name">${s.name}</div><div class="sector-tile-symbol">${s.sym}</div></div><div><div class="sector-tile-return">${s.pct>=0?'+':''}${s.pct.toFixed(2)}%</div><div class="sector-tile-price">₹${s.price}</div></div></div>`).join('')}</div></div>`;
+ }).join('');
+}
+function renderIndices(){
+ const q=(document.getElementById('indexSearch').value||'').toLowerCase();
+ const fam=document.getElementById('familyFilter').value;
+ let list=showAll?indices:indices.slice(0,10);
+ list=list.filter(i=>(!q||i.name.toLowerCase().includes(q))&&(fam==='All'||i.family===fam));
+ document.getElementById('heatGrid').innerHTML=list.map(i=>`<div class="heat-tile ${i.cls}" tabindex="0" aria-label="${i.name}, ${i.ret>=0?'+':''}${i.ret.toFixed(2)} percent" onclick="currentIndex='${i.name.replace(/'/g,"\\'")}';" onkeydown="if(event.key==='Enter'){openChart('${i.name.replace(/'/g,"\\'")}')}">
+ <div class="tile-name">${i.name}</div><div><div class="tile-return">${i.ret>=0?'+':''}${i.ret.toFixed(2)}%</div><div class="tile-foot">${i.family}</div></div>
+ <div class="tile-actions"><button class="btn small" onclick="event.stopPropagation();openChart('${i.name.replace(/'/g,"\\'")}')">View Chart</button><button class="btn small" onclick="event.stopPropagation();openComposition('${i.name.replace(/'/g,"\\'")}')">View Composition</button></div></div>`).join('');
+}
+function showKeyIndices(){showAll=false;document.getElementById('keyIndicesBtn').classList.add('active');document.getElementById('allIndicesBtn').classList.remove('active');document.getElementById('indexSearch').classList.add('hidden');document.getElementById('familyFilter').classList.add('hidden');renderIndices()}
+function showAllIndices(){showAll=true;document.getElementById('keyIndicesBtn').classList.remove('active');document.getElementById('allIndicesBtn').classList.add('active');document.getElementById('indexSearch').classList.remove('hidden');document.getElementById('familyFilter').classList.remove('hidden');renderIndices()}
+function priceNumber(priceText){return Number(String(priceText).replace(/,/g,''))}
+function changeAmount(stock){
+ const price=priceNumber(stock.price), pct=Number(stock.pct);
+ if(!Number.isFinite(price)||!Number.isFinite(pct)||100+pct===0)return null;
+ return price*pct/(100+pct);
+}
+function formatChange(stock){
+ const delta=changeAmount(stock);
+ if(delta===null)return '—';
+ return `${delta>=0?'+':'−'}${Math.abs(delta).toFixed(2)}`;
+}
+function formatPct(stock){
+ const pct=Number(stock.pct);
+ if(!Number.isFinite(pct))return '—';
+ return `${pct>=0?'+':''}${pct.toFixed(2)}%`;
+}
+function renderStocks(){
+ const q=(document.getElementById('stockSearch').value||'').toLowerCase();
+ let arr=stocks.filter(s=>(currentTab==='All stocks'||(currentTab==='Owned'?s.owned:!s.owned))&&(!q||(s.name+' '+s.sym).toLowerCase().includes(q)));
+ if(!sortAsc)arr=arr.slice().reverse();
+ document.getElementById('stockRows').innerHTML=arr.map(s=>`<tr><td title="${s.name}"><span class="stock-name">${s.name}</span><span class="symbol">${s.sym}</span></td><td class="smallmono">${s.price}</td><td><span class="change-chip ${s.pct>=0?'pos':'neg'}">${formatChange(s)}</span></td><td><span class="change-chip ${s.pct>=0?'pos':'neg'}">${s.pct>=0?'+':''}${s.pct.toFixed(2)}%</span></td><td><button class="chart-btn" onclick="openChart('${s.sym}')">View Chart</button></td></tr>`).join('');
+ document.getElementById('stockHeatGrid').innerHTML=arr.map(s=>`<div class="stock-heat-tile ${s.pct>=2?'up-strong':s.pct>0?'up-light':s.pct<=-1.5?'down-strong':s.pct<0?'down-light':'flat'}" title="${s.name} · ${s.sym} · Illustrative data"><div><div class="heat-stock-name">${s.name}</div><div class="heat-stock-symbol">${s.sym}</div></div><div><div class="heat-stock-return">${s.pct>=0?'+':''}${s.pct.toFixed(2)}%</div><div class="heat-stock-price">₹${s.price}</div></div></div>`).join('');
+ document.getElementById('stockCount').textContent=arr.length?`1–${arr.length} of ${arr.length}`:'0 stocks';
+ document.getElementById('tableFootText').textContent=`${arr.length} names · ${stocksView==='heatmap'?'Return-coloured heatmap':'Compact one-line rows'} · Illustrative data`;
+ document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===currentTab));
+ document.getElementById('stocksTableWrap').classList.toggle('hidden',stocksView!=='table');
+ document.getElementById('stocksHeatmap').classList.toggle('hidden',stocksView!=='heatmap');
+ document.getElementById('stocksTableViewBtn').classList.toggle('active',stocksView==='table');
+ document.getElementById('stocksHeatmapViewBtn').classList.toggle('active',stocksView==='heatmap');
+}
+function setStocksView(view){stocksView=view;renderStocks()}
+function setTab(tab){currentTab=tab;renderStocks()}
+function sortStocks(){sortAsc=!sortAsc;renderStocks()}
+function toggleFilters(){document.getElementById('filterPanel').classList.toggle('hidden')}
+function setMovers(mode){moversMode=mode;document.getElementById('gainersBtn').classList.toggle('active',mode==='gainers');document.getElementById('losersBtn').classList.toggle('active',mode==='losers');renderMovers()}
+function renderMovers(){
+ const valid=stocks.filter(s=>Number.isFinite(Number(s.pct))&&Number.isFinite(priceNumber(s.price)));
+ const list=valid.slice().sort((a,b)=>moversMode==='gainers'?b.pct-a.pct:a.pct-b.pct).filter(s=>moversMode==='gainers'?s.pct>0:s.pct<0).slice(0,5);
+ document.getElementById('moverList').innerHTML=list.map((s,i)=>`<div class="mover"><span class="mover-rank">${String(i+1).padStart(2,'0')}</span><b>${s.sym}</b><span class="${s.pct<0?'negative':'positive'} smallmono">${formatPct(s)}</span></div>`).join('');
+}
+function openChart(symbol){
+ chartSymbol=symbol;currentIndex=symbol;
+ document.getElementById('chartTitle').textContent=symbol.toUpperCase();
+ document.getElementById('chartStatus').textContent=symbol.toUpperCase()+' · '+document.getElementById('chartTf').value+' · Demo visualization';
+ document.getElementById('chartModal').classList.add('open');drawChart()
+}
+function drawChart(){
+ const svg=document.getElementById('chartSvg');let path='';let candles='';
+ for(let i=0;i<42;i++){let x=25+i*23;let y=205-Math.sin(i*.32)*58-Math.cos(i*.13)*28+(i%5)*4;path+=(i?' L':'M')+x+' '+y;
+ let open=y+(i%2?10:-8),close=y+(i%3? -12:9),hi=Math.min(open,close)-9,lo=Math.max(open,close)+10;let col=close<open?'#d56d69':'#168d68';
+ candles+=`<line x1="${x}" y1="${hi}" x2="${x}" y2="${lo}" stroke="${col}" stroke-width="1.5"/><rect x="${x-4}" y="${Math.min(open,close)}" width="8" height="${Math.max(3,Math.abs(close-open))}" fill="${col}" rx="1"/>`;
+ }
+ let grid='';for(let y=50;y<340;y+=58)grid+=`<line x1="20" y1="${y}" x2="980" y2="${y}" stroke="#e8e3d8" stroke-width="1"/>`;
+ svg.innerHTML=`${grid}<path d="${path}" fill="none" stroke="#7a9a9a" stroke-width="1.2" opacity=".65"/>${candles}<line x1="20" y1="240" x2="980" y2="240" stroke="#8a9aa9" stroke-dasharray="4 5"/>`;
+ document.getElementById('chartStatus').textContent=chartSymbol.toUpperCase()+' · '+document.getElementById('chartTf').value+' · Demo visualization';
+}
+function toggleFullscreen(){const area=document.getElementById('chartArea');if(!document.fullscreenElement){(document.getElementById('chartModal')).requestFullscreen?.()}else{document.exitFullscreen?.()}}
+function openTerminal(){alert('Concept interaction: in the production app, this action routes the selected symbol to Kosh Market Terminal.');}
+function openComposition(name){
+ currentIndex=name;document.getElementById('compositionTitle').textContent=name+' — constituents';document.getElementById('sideIndex').textContent=name;document.getElementById('constSearch').value='';
+ const data=[
+ ['HDFCBANK',27.5,'+1.3%','up-strong'],['ICICIBANK',23.1,'+0.8%','up-light'],['SBIN',10.4,'+1.7%','up-strong'],['AXISBANK',9.2,'−0.5%','down-light'],['KOTAKBANK',8.1,'+0.4%','up-light'],['INDUSINDBK',4.5,'−1.1%','down-light'],['FEDERALBNK',3.9,'+0.9%','up-light'],['BANKBARODA',3.6,'+0.3%','up-light'],['PNB',3.2,'−0.7%','down-light'],['IDFCFIRSTB',2.5,'+1.1%','up-light'],['AUBANK',2.2,'+0.6%','up-light'],['CANBK',1.8,'−0.2%','flat']
+ ];
+ document.getElementById('treemap').innerHTML=data.map((d,i)=>`<div class="stock-tile ${d[3]}" data-symbol="${d[0].toLowerCase()}" style="grid-area:auto;flex-basis:${d[1]}%"><span class="symbol">${d[0]}</span><span class="weight">${d[1].toFixed(1)}% weight</span><span class="ret">${d[2]}</span></div>`).join('');
+ // Use CSS grid spans and relative tile size as a schematic, not actual weight geometry.
+ const tiles=[...document.querySelectorAll('.stock-tile')];
+ tiles.forEach((el,i)=>{el.style.gridColumn=(i===0?'span 2':(i===1?'span 2':'span 1'));el.style.gridRow=(i===0?'span 2':'span 1')});
+ document.getElementById('constCount').textContent=data.length;
+ document.getElementById('compositionModal').classList.add('open');
+}
+function filterConstituents(){const q=document.getElementById('constSearch').value.toLowerCase();document.querySelectorAll('#treemap .stock-tile').forEach(t=>t.classList.toggle('hidden',!t.dataset.symbol.includes(q)))}
+function closeModal(id){document.getElementById(id).classList.remove('open')}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal('chartModal');closeModal('compositionModal')}});
+renderIndices();renderStocks();renderMovers();updateSectorPulse();renderSectorStocks();
+</script>
+</body>
+</html>

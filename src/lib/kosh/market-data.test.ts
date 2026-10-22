@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { OhlcBar } from "./types.ts";
 import {
   barBucket,
+  classifyFreshness,
   delayMinutesFromMeta,
   moveWatchSymbols,
   patchLastBar,
@@ -19,8 +20,8 @@ function bar(t: number, o: number, h: number, l: number, c: number, v = 10): Ohl
 describe("quoteStatus", () => {
   it("is session only when the cash session is open and a price exists", () => {
     assert.equal(quoteStatus({ session: true, price: 100 }), "session");
-    assert.equal(quoteStatusLabel("session"), "SESSION · DELAYED");
-    assert.equal(quoteStatusLabel("session", null), "SESSION · DELAYED");
+    assert.equal(quoteStatusLabel("session"), "FRESHNESS UNVERIFIED");
+    assert.equal(quoteStatusLabel("session", null), "FRESHNESS UNVERIFIED");
     assert.equal(quoteStatusLabel("session", 15), "SESSION · DELAYED");
     assert.equal(quoteStatusLabel("session", 0), "SESSION · LIVE");
   });
@@ -45,6 +46,64 @@ describe("quoteStatus", () => {
     assert.equal(delayMinutesFromMeta(0), 0);
     assert.equal(delayMinutesFromMeta(15), 15);
     assert.equal(delayMinutesFromMeta(900), 15);
+  });
+});
+
+describe("classifyFreshness", () => {
+  const now = Date.parse("2026-10-09T08:00:00Z");
+
+  it("is live when the print and the fetch are both current, even if a delay flag would say otherwise", () => {
+    const hit = classifyFreshness({
+      session: true,
+      price: 100,
+      marketTime: now - 2_000,
+      retrievedAt: now - 1_000,
+      now,
+    });
+    assert.equal(hit.state, "live");
+    assert.equal(hit.label, "SESSION · LIVE");
+  });
+
+  it("is delayed when the print is minutes old during the session", () => {
+    const hit = classifyFreshness({
+      session: true,
+      price: 100,
+      marketTime: now - 15 * 60_000,
+      retrievedAt: now - 1_000,
+      now,
+    });
+    assert.equal(hit.state, "delayed");
+  });
+
+  it("is stale when the print is older than the delay window", () => {
+    const hit = classifyFreshness({
+      session: true,
+      price: 100,
+      marketTime: now - 40 * 60_000,
+      retrievedAt: now - 1_000,
+      now,
+    });
+    assert.equal(hit.state, "stale");
+  });
+
+  it("does not call a closed session live", () => {
+    const hit = classifyFreshness({
+      session: false,
+      price: 100,
+      marketTime: now - 1_000,
+      retrievedAt: now - 1_000,
+      now,
+    });
+    assert.equal(hit.state, "last");
+  });
+
+  it("does not mark live without a market timestamp", () => {
+    const hit = classifyFreshness({ session: true, price: 100, retrievedAt: now, now });
+    assert.equal(hit.state, "unverified");
+  });
+
+  it("is unavailable without a price", () => {
+    assert.equal(classifyFreshness({ session: true, price: 0, marketTime: now, retrievedAt: now, now }).state, "off");
   });
 });
 

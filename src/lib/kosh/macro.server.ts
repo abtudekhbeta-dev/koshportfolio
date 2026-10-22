@@ -44,7 +44,7 @@ async function fetchFiidii(): Promise<FiidiiRow[]> {
       .filter((x) => x && typeof x === "object")
       .map((x) => asFiidii(x as Record<string, unknown>))
       .filter((x) => x.date)
-      .slice(0, 24);
+      .slice(0, 1400);
   } catch {
     try {
       const raw = await getJson("https://fii-diidata.mrchartist.com/api/data");

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { eodPositions, rangeStats, slicePath } from "./ledger.ts";
+import { closeOnOrBefore, eodPositions, rangeStats, slicePath, valueSnapshot } from "./ledger.ts";
 import type { PathPoint, TradeLine } from "./types.ts";
 
 function t(side: 1 | -1, qty: number, date: string, price = 100, src?: number): TradeLine {
@@ -40,5 +40,38 @@ describe("end-of-day ledger", () => {
     assert.ok(stats.twr != null && Math.abs(stats.twr - ((90 / 110 - 1) * 100)) < 1e-6);
     assert.ok(stats.bench != null && Math.abs(stats.bench - ((105 / 110 - 1) * 100)) < 1e-6);
     assert.ok(stats.maxDd != null && stats.maxDd < 0);
+  });
+});
+
+describe("historical valuation", () => {
+  it("uses the last close on or before the date and never a later print", () => {
+    const series = [
+      { d: "2024-01-02", px: 10 },
+      { d: "2024-01-04", px: 99 },
+    ];
+    assert.equal(closeOnOrBefore(series, "2024-01-03")?.px, 10);
+    assert.equal(closeOnOrBefore(series, "2024-01-01"), null);
+    assert.equal(closeOnOrBefore(series, "2024-01-04")?.px, 99);
+    const scrambled = [
+      { d: "2024-01-04", px: 99 },
+      { d: "2024-01-02", px: 10 },
+    ];
+    assert.equal(closeOnOrBefore(scrambled, "2024-01-03")?.px, 10);
+    assert.equal(closeOnOrBefore(scrambled, "2024-01-05")?.px, 99);
+  });
+
+  it("prices quantity, marks a stale close, and leaves a missing name out of the total", () => {
+    const lines = [
+      { symbol: "AAA", name: "Aaa", qty: 2, cost: 1, oversell: 0 },
+      { symbol: "BBB", name: "Bbb", qty: 4, cost: 1, oversell: 0 },
+    ];
+    const valued = valueSnapshot(lines, { AAA: [{ d: "2024-01-02", px: 10 }] }, "2024-01-04");
+    assert.equal(valued.total, 20);
+    assert.equal(valued.sum, 20);
+    assert.equal(valued.rows[0]?.status, "stale");
+    assert.equal(valued.rows[0]?.weight, 100);
+    assert.equal(valued.rows[1]?.status, "missing");
+    assert.equal(valued.rows[1]?.value, null);
+    assert.equal(valued.missing, 1);
   });
 });

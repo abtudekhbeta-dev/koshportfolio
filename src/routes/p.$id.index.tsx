@@ -15,6 +15,7 @@ import { mixVsNifty, niftyOverlap, bareSym } from "@/lib/kosh/portfolio-stats";
 import type { NiftySnap } from "@/lib/kosh/nifty-snap";
 import { AttentionStrip } from "@/components/attention-strip";
 import { IntelOverview } from "@/components/intel-overview";
+import { LedgerOverview } from "@/components/ledger-shell";
 import { useAppLayout } from "@/lib/layout-mode";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -52,7 +53,19 @@ function Overview() {
   const hasMetals = book.commodityValue > 0;
   const screen = useQuery({ queryKey: ["screener"], queryFn: apiScreener, staleTime: 10 * 60 * 1000 });
   const chartNav = book.mix.nav;
-  const intel = useAppLayout() === "intelligence";
+  const layout = useAppLayout();
+  if (layout === "ledger") {
+    return (
+      <LedgerOverview
+        name={portfolio.name}
+        value={value}
+        dayAbs={dayAbs}
+        dayPct={dayPct}
+        rows={rows.map((r) => ({ symbol: r.symbol, name: r.name, value: r.value, qty: r.qty }))}
+      />
+    );
+  }
+  const studio = layout === "studio";
 
   return (
     <div className="kosh-page grid gap-8">
@@ -62,7 +75,7 @@ function Overview() {
         <Kpi metricId="day" label="Today" value={fmtInr(dayAbs)} hint={book.dayWarn ? `${fmtPct(dayPct)} · check print` : fmtPct(dayPct)} tone={toneOf(dayAbs)} />
         <Kpi metricId="unreal" label="Unrealised P&L" value={fmtInr(unreal)} hint={invested ? unrealPct.toFixed(2) + "%" : "Cost unavailable"} tone={toneOf(unreal)} />
       </section>
-      {intel ? (
+      {studio ? (
         <IntelOverview
           book={book}
           portfolioId={portfolio.id}

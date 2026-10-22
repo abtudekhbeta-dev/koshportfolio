@@ -10,7 +10,23 @@ import { cleanHoldSort } from "@/lib/kosh/instrument-nav";
 import { baseSym, storedSymbol } from "@/lib/kosh/sectors";
 import type { SymbolBook } from "@/lib/kosh/symbol-map";
 import { loadTradeBooks, saveTradeBook } from "@/lib/kosh/trade-book";
-import { applyDrops, emptyDrops, tradeIdentity, unionCloudTrades, withHoldingDrop, withPortfolioDrop, withTradeDrops, type CloudDrops } from "@/lib/kosh/cloud-state";
+import {
+  applyDrops,
+  clampDrops,
+  emptyDrops,
+  tradeIdentity,
+  unionCloudTrades,
+  withAlertDrop,
+  withHoldingDrop,
+  withListDrop,
+  withNoteDrop,
+  withPortfolioDrop,
+  withScreenDrop,
+  withSymbolDrop,
+  withTradeDrops,
+  type CloudDrops,
+} from "@/lib/kosh/cloud-state";
+import { instrumentDrawKey, mergeDrawBuckets } from "@/lib/kosh/draw-coords";
 
 export type IconId = "k-path" | "bowl" | "twin" | "ledger" | "coin" | "fold";
 export const ICON_IDS: IconId[] = ["k-path", "bowl", "twin", "ledger", "coin", "fold"];
@@ -129,8 +145,8 @@ export function bareSymbol(s: string) {
     .replace(/\.(NS|BO)$/i, "");
 }
 
-export function drawKey(symbol: string, interval: string) {
-  return `${bareSymbol(symbol)}:${interval || "1D"}`;
+export function drawKey(symbol: string, _interval?: string) {
+  return instrumentDrawKey(symbol);
 }
 
 export function newDrawId() {
@@ -138,13 +154,7 @@ export function newDrawId() {
 }
 
 function migrateDrawings(raw: Record<string, DrawShape[]> | undefined): Record<string, DrawShape[]> {
-  const out: Record<string, DrawShape[]> = {};
-  for (const [k, v] of Object.entries(raw || {})) {
-    if (!v?.length) continue;
-    if (k.includes(":")) out[k] = v;
-    else out[`${bareSymbol(k)}:1D`] = v;
-  }
-  return out;
+  return mergeDrawBuckets(raw);
 }
 
 export type WatchList = { id: string; name: string; symbols: string[] };
@@ -605,16 +615,22 @@ export const useKosh = create<KoshState>()(
         const next = lists.map((l) => {
           if (l.id !== id) return l;
           const cur = l.symbols.map(bareSymbol);
-          return { ...l, symbols: cur.includes(n) ? cur.filter((x) => x !== n) : [n, ...cur].slice(0, 80) };
+          return { ...l, symbols: cur.includes(n) ? cur.filter((x) => x !== n) : [n, ...cur].slice(0, 500) };
         });
         const active = next.find((l) => l.id === id) || next[0];
-        set({ watchlists: next, watch: active?.symbols || [], activeWatchId: active?.id || id });
+        const removing = (lists.find((l) => l.id === id)?.symbols || []).map(bareSymbol).includes(n);
+        set({
+          watchlists: next,
+          watch: active?.symbols || [],
+          activeWatchId: active?.id || id,
+          cloudDrops: removing ? withSymbolDrop(get().cloudDrops, { listId: id, symbol: n, at: Date.now() }) : get().cloudDrops,
+        });
       },
       addWatchList: (name) => {
         const id = uid();
         const lists = get().watchlists.length ? get().watchlists : defaultWatchlists(get().watch);
         const row: WatchList = { id, name: (name || "List").slice(0, 32), symbols: [] };
-        set({ watchlists: [...lists, row].slice(0, 12), activeWatchId: id, watch: [] });
+        set({ watchlists: [...lists, row].slice(0, 100), activeWatchId: id, watch: [] });
         return id;
       },
       renameWatchList: (id, name) =>
@@ -625,7 +641,12 @@ export const useKosh = create<KoshState>()(
         const lists = get().watchlists.filter((l) => l.id !== id);
         const next = lists.length ? lists : defaultWatchlists();
         const active = next.find((l) => l.id === get().activeWatchId) || next[0];
-        set({ watchlists: next, activeWatchId: active.id, watch: active.symbols });
+        set({
+          watchlists: next,
+          activeWatchId: active.id,
+          watch: active.symbols,
+          cloudDrops: withListDrop(get().cloudDrops, id, Date.now()),
+        });
       },
       setActiveWatchId: (id) => {
         const lists = get().watchlists;
@@ -673,9 +694,13 @@ export const useKosh = create<KoshState>()(
       },
       addAlert: (a) =>
         set({
-          alerts: [{ ...a, id: uid(), symbol: bareSymbol(a.symbol), kind: a.kind || "price" }, ...get().alerts].slice(0, 40),
+          alerts: [{ ...a, id: uid(), symbol: bareSymbol(a.symbol), kind: a.kind || "price" }, ...get().alerts].slice(0, 500),
         }),
-      removeAlert: (id) => set({ alerts: (get().alerts || []).filter((x) => x.id !== id) }),
+      removeAlert: (id) =>
+        set({
+          alerts: (get().alerts || []).filter((x) => x.id !== id),
+          cloudDrops: withAlertDrop(get().cloudDrops, id, Date.now()),
+        }),
       addJournal: (e) =>
         set({
           journal: [
@@ -688,17 +713,24 @@ export const useKosh = create<KoshState>()(
               at: e.at || Date.now(),
             },
             ...get().journal,
-          ].slice(0, 80),
+          ].slice(0, 2000),
         }),
-      removeJournal: (id) => set({ journal: (get().journal || []).filter((x) => x.id !== id) }),
+      removeJournal: (id) =>
+        set({
+          journal: (get().journal || []).filter((x) => x.id !== id),
+          cloudDrops: withNoteDrop(get().cloudDrops, id, Date.now()),
+        }),
       setDrawings: (symbol, shapes) =>
-        set({ drawings: { ...get().drawings, [symbol.includes(":") ? symbol : drawKey(symbol, "1D")]: shapes.slice(0, 80) } }),
+        set({ drawings: { ...get().drawings, [drawKey(symbol)]: shapes.slice(0, 80) } }),
       saveCustomScreen: (f) =>
         set({
-          customScreens: [f, ...get().customScreens.filter((x) => x.name !== f.name)].slice(0, 20),
+          customScreens: [f, ...get().customScreens.filter((x) => x.name !== f.name)].slice(0, 200),
         }),
       removeCustomScreen: (name) =>
-        set({ customScreens: get().customScreens.filter((x) => x.name !== name) }),
+        set({
+          customScreens: get().customScreens.filter((x) => x.name !== name),
+          cloudDrops: withScreenDrop(get().cloudDrops, name, Date.now()),
+        }),
       setSkillRead: (r) =>
         set({ skillReads: { ...get().skillReads, [bareSymbol(r.symbol)]: r } }),
       setSkillReads: (rows) =>
@@ -867,7 +899,7 @@ export const useKosh = create<KoshState>()(
           deepFunds: p.deepFunds || {},
           symbolAliases: p.symbolAliases || {},
           symbolSkips: p.symbolSkips || [],
-          cloudDrops: p.cloudDrops || emptyDrops(),
+          cloudDrops: clampDrops(p.cloudDrops),
           tradeCounts: p.tradeCounts || {},
           tradeError: null,
           tradesReady: false,

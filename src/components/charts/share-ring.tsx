@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { CompanyLogo } from "@/components/company-logo";
 import { canOpenStock } from "@/components/stock-link";
 import { cn } from "@/lib/utils";
 
@@ -102,18 +103,21 @@ export function MiniBars({
   return (
     <div className="grid gap-2">
       {items.map((it) => (
-        <div key={it.name} className="grid grid-cols-[minmax(0,6.5rem)_1fr_4.5rem] items-center gap-2 text-[12px] sm:grid-cols-[minmax(0,7.5rem)_1fr_4.5rem]">
-          <div className="min-w-0">
-            <div className="truncate font-medium">
-              {it.symbol && canOpenStock(it.symbol) ? (
-                <Link to="/s/$symbol" params={{ symbol: it.symbol }} className="hover:text-chart">
-                  {it.name}
-                </Link>
-              ) : (
-                it.name
-              )}
+        <div key={it.name} className="grid grid-cols-[minmax(0,8.5rem)_1fr_4.5rem] items-center gap-2 text-[12px] sm:grid-cols-[minmax(0,10rem)_1fr_4.5rem]">
+          <div className="flex min-w-0 items-center gap-2">
+            {it.symbol ? <CompanyLogo symbol={it.symbol} name={it.sub || it.name} size={18} /> : null}
+            <div className="min-w-0">
+              <div className="truncate font-medium">
+                {it.symbol && canOpenStock(it.symbol) ? (
+                  <Link to="/s/$symbol" params={{ symbol: it.symbol }} className="hover:text-chart">
+                    {it.name}
+                  </Link>
+                ) : (
+                  it.name
+                )}
+              </div>
+              {it.sub ? <div className="truncate text-[11px] text-subtle">{it.sub}</div> : null}
             </div>
-            {it.sub ? <div className="truncate text-[11px] text-subtle">{it.sub}</div> : null}
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
             <div
@@ -135,17 +139,22 @@ export function MiniBars({
   );
 }
 
-export function BreadthBar({ green, n }: { green: number; n: number }) {
-  const pct = n > 0 ? (green / n) * 100 : 0;
+export function BreadthBar({ green, n, unchanged = 0 }: { green: number; n: number; unchanged?: number }) {
+  const adv = Math.max(0, green);
+  const unch = Math.max(0, unchanged);
+  const dec = Math.max(0, n - adv - unch);
+  const pct = n > 0 ? (adv / n) * 100 : 0;
   return (
-    <div>
-      <div className="flex justify-between font-mono text-[12px] tabular text-muted">
-        <span className="text-up">{green} advancing</span>
-        <span>{pct.toFixed(0)}%</span>
-        <span className="text-down">{Math.max(0, n - green)} declining</span>
+    <div className="grid gap-1.5">
+      <div className="flex items-baseline justify-between gap-2 font-mono text-[11px] tabular">
+        <span className="whitespace-nowrap text-up" title={`${adv} advancing`}>{adv} up</span>
+        {unch ? <span className="whitespace-nowrap text-muted" title={`${unch} unchanged`}>{unch} flat</span> : null}
+        <span className="whitespace-nowrap text-muted">{n ? `${pct.toFixed(0)}%` : "—"}</span>
+        <span className="whitespace-nowrap text-down" title={`${dec} declining`}>{dec} down</span>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-down/25">
+      <div className="flex h-1.5 overflow-hidden rounded-full bg-down/70" aria-hidden>
         <div className="h-full bg-up" style={{ width: `${Math.min(100, pct)}%` }} />
+        {unch ? <div className="h-full bg-muted/60" style={{ width: `${Math.min(100 - pct, (unch / n) * 100)}%` }} /> : null}
       </div>
     </div>
   );

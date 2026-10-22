@@ -1,8 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
+import { ClassicOverview } from "@/components/terminal/classic-overview";
 import { MarketOverview } from "@/components/terminal/market-overview";
 import { MarketsDesk } from "@/components/terminal/markets-desk";
 import { MarketsSwitch } from "@/components/terminal/markets-switch";
+import { useAppLayout } from "@/lib/layout-mode";
 
 export type MarketsSearch = { view?: "terminal" | "overview"; symbol?: string; name?: string };
 
@@ -21,7 +23,10 @@ export const Route = createFileRoute("/markets")({
 });
 
 function Markets() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { view } = Route.useSearch();
+  const layout = useAppLayout();
+  if (pathname.startsWith("/markets/")) return <Outlet />;
   const terminal = view !== "overview";
   return (
     <AppShell full={terminal}>
@@ -33,7 +38,7 @@ function Markets() {
       ) : (
         <>
           <MarketsSwitch view="overview" />
-          <MarketOverview />
+          {layout === "classic" ? <ClassicOverview /> : <MarketOverview />}
         </>
       )}
     </AppShell>

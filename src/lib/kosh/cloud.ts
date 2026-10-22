@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import type { Holding, Portfolio } from "./types";
-import { emptyCloud, sanitizeForCloud, type CloudDoc } from "./cloud-state";
+import { decideSave, emptyCloud, sanitizeForCloud, type CloudDoc } from "./cloud-state";
 
 type StateRow = { rev: number | string; payload: string };
 type PortRow = { id: string; name: string; bench: string; holdings: string };
@@ -78,16 +78,22 @@ export const saveCloudState = createServerFn({ method: "POST" })
       select rev, payload from kosh_state where user_id = ${context.userId}
     `;
     const serverRev = rows.length ? Number(rows[0].rev) || 0 : 0;
-    if (rows.length && serverRev !== data.baseRev) {
-      let doc = emptyCloud();
+    let serverDoc = emptyCloud();
+    if (rows.length) {
       try {
-        doc = { ...emptyCloud(), ...JSON.parse(rows[0].payload || "{}") };
+        serverDoc = sanitizeForCloud({ ...emptyCloud(), ...JSON.parse(rows[0].payload || "{}") });
       } catch {
-        doc = emptyCloud();
+        serverDoc = emptyCloud();
       }
-      return { ok: false as const, conflict: true as const, rev: serverRev, doc };
     }
-    const next = serverRev + 1;
+    const decision = decideSave(rows.length ? { rev: serverRev, doc: serverDoc } : null, data.doc, data.baseRev);
+    if (decision.kind === "duplicate") {
+      return { ok: true as const, conflict: false as const, rev: decision.rev, duplicate: true as const };
+    }
+    if (decision.kind === "conflict") {
+      return { ok: false as const, conflict: true as const, rev: decision.rev, doc: decision.doc };
+    }
+    const next = decision.rev;
     const payload = JSON.stringify(data.doc);
     if (!rows.length) {
       await sql`

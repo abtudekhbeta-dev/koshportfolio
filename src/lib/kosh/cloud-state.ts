@@ -40,7 +40,18 @@ export type CloudDesk = {
 export type CloudDrop = { id: string; at: number };
 export type TradeDrop = { portfolioId: string; key: string; at: number };
 export type HoldingDrop = { portfolioId: string; symbol: string; at: number };
-export type CloudDrops = { portfolios: CloudDrop[]; trades: TradeDrop[]; holdings: HoldingDrop[] };
+export type SymbolDrop = { listId: string; symbol: string; at: number };
+export type NameDrop = { name: string; at: number };
+export type CloudDrops = {
+  portfolios: CloudDrop[];
+  trades: TradeDrop[];
+  holdings: HoldingDrop[];
+  lists: CloudDrop[];
+  symbols: SymbolDrop[];
+  screens: NameDrop[];
+  alerts: CloudDrop[];
+  notes: CloudDrop[];
+};
 
 export type CloudDoc = {
   portfolios: Portfolio[];
@@ -57,6 +68,10 @@ export type CloudDoc = {
   symbolSkips: string[];
   deviceId?: string;
   savedAt?: number;
+  /** Client idempotency key for the last accepted save. A retry with the same key and body is not a new revision. */
+  mutationId?: string;
+  /** Counts that could not be stored. Empty means nothing was dropped. */
+  omitted?: { watchlists?: number; screens?: number; alerts?: number; journal?: number };
   /** Deletes that must win over a stale copy of the same record. */
   drops?: CloudDrops;
 };
@@ -99,6 +114,7 @@ export function sanitizeForCloud(input: {
   symbolSkips?: string[];
   deviceId?: string;
   savedAt?: number;
+  mutationId?: string;
   drops?: CloudDrops;
   cloudDrops?: CloudDrops;
 }): CloudDoc {
@@ -107,15 +123,26 @@ export function sanitizeForCloud(input: {
     if (!snap?.fund) continue;
     funds[sym.slice(0, 24)] = { fund: slimFund(snap.fund), at: snap.at || 0, sources: (snap.sources || []).slice(0, 8) };
   }
+  const lists = capped(input.watchlists || [], 100);
+  const screens = capped(input.customScreens || [], 200);
+  const alerts = capped(input.alerts || [], 500);
+  const journal = capped(input.journal || [], 2000);
+  const omitted = {
+    watchlists: lists.omitted,
+    screens: screens.omitted,
+    alerts: alerts.omitted,
+    journal: journal.omitted,
+  };
+  const dropped = Object.values(omitted).some((n) => n > 0);
   return {
     portfolios: (input.portfolios || []).filter((p) => p.id !== "sample").map((p) => sanitizePortfolio(p)),
-    watchlists: (input.watchlists || []).slice(0, 20).map((w) => ({
+    watchlists: lists.rows.map((w) => ({
       id: String(w.id || "").slice(0, 40),
       name: String(w.name || "List").slice(0, 40),
-      symbols: (w.symbols || []).map((s) => String(s).slice(0, 24)).slice(0, 200),
+      symbols: (w.symbols || []).map((s) => String(s).slice(0, 24)).slice(0, 2000),
     })),
     activeWatchId: String(input.activeWatchId || "main").slice(0, 40),
-    customScreens: (input.customScreens || []).slice(0, 30),
+    customScreens: screens.rows,
     chartPrefs: {
       termHeight: input.chartPrefs?.termHeight,
       interval: input.chartPrefs?.interval,
@@ -124,14 +151,16 @@ export function sanitizeForCloud(input: {
       chartBench: input.chartPrefs?.chartBench,
     },
     desk: input.desk || null,
-    alerts: (input.alerts || []).slice(0, 100),
-    journal: (input.journal || []).slice(0, 200),
+    alerts: alerts.rows,
+    journal: journal.rows,
     bookNotes: input.bookNotes || {},
     deepFunds: funds,
     symbolAliases: input.symbolAliases || {},
     symbolSkips: input.symbolSkips || [],
     deviceId: input.deviceId || thisDevice(),
     savedAt: input.savedAt || Date.now(),
+    mutationId: input.mutationId ? String(input.mutationId).slice(0, 80) : undefined,
+    omitted: dropped ? omitted : undefined,
     drops: clampDrops(input.drops || input.cloudDrops),
   };
 }
@@ -155,8 +184,13 @@ function tradeKey(t: TradeLine) {
   return tradeIdentity(t);
 }
 
+function capped<T>(rows: T[], cap: number) {
+  if (rows.length <= cap) return { rows, omitted: 0 };
+  return { rows: rows.slice(0, cap), omitted: rows.length - cap };
+}
+
 export function emptyDrops(): CloudDrops {
-  return { portfolios: [], trades: [], holdings: [] };
+  return { portfolios: [], trades: [], holdings: [], lists: [], symbols: [], screens: [], alerts: [], notes: [] };
 }
 
 /** Broker id wins. Without one, economics plus file order identify the row. Two different ids stay two trades. */
@@ -179,9 +213,14 @@ function fresher<T extends { at: number }>(rows: T[], key: (row: T) => string, c
 
 export function clampDrops(input?: Partial<CloudDrops> | null): CloudDrops {
   return {
-    portfolios: fresher(input?.portfolios || [], (d) => d.id),
-    trades: fresher(input?.trades || [], (d) => d.portfolioId + "|" + d.key),
-    holdings: fresher(input?.holdings || [], (d) => d.portfolioId + "|" + baseSym(d.symbol)),
+    portfolios: fresher(input?.portfolios || [], (d) => d.id, 2000),
+    trades: fresher(input?.trades || [], (d) => d.portfolioId + "|" + d.key, 2000),
+    holdings: fresher(input?.holdings || [], (d) => d.portfolioId + "|" + baseSym(d.symbol), 2000),
+    lists: fresher(input?.lists || [], (d) => d.id, 2000),
+    symbols: fresher(input?.symbols || [], (d) => d.listId + "|" + baseSym(d.symbol), 4000),
+    screens: fresher(input?.screens || [], (d) => d.name, 2000),
+    alerts: fresher(input?.alerts || [], (d) => d.id, 2000),
+    notes: fresher(input?.notes || [], (d) => d.id, 2000),
   };
 }
 
@@ -195,6 +234,26 @@ export function withTradeDrops(drops: CloudDrops | undefined, rows: TradeDrop[])
 
 export function withHoldingDrop(drops: CloudDrops | undefined, row: HoldingDrop): CloudDrops {
   return clampDrops({ ...(drops || emptyDrops()), holdings: [...(drops?.holdings || []), row] });
+}
+
+export function withListDrop(drops: CloudDrops | undefined, id: string, at: number): CloudDrops {
+  return clampDrops({ ...(drops || emptyDrops()), lists: [...(drops?.lists || []), { id, at }] });
+}
+
+export function withSymbolDrop(drops: CloudDrops | undefined, row: SymbolDrop): CloudDrops {
+  return clampDrops({ ...(drops || emptyDrops()), symbols: [...(drops?.symbols || []), row] });
+}
+
+export function withScreenDrop(drops: CloudDrops | undefined, name: string, at: number): CloudDrops {
+  return clampDrops({ ...(drops || emptyDrops()), screens: [...(drops?.screens || []), { name, at }] });
+}
+
+export function withAlertDrop(drops: CloudDrops | undefined, id: string, at: number): CloudDrops {
+  return clampDrops({ ...(drops || emptyDrops()), alerts: [...(drops?.alerts || []), { id, at }] });
+}
+
+export function withNoteDrop(drops: CloudDrops | undefined, id: string, at: number): CloudDrops {
+  return clampDrops({ ...(drops || emptyDrops()), notes: [...(drops?.notes || []), { id, at }] });
 }
 
 /** A newer book keeps what it currently lists. A stale copy loses the deleted row. */
@@ -260,7 +319,7 @@ function mergeFacts(a?: PathPriceFact[], b?: PathPriceFact[]): PathPriceFact[] {
     const key = `${f.symbol}|${f.date}`;
     if (!map.has(key)) map.set(key, f);
   }
-  return [...map.values()].slice(0, 400);
+  return [...map.values()].slice(0, 2000);
 }
 
 /** Union Path trades. A stale device must not erase a newer tradebook. */
@@ -293,27 +352,42 @@ export function mergeCloud(local: CloudDoc, remote: CloudDoc): { doc: CloudDoc; 
     const prev = funds[sym];
     if (!prev || (snap.at || 0) >= (prev.at || 0)) funds[sym] = snap;
   }
-  const screens = [...(remote.customScreens || [])];
-  const names = new Set(screens.map((s) => s.name));
-  for (const s of local.customScreens || []) {
-    if (!names.has(s.name)) screens.push(s);
-  }
-  const lists = new Map<string, CloudWatch>();
-  for (const w of [...(remote.watchlists || []), ...(local.watchlists || [])]) {
-    const prev = lists.get(w.id);
-    if (!prev) lists.set(w.id, w);
-    else {
-      const symbols = [...prev.symbols];
-      for (const s of w.symbols) if (!symbols.includes(s)) symbols.push(s);
-      lists.set(w.id, { ...prev, symbols, name: w.name || prev.name });
-    }
-  }
   const localFresh = !localPorts.length && !(local.customScreens || []).length && !Object.keys(local.deepFunds || {}).length;
   const drops = clampDrops({
     portfolios: [...(local.drops?.portfolios || []), ...(remote.drops?.portfolios || [])],
     trades: [...(local.drops?.trades || []), ...(remote.drops?.trades || [])],
     holdings: [...(local.drops?.holdings || []), ...(remote.drops?.holdings || [])],
+    lists: [...(local.drops?.lists || []), ...(remote.drops?.lists || [])],
+    symbols: [...(local.drops?.symbols || []), ...(remote.drops?.symbols || [])],
+    screens: [...(local.drops?.screens || []), ...(remote.drops?.screens || [])],
+    alerts: [...(local.drops?.alerts || []), ...(remote.drops?.alerts || [])],
+    notes: [...(local.drops?.notes || []), ...(remote.drops?.notes || [])],
   });
+  const deadLists = new Set(drops.lists.map((d) => d.id));
+  const deadSymbols = new Set(drops.symbols.map((d) => d.listId + "|" + baseSym(d.symbol)));
+  const deadScreens = new Set(drops.screens.map((d) => d.name));
+  const deadAlerts = new Set(drops.alerts.map((d) => d.id));
+  const deadNotes = new Set(drops.notes.map((d) => d.id));
+  const lists = new Map<string, CloudWatch>();
+  for (const w of [...(remote.watchlists || []), ...(local.watchlists || [])]) {
+    if (!w?.id || deadLists.has(w.id)) continue;
+    const prev = lists.get(w.id);
+    const symbols = (prev ? prev.symbols : []).concat(w.symbols || []).filter((s, i, arr) => arr.indexOf(s) === i);
+    const kept = symbols.filter((s) => !deadSymbols.has(w.id + "|" + baseSym(s)));
+    if (!prev) lists.set(w.id, { ...w, symbols: kept });
+    else lists.set(w.id, { ...prev, symbols: kept, name: w.name || prev.name });
+  }
+  const screens = [...(remote.customScreens || [])];
+  const names = new Set(screens.map((s) => s.name));
+  for (const s of local.customScreens || []) {
+    if (s?.name && !names.has(s.name)) screens.push(s);
+  }
+  const alerts = (localFresh ? remote.alerts || [] : local.alerts?.length ? local.alerts : remote.alerts || []).filter(
+    (a) => a && !deadAlerts.has(a.id),
+  );
+  const journal = (localFresh ? remote.journal || [] : local.journal?.length ? local.journal : remote.journal || []).filter(
+    (j) => j && !deadNotes.has(j.id),
+  );
   for (const [id, p] of [...byId]) {
     const gone = drops.portfolios.find((d) => d.id === id);
     if (gone && !((p.updatedAt || 0) > gone.at)) {
@@ -328,11 +402,11 @@ export function mergeCloud(local: CloudDoc, remote: CloudDoc): { doc: CloudDoc; 
     portfolios: [...byId.values()],
     watchlists: [...lists.values()],
     activeWatchId: localFresh ? remote.activeWatchId || local.activeWatchId || "main" : local.activeWatchId || remote.activeWatchId || "main",
-    customScreens: screens,
+    customScreens: screens.filter((s) => s && !deadScreens.has(s.name)),
     chartPrefs: localFresh ? { ...local.chartPrefs, ...remote.chartPrefs } : { ...remote.chartPrefs, ...local.chartPrefs },
     desk: localFresh ? remote.desk || local.desk : local.desk || remote.desk,
-    alerts: localFresh ? remote.alerts || [] : local.alerts?.length ? local.alerts : remote.alerts || [],
-    journal: localFresh ? remote.journal || [] : local.journal?.length ? local.journal : remote.journal || [],
+    alerts,
+    journal,
     bookNotes: { ...(remote.bookNotes || {}), ...(localFresh ? {} : local.bookNotes || {}) },
     deepFunds: funds,
     symbolAliases: localFresh
@@ -345,4 +419,27 @@ export function mergeCloud(local: CloudDoc, remote: CloudDoc): { doc: CloudDoc; 
   };
   const dirty = JSON.stringify(doc) !== JSON.stringify(remote);
   return { doc, dirty, notes };
+}
+
+/** Stable body for idempotency. Clock and device fields do not make a retry a new save. */
+export function docFingerprint(doc: CloudDoc): string {
+  const { savedAt: _saved, deviceId: _device, mutationId: _id, ...rest } = doc;
+  return JSON.stringify(rest);
+}
+
+export function decideSave(
+  server: { rev: number; doc: CloudDoc } | null,
+  incoming: CloudDoc,
+  baseRev: number,
+): { kind: "duplicate"; rev: number } | { kind: "conflict"; rev: number; doc: CloudDoc } | { kind: "write"; rev: number } {
+  if (
+    server &&
+    incoming.mutationId &&
+    server.doc.mutationId === incoming.mutationId &&
+    docFingerprint(server.doc) === docFingerprint(incoming)
+  ) {
+    return { kind: "duplicate", rev: server.rev };
+  }
+  if (server && server.rev !== baseRev) return { kind: "conflict", rev: server.rev, doc: server.doc };
+  return { kind: "write", rev: (server?.rev || 0) + 1 };
 }

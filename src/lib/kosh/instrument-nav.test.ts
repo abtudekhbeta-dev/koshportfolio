@@ -7,7 +7,9 @@ describe("instrument navigation", () => {
     assert.equal(instrumentKind("^NSEI"), "index");
     assert.equal(instrumentKind("^NSEBANK"), "index");
     assert.equal(instrumentKind("^CNXIT"), "index");
-    assert.equal(instrumentKind("RELIANCE"), "stock");
+    assert.equal(instrumentKind("NIFTY_FIN_SERVICE.NS"), "index");
+    assert.equal(instrumentKind("NIFTY_MIDCAP_100.NS"), "index");
+    assert.equal(instrumentKind("RELIANCE.NS"), "stock");
     assert.equal(instrumentKind("GOLD"), "commodity");
   });
 

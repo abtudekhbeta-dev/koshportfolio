@@ -34,7 +34,9 @@ export type Quote = {
   error?: string;
   /** Unix ms when this print was fetched. Missing on older cached rows. */
   retrievedAt?: number;
-  /** Minutes the provider says this print is delayed. 0 means the provider marks it live. Missing means unknown — not live. */
+  /** Provider event time, unix ms. Missing means freshness cannot be verified. */
+  marketTime?: number | null;
+  /** Minutes the provider says this print is delayed. Not used to override a fresh marketTime. */
   delayMin?: number | null;
 };
 
@@ -74,7 +76,17 @@ export type OhlcPack = {
   mcapCr?: number | null;
 };
 
-export type TapeRow = { id: string; symbol: string; label: string; price: number; changePct: number; unit?: string };
+export type TapeRow = {
+  id: string;
+  symbol: string;
+  label: string;
+  price: number;
+  changePct: number;
+  unit?: string;
+  marketTime?: number | null;
+  retrievedAt?: number | null;
+  delayMin?: number | null;
+};
 
 /** One buy that still sits in a holding. Kept when a trade file is imported. */
 export type Lot = {
@@ -303,7 +315,7 @@ export type FilledPrice = {
   date: string;
   price: number;
   sessionDay: string;
-  method: "day-close";
+  method: "day-close" | "prior-close";
   hadTime: boolean;
 };
 
@@ -336,6 +348,8 @@ export type PathPack = {
   splitNote: boolean;
   filledPrices: FilledPrice[];
   snapshots: PathSlice[];
+  /** Unadjusted daily closes used for historical valuation. Never a future print. */
+  closes: Record<string, { d: string; px: number }[]>;
   byName: PathName[];
   windows: Record<string, WindowPair>;
   months: MonthRow[];

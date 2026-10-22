@@ -8,11 +8,11 @@ import { Button } from "@/components/ui/button";
 import { apiNews, apiScreener, apiTape } from "@/lib/kosh/api";
 import { fmtPct, fmtTapePx } from "@/lib/kosh/engine";
 import { isIstSession } from "@/lib/kosh/market-hours";
-import { quoteStatus, quoteStatusLabel } from "@/lib/kosh/market-data";
+import { tapeFreshness } from "@/lib/kosh/market-data";
 import { applyScreen } from "@/lib/kosh/screens";
 import { cn } from "@/lib/utils";
 import { MixNudge } from "@/components/mix-nudge";
-import { IntelLanding } from "@/components/intel-landing";
+import { LedgerLanding } from "@/components/ledger-shell";
 import { StudioLanding } from "@/components/studio-shell";
 import { useAppLayout } from "@/lib/layout-mode";
 import { Plus } from "lucide-react";
@@ -94,17 +94,16 @@ const FAQ = [
 ];
 
 function Tape() {
-  const tape = useQuery({ queryKey: ["tape"], queryFn: apiTape, staleTime: 60_000 });
+  const tape = useQuery({ queryKey: ["tape"], queryFn: apiTape, staleTime: 2_500, refetchInterval: isIstSession() ? 5_000 : 60_000 });
   const rows = tape.data || [];
   if (!rows.length) return null;
   const items = [...rows, ...rows];
-  const tapeOn = isIstSession() && rows.some((t) => t.price > 0);
-  const tapeLabel = quoteStatusLabel(quoteStatus({ session: isIstSession(), price: tapeOn ? 1 : rows[0]?.price }), null);
+  const fresh = tapeFreshness(rows, isIstSession());
   return (
     <div className="overflow-hidden border-b border-border bg-bg-elevated">
       <div className="flex items-center px-4 pt-1.5">
-        <span data-tape-status className="text-[10px] font-semibold tracking-[0.08em] text-subtle uppercase">
-          {tapeLabel}
+        <span data-tape-status title={fresh.title} className="text-[10px] font-semibold tracking-[0.08em] text-subtle uppercase">
+          {fresh.label}
         </span>
       </div>
       <div className="kosh-tape-track inline-flex w-max gap-8 px-4 py-2 text-[12px] text-muted">
@@ -124,7 +123,7 @@ function Tape() {
 }
 
 function HeroBoard() {
-  const tape = useQuery({ queryKey: ["tape"], queryFn: apiTape, staleTime: 60_000 });
+  const tape = useQuery({ queryKey: ["tape"], queryFn: apiTape, staleTime: 2_500, refetchInterval: isIstSession() ? 5_000 : 60_000 });
   const rows = tape.data || [];
   const focus = rows[0];
   const last = focus?.price || 0;
@@ -142,7 +141,7 @@ function HeroBoard() {
         </div>
         <div className="flex items-center gap-1.5">
           <span data-hero-status className="text-[10px] font-semibold tracking-[0.06em] text-subtle uppercase">
-            {quoteStatusLabel(quoteStatus({ session: isIstSession(), price: last || rows.find((r) => r.price > 0)?.price }), null)}
+            {tapeFreshness(rows, isIstSession()).label}
           </span>
           <span className="rounded-sm bg-surface-2 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em] text-fg">LOG</span>
           <span className="rounded-sm px-1.5 py-0.5 text-[10px] text-muted">1D</span>
@@ -328,7 +327,7 @@ function Board({
           ))}
         </ul>
       ) : (
-        <p className="mt-3 text-sm text-muted">Waiting on live prices.</p>
+        <p className="mt-3 text-sm text-muted">Waiting on prices.</p>
       )}
     </div>
   );
@@ -337,7 +336,7 @@ function Board({
 function Landing() {
   const layout = useAppLayout();
   if (layout === "studio") return <StudioLanding />;
-  if (layout === "intelligence") return <IntelLanding />;
+  if (layout === "ledger") return <LedgerLanding />;
   return <ClassicLanding />;
 }
 

@@ -26,6 +26,7 @@ import { panBy, zoomRightEdge, atLatest, resetView } from "@/lib/kosh/chart-nav"
 import { applyHistoricalFx, adjustOhlcToBenchmark } from "@/lib/kosh/relative";
 import { resolveBench } from "@/lib/kosh/benchmarks";
 import { histInit, histPush, histRedo, histUndo, type DrawHist } from "@/lib/kosh/draw-history";
+import { projectTimeToX, projectXToTime } from "@/lib/kosh/draw-coords";
 import { apiOhlc } from "@/lib/kosh/api";
 import { AdjustMenu } from "@/components/charts/adjust-menu";
 import { useChartFullscreen } from "@/components/charts/use-fullscreen";
@@ -139,23 +140,7 @@ type Layout = {
 };
 
 function tToX(t: number, src: OhlcBar[], xOf: (i: number) => number): number {
-  if (!src.length) return xOf(0);
-  if (t <= src[0].t) return xOf(0);
-  const last = src.length - 1;
-  if (t >= src[last].t) return xOf(last);
-  let lo = 0;
-  let hi = last;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (src[mid].t < t) lo = mid + 1;
-    else hi = mid;
-  }
-  const i = lo;
-  if (i <= 0) return xOf(0);
-  const a = src[i - 1];
-  const b = src[i];
-  const f = (t - a.t) / (b.t - a.t || 1);
-  return xOf(i - 1) + f * (xOf(i) - xOf(i - 1));
+  return projectTimeToX(t, src, xOf);
 }
 
 function PlotSvg({
@@ -1248,6 +1233,12 @@ export function CandleChart({
     setLayoutGen((g) => g + 1);
   }, [src, vh, oscN, logScale, compare, last, volH, indexScale]);
 
+  function timeAt(x: number) {
+    const L = layout.current;
+    if (!L || src.length < 1) return 0;
+    return projectXToTime(x, src, L.xOf);
+  }
+
   function svgXY(e: { clientX: number; clientY: number }) {
     const el = wrapRef.current;
     if (!el) return { x: 0, y: 0 };
@@ -1296,20 +1287,22 @@ export function CandleChart({
     const price = snapY(i, y);
     if (shapeDrag.current) {
       const d = shapeDrag.current;
-      const dt = (src[i]?.t || d.t) - d.t;
+      const t = timeAt(x);
+      const dt = t - d.t;
       const dy = price - d.y;
-      setShapes((list) => list.map((s) => (s.id === d.id ? applyDrag(d.orig, d.mode, dt, dy, src[i]?.t || d.orig.t0, price) : s)));
+      setShapes((list) => list.map((s) => (s.id === d.id ? applyDrag(d.orig, d.mode, dt, dy, t, price) : s)));
       return;
     }
-    if (draft && src[i]) {
+    if (draft && src.length) {
+      const t = timeAt(x);
       if (draft.kind === "channel" && drawClicks.current >= 2) {
-        setDraft({ ...draft, off: channelOffFromThird(draft, src[i].t, price) });
+        setDraft({ ...draft, off: channelOffFromThird(draft, t, price) });
       } else if ((draft.kind === "long" || draft.kind === "short") && drawClicks.current >= 2) {
-        setDraft({ ...draft, t1: src[i].t, y1: price });
+        setDraft({ ...draft, t1: t, y1: price });
       } else if ((draft.kind === "long" || draft.kind === "short") && drawClicks.current === 1) {
-        setDraft({ ...draft, y2: price, t1: src[i].t });
+        setDraft({ ...draft, y2: price, t1: t });
       } else {
-        setDraft({ ...draft, t1: src[i].t, y1: price });
+        setDraft({ ...draft, t1: t, y1: price });
       }
     }
     if (drag.current && e.buttons && tool === "pan") {
@@ -1338,13 +1331,14 @@ export function CandleChart({
     const L = layout.current;
     if (!L) return;
     const { x, y } = svgXY(e);
+    const i = L.iOf(x);
     if (tool === "pan" && !replayPick) {
       const hit = hitTest(shapes, x, y, src, L.xOf, L.yOf, L.left, L.right, L.plotTop, L.plotBot);
       if (hit) {
         const orig = shapes.find((s) => s.id === hit.id);
         if (orig) {
-          const i = L.iOf(x);
-          shapeDrag.current = { id: hit.id, mode: hit.mode, t: src[i]?.t || orig.t0, y: snapY(i, y), orig };
+          const t = timeAt(x);
+          shapeDrag.current = { id: hit.id, mode: hit.mode, t, y: snapY(i, y), orig };
           setSelectedId(hit.id);
           drag.current = { x: e.clientX, start, moved: false };
           return;
@@ -1366,9 +1360,9 @@ export function CandleChart({
     const i = L.iOf(x);
     const bar = src[i];
     const price = snapY(i, y);
+    const t = timeAt(x);
 
     if (sd) {
-      const t = bar?.t || sd.t;
       const p = Number.isFinite(price) ? price : sd.y;
       const next = shapes.map((s) =>
         s.id === sd.id ? applyDrag(sd.orig, sd.mode, t - sd.t, p - sd.y, t, p) : s,
@@ -1392,7 +1386,7 @@ export function CandleChart({
       if (tool === "hline" || tool === "vline") {
         const id = newDrawId();
         setShapes((s) => {
-          const next: DrawShape[] = [...s, { id, kind: tool, t0: bar.t, y0: price }];
+          const next: DrawShape[] = [...s, { id, kind: tool, t0: t, y0: price }];
           if (key) setDrawings(key, next);
           return next;
         });
@@ -1402,16 +1396,16 @@ export function CandleChart({
       }
       if (!draft) {
         drawClicks.current = 1;
-        setDraft({ id: newDrawId(), kind: tool, t0: bar.t, y0: price, t1: bar.t, y1: price });
+        setDraft({ id: newDrawId(), kind: tool, t0: t, y0: price, t1: t, y1: price });
         return;
       }
       if (draft.kind === "channel" && drawClicks.current === 1) {
         drawClicks.current = 2;
-        setDraft({ ...draft, t1: bar.t, y1: price });
+        setDraft({ ...draft, t1: t, y1: price });
         return;
       }
       if (draft.kind === "channel" && drawClicks.current >= 2) {
-        const done = { ...draft, off: channelOffFromThird(draft, bar.t, price) };
+        const done = { ...draft, off: channelOffFromThird(draft, t, price) };
         setShapes((s) => {
           const next = [...s, done];
           if (key) setDrawings(key, next);
@@ -1425,11 +1419,11 @@ export function CandleChart({
       }
       if ((draft.kind === "long" || draft.kind === "short") && drawClicks.current === 1) {
         drawClicks.current = 2;
-        setDraft({ ...draft, y2: price, t1: bar.t });
+        setDraft({ ...draft, y2: price, t1: t });
         return;
       }
       if ((draft.kind === "long" || draft.kind === "short") && drawClicks.current >= 2) {
-        const done = { ...draft, t1: bar.t, y1: price };
+        const done = { ...draft, t1: t, y1: price };
         setShapes((s) => {
           const next = [...s, done];
           if (key) setDrawings(key, next);
@@ -1442,7 +1436,7 @@ export function CandleChart({
         return;
       }
       setShapes((s) => {
-        const next = [...s, { ...draft, t1: bar.t, y1: price }];
+        const next = [...s, { ...draft, t1: t, y1: price }];
         if (key) setDrawings(key, next);
         return next;
       });

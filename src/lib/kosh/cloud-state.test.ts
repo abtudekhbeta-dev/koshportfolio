@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { emptyCloud, mergeCloud, tradeIdentity, unionCloudTrades, withPortfolioDrop, withTradeDrops } from "./cloud-state.ts";
+import { decideSave, docFingerprint, emptyCloud, mergeCloud, tradeIdentity, unionCloudTrades, withListDrop, withPortfolioDrop, withSymbolDrop, withTradeDrops } from "./cloud-state.ts";
 import type { TradeLine } from "./types.ts";
 
 function port(id: string, trades: TradeLine[], updatedAt = 0) {
@@ -74,5 +74,33 @@ describe("cloud identity", () => {
     const twice = mergeCloud(once.doc, once.doc);
     assert.equal(once.doc.portfolios[0]?.trades?.length, 1);
     assert.equal(twice.doc.portfolios[0]?.trades?.length, 1);
+  });
+
+  it("does not bring a deleted watchlist or a removed symbol back", () => {
+    const remote = emptyCloud();
+    remote.watchlists = [{ id: "main", name: "Main", symbols: ["TCS", "INFY"] }];
+    const local = emptyCloud();
+    local.watchlists = [{ id: "main", name: "Main", symbols: ["TCS"] }];
+    local.drops = withSymbolDrop(withListDrop(undefined, "gone", 10), { listId: "main", symbol: "INFY", at: 10 });
+    remote.watchlists.push({ id: "gone", name: "Gone", symbols: ["ITC"] });
+    const merged = mergeCloud(local, remote);
+    assert.equal(merged.doc.watchlists.find((w) => w.id === "gone"), undefined);
+    assert.deepEqual(merged.doc.watchlists.find((w) => w.id === "main")?.symbols, ["TCS"]);
+  });
+
+  it("treats three identical saves as one revision", () => {
+    const doc = emptyCloud();
+    doc.mutationId = "m-1";
+    doc.watchlists = [{ id: "main", name: "Main", symbols: ["TCS"] }];
+    const first = decideSave(null, doc, 0);
+    assert.equal(first.kind, "write");
+    assert.equal(first.rev, 1);
+    const stored = { ...doc, savedAt: 1 };
+    const second = decideSave({ rev: 1, doc: stored }, { ...doc, savedAt: 99 }, 0);
+    const third = decideSave({ rev: 1, doc: stored }, { ...doc, savedAt: 100 }, 0);
+    assert.equal(second.kind, "duplicate");
+    assert.equal(third.kind, "duplicate");
+    if (second.kind === "duplicate") assert.equal(second.rev, 1);
+    assert.equal(docFingerprint(doc), docFingerprint(stored));
   });
 });

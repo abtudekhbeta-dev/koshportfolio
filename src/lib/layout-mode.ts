@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 
-/** Presentation only. Retired layouts migrate to Classic. */
-export const APP_LAYOUTS = ["classic", "intelligence", "studio"] as const;
+/** Presentation only. Intelligence migrates to Studio. Anything else unknown becomes Classic. */
+export const APP_LAYOUTS = ["classic", "studio", "ledger"] as const;
 export type AppLayout = (typeof APP_LAYOUTS)[number];
 
 const KEY = "kosh-layout";
 
 export function normalizeLayout(v: string | null | undefined): AppLayout {
-  if (v === "intelligence" || v === "studio") return v;
+  if (v === "intelligence") return "studio";
+  if (v === "studio" || v === "ledger") return v;
   return "classic";
 }
 
@@ -18,7 +19,7 @@ export function readLayout(): AppLayout {
     const next = normalizeLayout(v);
     if (v && v !== next) {
       try {
-        localStorage.setItem(KEY, "classic");
+        localStorage.setItem(KEY, next);
       } catch {
         /* private mode */
       }

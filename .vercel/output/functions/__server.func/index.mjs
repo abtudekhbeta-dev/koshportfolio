@@ -15,7 +15,8 @@ var grokOgIdentity = { "site": {
 	"title": "Kosh",
 	"color": "09090B",
 	"card": "custom",
-	"image": "/og.jpg"
+	"image": "/og.jpg",
+	"banner": "/x-banner.jpg"
 } };
 //#endregion
 //#region scripts/grok-pwa-shared.mjs

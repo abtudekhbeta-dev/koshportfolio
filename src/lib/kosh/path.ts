@@ -79,6 +79,7 @@ function emptyPath(partial: Partial<PathPack> = {}): PathPack {
     splitNote: false,
     filledPrices: [],
     snapshots: [],
+    closes: {},
     byName: [],
     windows: {},
     months: [],
@@ -103,22 +104,30 @@ function markLots(
   return { wealth, names };
 }
 
-export function pxOnOrNear(map: Map<string, { t: number; c: number }>, day: string): { px: number; sessionDay: string } | null {
-  const hit = map.get(day);
-  if (hit && hit.c > 0) return { px: hit.c, sessionDay: day };
+/** Last unadjusted close on or before `day`. A later session is never used. */
+export function pxOnOrBefore(
+  map: Map<string, { t: number; c: number }>,
+  day: string,
+): { px: number; sessionDay: string; staleDays: number } | null {
+  if (!map || !day) return null;
+  const exact = map.get(day);
+  if (exact && exact.c > 0) return { px: exact.c, sessionDay: day, staleDays: 0 };
   const days = [...map.keys()].sort();
-  const after = days.find((d) => d >= day);
-  if (after) {
-    const h = map.get(after);
-    if (h && h.c > 0) return { px: h.c, sessionDay: after };
+  let prev = "";
+  for (const d of days) {
+    if (d < day) prev = d;
+    else break;
   }
-  for (let i = days.length - 1; i >= 0; i--) {
-    if (days[i] < day) {
-      const h = map.get(days[i]);
-      if (h && h.c > 0) return { px: h.c, sessionDay: days[i] };
-    }
-  }
-  return null;
+  if (!prev) return null;
+  const row = map.get(prev);
+  if (!row || !(row.c > 0)) return null;
+  return { px: row.c, sessionDay: prev, staleDays: daySpan(prev, day) };
+}
+
+export function pxOnOrNear(map: Map<string, { t: number; c: number }>, day: string): { px: number; sessionDay: string } | null {
+  const hit = pxOnOrBefore(map, day);
+  if (!hit) return null;
+  return { px: hit.px, sessionDay: hit.sessionDay };
 }
 
 function addCalendarMonths(day: string, months: number): string {
@@ -365,7 +374,7 @@ export function fillTradePrices(
       date: t.date,
       price: hit.px,
       sessionDay: hit.sessionDay,
-      method: "day-close",
+      method: hit.sessionDay === t.date ? "day-close" : "prior-close",
       hadTime: tradeHasClock(t),
     });
     out.push({ ...t, price: hit.px, priceFilled: true });
@@ -784,6 +793,14 @@ export function buildPath(
     splitNote,
     filledPrices,
     snapshots: thinSlices(snapshots),
+    closes: Object.fromEntries(
+      used.map((s) => [
+        s,
+        [...(maps[s]?.entries() || [])]
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([d, v]) => ({ d, px: v.c })),
+      ]),
+    ),
     byName,
     windows,
     months,

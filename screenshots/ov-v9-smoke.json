@@ -1,0 +1,40 @@
+{
+  "url": "http://127.0.0.1:8080/markets?view=overview",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Kosh · Indian markets and portfolios",
+      "hasCanvas": false,
+      "bodyTextLen": 6914,
+      "bodyTextHash": "6ef7ad3d7a35f77e0d8baf9e8f20047c6054fbcf69002d9f9e47c5709e6cbffb",
+      "bodyTextPrefix": "LAST AVAILABLE NIFTY 50 22,722 +1.60% SENSEX 73,034 +1.54% BANK ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [
+        "markets UI did not render: page.waitForSelector: Timeout 20000ms exceeded.\nCall log:\n  - waiting for locator('[data-term-chart]') to be visible\n"
+      ],
+      "screenshot": "/workspace/screenshots/ov-v9-smoke.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Kosh · Indian markets and portfolios",
+      "hasCanvas": false,
+      "bodyTextLen": 6775,
+      "bodyTextHash": "7ce391e824edb4d75ddae557f2932c09546b1c367b3adac67325646564dbfd62",
+      "bodyTextPrefix": "LAST AVAILABLE NIFTY 50 22,722 +1.60% SENSEX 73,034 +1.54% BANK ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [
+        "markets UI did not render: page.waitForSelector: Timeout 20000ms exceeded.\nCall log:\n  - waiting for locator('[data-term-chart]') to be visible\n"
+      ],
+      "screenshot": "/workspace/screenshots/ov-v9-smoke-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/ov-v9-smoke.json"
+}

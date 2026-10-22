@@ -2,8 +2,8 @@ import { useAppLayout, writeLayout, type AppLayout } from "@/lib/layout-mode";
 
 const OPTIONS: { id: AppLayout; label: string }[] = [
   { id: "classic", label: "Classic" },
-  { id: "intelligence", label: "Intelligence" },
   { id: "studio", label: "Studio" },
+  { id: "ledger", label: "Ledger" },
 ];
 
 /** Presentation only. Does not touch portfolios, trades, or research. */

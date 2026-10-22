@@ -7,6 +7,10 @@ import appCss from "../styles.css?url";
 
 const THEME_BOOT = `(function(){try{var t=JSON.parse(localStorage.getItem("kosh-v2")||"{}");var th=(t.state&&t.state.theme)||"dark";document.documentElement.setAttribute("data-theme",th==="light"?"light":"dark")}catch(e){document.documentElement.setAttribute("data-theme","dark")}})();`;
 
+// After a publish, hashed route chunks change. A tab still holding the previous
+// page then fails with "Failed to fetch dynamically imported module". Reload once.
+const CHUNK_BOOT = `(function(){var k="kosh-chunk-reload";window.addEventListener("vite:preloadError",function(e){if(e&&e.preventDefault)e.preventDefault();try{if(sessionStorage.getItem(k)==="1")return;sessionStorage.setItem(k,"1")}catch(err){}location.reload()});})();`;
+
 export const Route = createRootRoute({
   notFoundComponent: NotFound,
   head: () => ({
@@ -40,6 +44,7 @@ export const Route = createRootRoute({
       </head>
       <body className="bg-bg text-fg font-sans">
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
+        <script dangerouslySetInnerHTML={{ __html: CHUNK_BOOT }} />
         <PreviewHostBridge />
         <AuthProvider>
           <AppProviders>

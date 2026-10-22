@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavChart } from "@/components/charts/nav-chart";
+import { useLedgerInspector } from "@/components/ledger-shell";
 import { useStudioInspector } from "@/components/studio-shell";
 import { fmtInr, fmtPct } from "@/lib/kosh/engine";
-import { dayChange, eodPositions, rangeStats, slicePath, type RangePreset } from "@/lib/kosh/ledger";
+import { dayChange, eodPositions, rangeStats, slicePath, valueSnapshot, type RangePreset } from "@/lib/kosh/ledger";
 import type { PathEvent, PathPoint, TradeLine } from "@/lib/kosh/types";
 import { cn } from "@/lib/utils";
 
@@ -14,24 +15,32 @@ export function PathTimeline({
   events,
   benchName,
   splitNote,
+  closes,
 }: {
   nav: PathPoint[];
   trades: TradeLine[];
   events: PathEvent[];
   benchName: string;
   splitNote?: boolean;
+  closes?: Record<string, { d: string; px: number }[]>;
 }) {
   const [preset, setPreset] = useState<RangePreset>("ALL");
   const [custom, setCustom] = useState({ start: "", end: "" });
   const [pick, setPick] = useState(-1);
   const [indexed, setIndexed] = useState(false);
-  const setInspector = useStudioInspector();
+  const setStudio = useStudioInspector();
+  const setLedger = useLedgerInspector();
+  const setInspector = setStudio || setLedger;
   const sliced = useMemo(() => slicePath(nav, preset, custom), [nav, preset, custom]);
   const i = pick < 0 || pick >= sliced.rows.length ? Math.max(0, sliced.rows.length - 1) : pick;
   const day = sliced.rows[i]?.day || "";
   const book = useMemo(() => (day ? eodPositions(trades, day) : null), [trades, day]);
   const stats = useMemo(() => rangeStats(sliced.rows), [sliced.rows]);
   const change = useMemo(() => (day ? dayChange(sliced.rows, events, day) : null), [sliced.rows, events, day]);
+  const valued = useMemo(
+    () => (book && day ? valueSnapshot(book.lines, closes || {}, day) : null),
+    [book, day, closes],
+  );
   const chart = useMemo(
     () =>
       sliced.rows.map((p) => ({
@@ -57,10 +66,27 @@ export function PathTimeline({
           point={sliced.rows[i]}
           splitNote={splitNote}
           indexed={indexed}
+          valued={valued}
         />
       ) : null,
-    [book, day, benchName, change, sliced.rows, i, splitNote, indexed],
+    [book, day, benchName, change, sliced.rows, i, splitNote, indexed, valued],
   );
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      setPick((cur) => {
+        const now = cur < 0 || cur >= sliced.rows.length ? Math.max(0, sliced.rows.length - 1) : cur;
+        if (e.key === "ArrowLeft") return Math.max(0, now - 1);
+        return Math.min(sliced.rows.length - 1, now + 1);
+      });
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sliced.rows.length]);
 
   useEffect(() => {
     if (!setInspector) return;
@@ -129,6 +155,10 @@ export function PathTimeline({
           nowValue={indexed ? undefined : sliced.rows[i]?.wealth}
           pathPrimary
           modes={indexed ? ["cum", "dd"] : ["inr", "cum", "dd"]}
+          onCommit={(picked) => {
+            const idx = sliced.rows.findIndex((r) => r.day === picked);
+            if (idx >= 0) setPick(idx);
+          }}
         />
       </div>
       {sliced.rows.length > 1 ? (
@@ -187,6 +217,7 @@ function Snapshot({
   point,
   splitNote,
   indexed,
+  valued,
 }: {
   day: string;
   benchName: string;
@@ -195,14 +226,18 @@ function Snapshot({
   point?: PathPoint;
   splitNote?: boolean;
   indexed: boolean;
+  valued: ReturnType<typeof valueSnapshot> | null;
 }) {
-  const total = point?.wealth || 0;
+  const total = valued && valued.priced + valued.stale > 0 ? valued.total : point?.wealth || 0;
+  const lines = valued?.rows.filter((l) => l.qty > 0) || [];
   return (
     <div>
       <p className="text-[11px] tracking-[0.14em] text-subtle uppercase">Snapshot · {day}</p>
-      <p className="studio-word mt-1 text-[22px] tracking-tight">{total ? fmtInr(total) : "—"}</p>
+      <p className="ledger-word mt-1 text-[22px] tracking-tight">{total ? fmtInr(total) : "—"}</p>
       <p className="mt-1 text-[12px] leading-relaxed text-muted">
-        Securities value at the close, excluding untracked cash. {indexed ? "The chart above is indexed, not rupees." : "The chart is rupees."} A name with no print keeps its previous close inside this total. Missing is not zero.
+        Securities value, excluding untracked cash. {indexed ? "The chart above is indexed, not rupees." : "The chart is rupees."}{" "}
+        A close is the last unadjusted print on or before this session. A later print is never used. Missing is not zero.
+        {valued ? ` ${valued.priced} names on this session, ${valued.stale} using an earlier close, ${valued.missing} with no price.` : ""}
         {splitNote ? " A corporate action may change share counts. This ledger uses the trade file as written and does not guess a split." : ""}
       </p>
       {change?.delta != null ? (
@@ -216,24 +251,36 @@ function Snapshot({
         <thead className="text-[11px] text-subtle">
           <tr>
             <th className="py-1 font-medium">Held at the close</th>
-            <th className="py-1 text-right font-medium">Quantity</th>
+            <th className="py-1 text-right font-medium">Qty</th>
+            <th className="py-1 text-right font-medium">Close</th>
+            <th className="py-1 text-right font-medium">Value</th>
+            <th className="py-1 text-right font-medium">Weight</th>
           </tr>
         </thead>
         <tbody>
-          {book.lines.filter((l) => l.qty > 0).map((l) => (
+          {lines.map((l) => (
             <tr key={l.symbol} className="border-t border-border">
               <td className="py-1.5">
                 {l.name}
                 <span className="ml-2 text-[11px] text-subtle">{l.symbol}</span>
+                {l.status === "stale" ? <span className="ml-2 text-[11px] text-warn">Close {l.sessionDay}</span> : null}
+                {l.status === "missing" ? <span className="ml-2 text-[11px] text-warn">No close</span> : null}
               </td>
               <td className="py-1.5 text-right font-mono tabular">{Number(l.qty.toFixed(4))}</td>
+              <td className="py-1.5 text-right font-mono tabular">{l.px != null ? fmtInr(l.px) : "—"}</td>
+              <td className="py-1.5 text-right font-mono tabular">{l.value != null ? fmtInr(l.value) : "—"}</td>
+              <td className="py-1.5 text-right font-mono tabular">{l.weight != null ? `${l.weight.toFixed(1)}%` : "—"}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="mt-2 text-[11px] leading-relaxed text-subtle">
-        Per-line closes are not stored for every session, so this list is quantity, not a guessed weight. The total above is the path’s securities value for the day.
-      </p>
+      {valued && valued.sum > 0 ? (
+        <p className="mt-2 text-[11px] leading-relaxed text-subtle">
+          Priced lines sum to {fmtInr(valued.sum)}. Weights use only priced lines. Names without a close are listed and left out of the total.
+        </p>
+      ) : (
+        <p className="mt-2 text-[11px] leading-relaxed text-subtle">No unadjusted close on or before this session for these names.</p>
+      )}
     </div>
   );
 }

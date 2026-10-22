@@ -5,7 +5,7 @@ import { Columns2, LayoutGrid, Maximize2, Minimize2, Square } from "lucide-react
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { apiQuotes } from "@/lib/kosh/api";
 import { isIstSession, istClock } from "@/lib/kosh/market-hours";
-import { MARKET_PROVIDER, quoteMap, quoteStatus, quoteStatusLabel } from "@/lib/kosh/market-data";
+import { classifyFreshness, quoteMap } from "@/lib/kosh/market-data";
 import type { PatternHit } from "@/lib/kosh/patterns";
 import type { Quote } from "@/lib/kosh/types";
 import { bareSymbol, useKosh, type DeskLayout } from "@/lib/store";
@@ -136,9 +136,11 @@ export function MarketsDesk() {
   const notes = useMemo(() => ownedNotes(ports, quotesQ.data), [ports, quotesQ.data]);
   const active = desk.panes[desk.activePane] || desk.panes[0];
   const activeQ = qmap.get(bareSymbol(active.symbol));
-  const tapeStatus = quoteStatus({
+  const fresh = classifyFreshness({
     session,
     price: activeQ?.price || quotesQ.data?.find((q) => q.price > 0)?.price || 0,
+    marketTime: activeQ?.marketTime,
+    retrievedAt: activeQ?.retrievedAt,
   });
 
   const workspace = (
@@ -337,13 +339,13 @@ export function MarketsDesk() {
           data-session-chip
           className={cn(
             "rounded-sm px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em]",
-            tapeStatus === "session" ? "bg-up/15 text-up" : tapeStatus === "last" ? "bg-surface-2 text-muted" : "bg-down/15 text-down",
+            fresh.state === "live" ? "bg-up/15 text-up" : fresh.state === "off" ? "bg-down/15 text-down" : "bg-surface-2 text-muted",
           )}
-          title={`${MARKET_PROVIDER.note} ${MARKET_PROVIDER.name}.`}
+          title={fresh.title}
         >
-          {tapeStatus === "session"
-            ? `● ${quoteStatusLabel(tapeStatus, activeQ?.delayMin)} · ${istClock()}`
-            : quoteStatusLabel(tapeStatus, activeQ?.delayMin)}
+          {fresh.state === "live" || fresh.state === "delayed" || fresh.state === "stale"
+            ? `● ${fresh.label} · ${istClock()}`
+            : fresh.label}
         </span>
         <Tooltip content={fs ? "Exit fullscreen" : "Fullscreen"}>
           <button

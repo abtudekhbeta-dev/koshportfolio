@@ -3,6 +3,7 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Star } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { CompanyLogo } from "@/components/company-logo";
 import { AskAi } from "@/components/ask-ai";
 import { CandleChart, fetchSpec } from "@/components/charts/candle-chart";
 import { NavChart } from "@/components/charts/nav-chart";
@@ -263,15 +264,7 @@ function StockBody({
             {sector}
           </p>
           <div className="flex items-start gap-3">
-            {host ? (
-              <img
-                src={`https://www.google.com/s2/favicons?sz=128&domain=${encodeURIComponent(host)}`}
-                alt=""
-                width={40}
-                height={40}
-                className="mt-1 size-10 rounded-md bg-surface-2 object-contain"
-              />
-            ) : null}
+            <CompanyLogo symbol={bare} name={name} size={40} className="mt-1" />
             <div>
           <h1 className="mt-1 text-[28px] font-semibold tracking-tight">{name}</h1>
           <p className="mt-1 text-[12px] text-muted">

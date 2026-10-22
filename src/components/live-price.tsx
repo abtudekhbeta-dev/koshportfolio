@@ -4,7 +4,7 @@ import { apiQuotes } from "@/lib/kosh/api";
 import { fmtPct, fmtPx, fmtTapePx } from "@/lib/kosh/engine";
 import { gramToMcx, metalKey, METALS } from "@/lib/kosh/commodities";
 import { isIstSession } from "@/lib/kosh/market-hours";
-import { quoteStatus, quoteStatusLabel } from "@/lib/kosh/market-data";
+import { classifyFreshness } from "@/lib/kosh/market-data";
 import { cn } from "@/lib/utils";
 
 export function LivePrice({
@@ -29,8 +29,14 @@ export function LivePrice({
   const quotePx = q.data?.price && q.data.price > 0 ? q.data.price : null;
   const price = metal ? (quotePx ? gramToMcx(metal, quotePx) : initial.price) : (quotePx ?? initial.price);
   const changePct = q.data?.changePct ?? initial.changePct;
-  const statusLabel = quoteStatusLabel(quoteStatus({ session, price }), q.data?.delayMin);
-  const genuinelyLive = statusLabel.endsWith("LIVE");
+  const fresh = classifyFreshness({
+    session,
+    price,
+    marketTime: q.data?.marketTime,
+    retrievedAt: q.data?.retrievedAt,
+  });
+  const statusLabel = fresh.label;
+  const genuinelyLive = fresh.state === "live";
   const [flash, setFlash] = useState<"up" | "down" | null>(null);
   const prev = useRef(price);
 

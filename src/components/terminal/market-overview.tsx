@@ -2,11 +2,13 @@ import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MarketHeat } from "@/components/charts/market-heat";
+import { CompanyLogo } from "@/components/company-logo";
 import { MiniBars, BreadthBar } from "@/components/charts/share-ring";
 import { MacroBoard, MarketTempCard, EventCalendar } from "@/components/macro-board";
 import { MixNudge } from "@/components/mix-nudge";
 import { NewsBoard } from "@/components/news-board";
 import { PulseDesk } from "@/components/note-desk";
+import { MarketFlowsGlance } from "@/components/terminal/market-flows";
 import { apiNews, apiQuotes, apiScreener, apiTape } from "@/lib/kosh/api";
 import { sectorIndex } from "@/lib/kosh/benchmarks";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
@@ -275,10 +277,15 @@ export function MarketOverview() {
                     {(moreHold ? sortedHold : sortedHold.slice(0, 8)).map((r) => (
                       <tr key={r.symbol} className="border-t border-border/70">
                         <td className="py-1.5">
-                          <Link to="/s/$symbol" params={{ symbol: r.symbol }} className="font-medium hover:text-chart">
-                            {r.symbol}
-                          </Link>
-                          <span className="ml-2 text-subtle">{r.name}</span>
+                          <span className="inline-flex items-center gap-2">
+                            <CompanyLogo symbol={r.symbol} name={r.name} size={16} />
+                            <span>
+                              <Link to="/s/$symbol" params={{ symbol: r.symbol }} className="font-medium hover:text-chart">
+                                {r.symbol}
+                              </Link>
+                              <span className="ml-2 text-subtle">{r.name}</span>
+                            </span>
+                          </span>
                         </td>
                         <td className="py-1.5 text-right font-mono tabular">{r.last != null ? fmtPx(r.last) : "—"}</td>
                         <td className={cn("py-1.5 text-right font-mono tabular", (r.chg ?? 0) >= 0 ? "text-up" : "text-down")}>
@@ -344,6 +351,8 @@ export function MarketOverview() {
         </section>
       </div>
 
+      <MarketFlowsGlance />
+
       {watchlists.some((l) => l.symbols.length) || embeddedWatch.length ? (
         <section className="min-w-0 rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -380,10 +389,15 @@ export function MarketOverview() {
                     {(moreWatch ? embeddedWatch : embeddedWatch.slice(0, 8)).map((r) => (
                       <tr key={r.symbol} className="border-t border-border/70">
                         <td className="py-1.5">
-                          <Link to="/s/$symbol" params={{ symbol: r.symbol }} className="font-medium hover:text-chart">
-                            {r.symbol}
-                          </Link>
-                          <span className="ml-2 text-subtle">{r.name}</span>
+                          <span className="inline-flex items-center gap-2">
+                            <CompanyLogo symbol={r.symbol} name={r.name} size={16} />
+                            <span>
+                              <Link to="/s/$symbol" params={{ symbol: r.symbol }} className="font-medium hover:text-chart">
+                                {r.symbol}
+                              </Link>
+                              <span className="ml-2 text-subtle">{r.name}</span>
+                            </span>
+                          </span>
                         </td>
                         <td className="py-1.5 text-right font-mono tabular">{r.last != null ? fmtPx(r.last) : "—"}</td>
                         <td className={cn("py-1.5 text-right font-mono tabular", (r.chg ?? 0) >= 0 ? "text-up" : "text-down")}>

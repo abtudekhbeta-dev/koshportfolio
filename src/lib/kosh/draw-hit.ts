@@ -1,5 +1,6 @@
 import type { OhlcBar } from "./types";
 import type { DrawShape } from "@/lib/store";
+import { projectTimeToX } from "./draw-coords.ts";
 
 export type HitMode = "body" | "p0" | "p1" | "off" | "p2";
 
@@ -58,25 +59,7 @@ export function shapePoints(
   plotTop: number,
   plotBot: number,
 ) {
-  const tToX = (t: number) => {
-    if (!src.length) return xOf(0);
-    if (t <= src[0].t) return xOf(0);
-    const last = src.length - 1;
-    if (t >= src[last].t) return xOf(last);
-    let lo = 0;
-    let hi = last;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (src[mid].t < t) lo = mid + 1;
-      else hi = mid;
-    }
-    const i = lo;
-    if (i <= 0) return xOf(0);
-    const a = src[i - 1];
-    const b = src[i];
-    const f = (t - a.t) / (b.t - a.t || 1);
-    return xOf(i - 1) + f * (xOf(i) - xOf(i - 1));
-  };
+  const tToX = (t: number) => projectTimeToX(t, src, xOf);
   const x0 = tToX(s.t0);
   const y0 = yOf(s.y0);
   const x1 = tToX(s.t1 ?? s.t0);

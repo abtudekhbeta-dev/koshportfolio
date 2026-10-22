@@ -20,12 +20,112 @@ export function quoteStatus(input: {
 
 export function quoteStatusLabel(status: QuoteStatus, delayMin?: number | null): string {
   if (status === "session") {
-    // 0 is the only provider signal that this print is not delayed. Missing is not live.
     if (delayMin === 0) return "SESSION · LIVE";
+    if (delayMin == null) return "FRESHNESS UNVERIFIED";
     return "SESSION · DELAYED";
   }
   if (status === "last") return "LAST AVAILABLE";
   return "UNAVAILABLE";
+}
+
+export type Freshness = "live" | "delayed" | "stale" | "unverified" | "last" | "off";
+
+/** A print this recent, with a fresh fetch, is current-session. A provider delay flag does not override it. */
+export const LIVE_PRINT_MS = 120_000;
+/** The observation itself must be recent. A cached response older than this is not live. */
+export const LIVE_FETCH_MS = 45_000;
+/** Older than this during the session is stale, not a normal delay. */
+export const STALE_PRINT_MS = 20 * 60_000;
+
+export function classifyFreshness(input: {
+  session: boolean;
+  price?: number | null;
+  /** Provider event time, unix milliseconds. Not the time we painted the screen. */
+  marketTime?: number | null;
+  /** When this process successfully fetched the payload. */
+  retrievedAt?: number | null;
+  now?: number;
+}): { state: Freshness; label: string; title: string } {
+  const now = input.now ?? Date.now();
+  if (!(Number(input.price) > 0)) {
+    return { state: "off", label: "UNAVAILABLE", title: "No price in the last response." };
+  }
+  if (!input.session) {
+    return {
+      state: "last",
+      label: "LAST AVAILABLE",
+      title: "The cash session is closed. This is the last print on file, not a live market.",
+    };
+  }
+  const mt = input.marketTime && input.marketTime > 0 ? input.marketTime : null;
+  const rt = input.retrievedAt && input.retrievedAt > 0 ? input.retrievedAt : null;
+  if (mt == null || rt == null) {
+    return {
+      state: "unverified",
+      label: "FRESHNESS UNVERIFIED",
+      title: "A price arrived without a market timestamp or a fetch time. It is not marked live.",
+    };
+  }
+  const printAge = now - mt;
+  const fetchAge = now - rt;
+  if (printAge < -5_000) {
+    return {
+      state: "unverified",
+      label: "FRESHNESS UNVERIFIED",
+      title: "The market timestamp is ahead of this clock. Not marked live.",
+    };
+  }
+  if (printAge <= LIVE_PRINT_MS && fetchAge <= LIVE_FETCH_MS && fetchAge >= -5_000) {
+    return {
+      state: "live",
+      label: "SESSION · LIVE",
+      title: `Print is ${Math.max(0, Math.round(printAge / 1000))}s old, fetched ${Math.max(0, Math.round(fetchAge / 1000))}s ago. Yahoo Finance chart time — not a licensed exchange feed. A delay flag does not override this timestamp.`,
+    };
+  }
+  if (printAge <= STALE_PRINT_MS && fetchAge <= 90_000) {
+    return {
+      state: "delayed",
+      label: "SESSION · DELAYED",
+      title: `Last market timestamp is ${Math.round(printAge / 1000)}s old.`,
+    };
+  }
+  return {
+    state: "stale",
+    label: "SESSION · STALE",
+    title: `Last market timestamp is ${Math.max(0, Math.round(printAge / 60000))} min old, or the fetch is older than the live window.`,
+  };
+}
+
+export function freshestPrint<T extends { price?: number; marketTime?: number | null; retrievedAt?: number | null }>(
+  rows: T[] | undefined | null,
+): T | null {
+  let best: T | null = null;
+  for (const row of rows || []) {
+    if (!(Number(row.price) > 0)) continue;
+    if (!best) {
+      best = row;
+      continue;
+    }
+    const bt = best.marketTime || 0;
+    const rt = row.marketTime || 0;
+    if (rt > bt || (rt === bt && (row.retrievedAt || 0) >= (best.retrievedAt || 0))) best = row;
+  }
+  return best;
+}
+
+export function tapeFreshness(
+  rows: { price?: number; marketTime?: number | null; retrievedAt?: number | null }[] | undefined,
+  session: boolean,
+  now = Date.now(),
+) {
+  const best = freshestPrint(rows);
+  return classifyFreshness({
+    session,
+    price: best?.price,
+    marketTime: best?.marketTime,
+    retrievedAt: best?.retrievedAt,
+    now,
+  });
 }
 
 /**
@@ -41,12 +141,12 @@ export function delayMinutesFromMeta(raw: unknown): number | null {
   return Math.round(n);
 }
 
-/** Quotes are delayed. Do not describe this feed as live. */
+/** Yahoo Finance chart. Visible status comes from print time and fetch time, not from this constant. */
 export const MARKET_PROVIDER = {
   id: "yahoo",
   name: "Yahoo Finance",
-  delay: "delayed" as const,
-  note: "Delayed print. Not a licensed live Indian feed.",
+  delay: "observed" as const,
+  note: "Status follows the print timestamp and the fetch time. Live is not a licensed exchange guarantee.",
 };
 
 export type TermInterval = {

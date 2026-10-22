@@ -5,7 +5,7 @@ import { Plus } from "lucide-react";
 import { apiTape } from "@/lib/kosh/api";
 import { fmtTapePx, fmtPct } from "@/lib/kosh/engine";
 import { isIstSession } from "@/lib/kosh/market-hours";
-import { quoteStatus, quoteStatusLabel } from "@/lib/kosh/market-data";
+import { tapeFreshness } from "@/lib/kosh/market-data";
 import { AddHoldings } from "@/components/add-holdings";
 import { AlertBanner } from "@/components/alert-banner";
 import { AuthSlot } from "@/components/auth-slot";
@@ -44,8 +44,7 @@ export function StudioShell({ children, full }: { children: ReactNode; wide?: bo
   const port = pathname.match(/^\/p\/([^/]+)/)?.[1] || null;
   const ports = useKosh((s) => s.portfolios);
   const book = ports.find((p) => p.id === port) || ports.find((p) => p.id !== "sample") || ports[0];
-  const tapeOn = isIstSession() && (tape.data || []).some((t) => t.price > 0);
-  const tapeLabel = quoteStatusLabel(quoteStatus({ session: isIstSession(), price: tapeOn ? 1 : (tape.data || [])[0]?.price }), null);
+  const fresh = tapeFreshness(tape.data, isIstSession());
   const overview = pathname.startsWith("/markets") && /(?:^|[?&])view=overview(?:&|$)/.test(searchStr);
   const [inspector, setInspector] = useState<ReactNode>(null);
   const set = useMemo(() => (node: ReactNode) => setInspector(node), []);
@@ -58,7 +57,7 @@ export function StudioShell({ children, full }: { children: ReactNode; wide?: bo
           <Link to="/" className="studio-word text-[22px] tracking-tight">
             Kosh
           </Link>
-          <p className="mt-1 text-[11px] text-subtle">Studio · {tapeLabel}</p>
+          <p className="mt-1 text-[11px] text-subtle" title={fresh.title}>Studio · {fresh.label}</p>
           <Rail n="01" label="Markets">
             <A to="/markets" search={{ view: "terminal" }} on={pathname.startsWith("/markets") && !overview}>
               Terminal
@@ -111,8 +110,8 @@ export function StudioShell({ children, full }: { children: ReactNode; wide?: bo
               <div className="min-w-0 flex-1">
                 <SearchBar hint="⌘K" dense placeholder="Search a stock, index, portfolio, or page" />
               </div>
-              <span data-tape-status className="hidden text-[11px] text-subtle xl:inline">
-                {tapeLabel}
+              <span data-tape-status title={fresh.title} className="hidden text-[11px] text-subtle xl:inline">
+                {fresh.label}
               </span>
               <SyncChip />
               <AddHoldings
@@ -153,14 +152,13 @@ export function StudioShell({ children, full }: { children: ReactNode; wide?: bo
 export function StudioLanding() {
   const tape = useQuery({ queryKey: ["tape"], queryFn: apiTape, staleTime: 60_000 });
   const rows = (tape.data || []).slice(0, 6);
-  const tapeOn = isIstSession() && rows.some((t) => t.price > 0);
-  const tapeLabel = quoteStatusLabel(quoteStatus({ session: isIstSession(), price: tapeOn ? 1 : rows[0]?.price }), null);
+  const fresh = tapeFreshness(rows, isIstSession());
   return (
     <StudioShell>
       <p className="text-[11px] tracking-[0.16em] text-subtle uppercase">01 · Today</p>
       <h1 className="studio-word mt-2 max-w-[16ch] text-[40px] leading-[1.05] font-medium tracking-tight">The book, the market, and the path.</h1>
       <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-muted">
-        Studio is a different workspace on the same calculations. {tapeLabel}. Nothing here is a live feed.
+        Studio is a different workspace on the same calculations. <span title={fresh.title}>{fresh.label}.</span> A live label means the print timestamp is current. It is not a licensed exchange feed.
       </p>
       <ol className="mt-8 divide-y divide-border border-y border-border">
         <li>

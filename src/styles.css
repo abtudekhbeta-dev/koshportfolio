@@ -749,3 +749,41 @@ html[data-layout="studio"] h1 {
 html[data-layout="studio"] .kosh-card:hover {
   transform: none;
 }
+
+/* Ledger is a third presentation: paper journal, no sidebar, no card grid. */
+html[data-layout="ledger"],
+html[data-layout="ledger"][data-theme="dark"] {
+  --k-bg: #f4efe4;
+  --k-bg-elevated: #fbf7ef;
+  --k-surface: transparent;
+  --k-surface-2: #efe6d6;
+  --k-fg: #17233b;
+  --k-muted: #3c4a63;
+  --k-subtle: #6d778a;
+  --k-border: rgba(23, 35, 59, 0.14);
+  --k-border-strong: rgba(23, 35, 59, 0.28);
+  --k-accent: #1d4e89;
+  --k-chart: #1d4e89;
+  --k-up: #1b7a46;
+  --k-down: #9b2c2c;
+  --k-warn: #8a5a12;
+  --k-shadow-border: none;
+  --k-shadow-border-hover: none;
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+}
+html[data-layout="ledger"] .ledger-word,
+html[data-layout="ledger"] h1,
+html[data-layout="ledger"] h2 {
+  font-family: Palatino, "Palatino Linotype", "Book Antiqua", "Times New Roman", serif;
+}
+html[data-layout="ledger"] .kosh-card,
+html[data-layout="ledger"] .kosh-card:hover {
+  transform: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}

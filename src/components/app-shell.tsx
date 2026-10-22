@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { apiTape } from "@/lib/kosh/api";
 import { isIstSession } from "@/lib/kosh/market-hours";
-import { quoteStatus, quoteStatusLabel } from "@/lib/kosh/market-data";
+import { tapeFreshness } from "@/lib/kosh/market-data";
 import { AddHoldings } from "@/components/add-holdings";
 import { AlertBanner } from "@/components/alert-banner";
 import { AuthSlot } from "@/components/auth-slot";
@@ -11,7 +11,7 @@ import { BrandLink } from "@/components/mark";
 import { SearchBar } from "@/components/search-bar";
 import { TapeQuote } from "@/components/tape-quote";
 import { LayoutSwitch } from "@/components/layout-switch";
-import { IntelligenceShell } from "@/components/intelligence-shell";
+import { LedgerShell } from "@/components/ledger-shell";
 import { StudioShell } from "@/components/studio-shell";
 import { SyncChip } from "@/components/sync-chip";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -48,11 +48,11 @@ export function AppShell({ children, wide, full }: { children: ReactNode; wide?:
       </StudioShell>
     );
   }
-  if (layout === "intelligence") {
+  if (layout === "ledger") {
     return (
-      <IntelligenceShell wide={wide} full={full}>
+      <LedgerShell wide={wide} full={full}>
         {children}
-      </IntelligenceShell>
+      </LedgerShell>
     );
   }
   return (
@@ -71,17 +71,16 @@ function ClassicShell({ children, wide, full }: { children: ReactNode; wide?: bo
     enabled: !full,
   });
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const tapeOn = isIstSession() && (tape.data || []).some((t) => t.price > 0);
-  const tapeLabel = quoteStatusLabel(quoteStatus({ session: isIstSession(), price: tapeOn ? 1 : (tape.data || [])[0]?.price }), null);
+  const fresh = tapeFreshness(tape.data, isIstSession());
 
   return (
-    <div className={cn(full ? "flex h-dvh min-h-0 flex-col overflow-hidden" : "min-h-dvh")}>
+    <div className={cn(full ? "flex h-dvh min-h-0 flex-col overflow-hidden" : "min-h-dvh overflow-x-clip")}>
       {!full ? (
       <div className="border-b border-border bg-bg-elevated">
         <div className="kosh-marquee-wrap overflow-hidden px-3 py-2 sm:px-4">
           <div className="mb-1 flex items-center gap-2 px-1">
-            <span data-tape-status className="text-[10px] font-semibold tracking-[0.08em] text-subtle uppercase">
-              {tapeLabel}
+            <span data-tape-status title={fresh.title} className="text-[10px] font-semibold tracking-[0.08em] text-subtle uppercase">
+              {fresh.label}
             </span>
           </div>
           <div className="kosh-tape-track flex w-max items-center">

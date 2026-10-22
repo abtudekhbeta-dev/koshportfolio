@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { afterSale, buildPath, fillTradePrices, mixVsPathGaps, overlayOnMix, pathToChartNav, sortTrades } from "./path.ts";
+import { afterSale, buildPath, fillTradePrices, mixVsPathGaps, overlayOnMix, pathToChartNav, pxOnOrBefore, sortTrades } from "./path.ts";
 import { buildMixPath } from "./engine.ts";
 import type { Bar, NavPoint, PathPriceFact, TradeLine } from "./types.ts";
 
@@ -196,6 +196,25 @@ describe("path reconstruction", () => {
     assert.equal(gaps.find((g) => g.symbol === "TCS"), undefined);
     assert.equal(gaps.find((g) => g.symbol === "INFY")?.note, "Qty differs");
     assert.equal(gaps.find((g) => g.symbol === "ITC")?.note, "In path, not in this mix");
+  });
+
+  it("does not fill a missing price from a later session", () => {
+    const map = new Map<string, { t: number; c: number }>([
+      ["2024-01-02", { t: 1, c: 10 }],
+      ["2024-01-04", { t: 2, c: 99 }],
+    ]);
+    const prior = pxOnOrBefore(map, "2024-01-03");
+    assert.equal(prior?.px, 10);
+    assert.equal(prior?.sessionDay, "2024-01-02");
+    assert.equal(prior?.staleDays, 1);
+    assert.equal(pxOnOrBefore(map, "2024-01-01"), null);
+    const hx = { RELIANCE: bars("2024-01-03", 2, 50, 0) };
+    const { trades, filled } = fillTradePrices(
+      [{ symbol: "RELIANCE", name: "Reliance", qty: 1, price: 0, date: "2024-01-01", side: 1 }],
+      hx,
+    );
+    assert.equal(trades[0].price, 0);
+    assert.equal(filled.length, 0);
   });
 
   it("fills a missing buy price from that day's close", () => {
