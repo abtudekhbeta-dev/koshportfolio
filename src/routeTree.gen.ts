@@ -43,6 +43,7 @@ import { Route as ApiSearchRouteImport } from './routes/api/search'
 import { Route as ApiSeasonalityRouteImport } from './routes/api/seasonality'
 import { Route as ApiSkillBoardRouteImport } from './routes/api/skill-board'
 import { Route as ApiTapeRouteImport } from './routes/api/tape'
+import { Route as ApiTvPublicRouteImport } from './routes/api/tv-public'
 import { Route as ApiWikiRouteImport } from './routes/api/wiki'
 import { Route as MarketsFlowsRouteImport } from './routes/markets.flows'
 import { Route as MarketsRotationRouteImport } from './routes/markets.rotation'
@@ -228,6 +229,11 @@ const ApiTapeRoute = ApiTapeRouteImport.update({
   path: '/api/tape',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTvPublicRoute = ApiTvPublicRouteImport.update({
+  id: '/api/tv-public',
+  path: '/api/tv-public',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWikiRoute = ApiWikiRouteImport.update({
   id: '/api/wiki',
   path: '/api/wiki',
@@ -334,6 +340,7 @@ export interface FileRoutesByFullPath {
   '/api/seasonality': typeof ApiSeasonalityRoute
   '/api/skill-board': typeof ApiSkillBoardRoute
   '/api/tape': typeof ApiTapeRoute
+  '/api/tv-public': typeof ApiTvPublicRoute
   '/api/wiki': typeof ApiWikiRoute
   '/markets/flows': typeof MarketsFlowsRoute
   '/markets/rotation': typeof MarketsRotationRoute
@@ -384,6 +391,7 @@ export interface FileRoutesByTo {
   '/api/seasonality': typeof ApiSeasonalityRoute
   '/api/skill-board': typeof ApiSkillBoardRoute
   '/api/tape': typeof ApiTapeRoute
+  '/api/tv-public': typeof ApiTvPublicRoute
   '/api/wiki': typeof ApiWikiRoute
   '/markets/flows': typeof MarketsFlowsRoute
   '/markets/rotation': typeof MarketsRotationRoute
@@ -434,6 +442,7 @@ export interface FileRoutesById {
   '/api/seasonality': typeof ApiSeasonalityRoute
   '/api/skill-board': typeof ApiSkillBoardRoute
   '/api/tape': typeof ApiTapeRoute
+  '/api/tv-public': typeof ApiTvPublicRoute
   '/api/wiki': typeof ApiWikiRoute
   '/markets/flows': typeof MarketsFlowsRoute
   '/markets/rotation': typeof MarketsRotationRoute
@@ -486,6 +495,7 @@ export interface FileRouteTypes {
     | '/api/seasonality'
     | '/api/skill-board'
     | '/api/tape'
+    | '/api/tv-public'
     | '/api/wiki'
     | '/markets/flows'
     | '/markets/rotation'
@@ -536,6 +546,7 @@ export interface FileRouteTypes {
     | '/api/seasonality'
     | '/api/skill-board'
     | '/api/tape'
+    | '/api/tv-public'
     | '/api/wiki'
     | '/markets/flows'
     | '/markets/rotation'
@@ -585,6 +596,7 @@ export interface FileRouteTypes {
     | '/api/seasonality'
     | '/api/skill-board'
     | '/api/tape'
+    | '/api/tv-public'
     | '/api/wiki'
     | '/markets/flows'
     | '/markets/rotation'
@@ -636,6 +648,7 @@ export interface RootRouteChildren {
   ApiSeasonalityRoute: typeof ApiSeasonalityRoute
   ApiSkillBoardRoute: typeof ApiSkillBoardRoute
   ApiTapeRoute: typeof ApiTapeRoute
+  ApiTvPublicRoute: typeof ApiTvPublicRoute
   ApiWikiRoute: typeof ApiWikiRoute
   PIdRoute: typeof PIdRouteWithChildren
   SSymbolRoute: typeof SSymbolRoute
@@ -882,6 +895,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTapeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/tv-public': {
+      id: '/api/tv-public'
+      path: '/api/tv-public'
+      fullPath: '/api/tv-public'
+      preLoaderRoute: typeof ApiTvPublicRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/wiki': {
       id: '/api/wiki'
       path: '/api/wiki'
@@ -1055,6 +1075,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSeasonalityRoute: ApiSeasonalityRoute,
   ApiSkillBoardRoute: ApiSkillBoardRoute,
   ApiTapeRoute: ApiTapeRoute,
+  ApiTvPublicRoute: ApiTvPublicRoute,
   ApiWikiRoute: ApiWikiRoute,
   PIdRoute: PIdRouteWithChildren,
   SSymbolRoute: SSymbolRoute,

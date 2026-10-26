@@ -23,6 +23,7 @@ import type { OhlcBar } from "@/lib/kosh/types";
 import { FIB_RATIOS, fibPrice, hitDraw, rayEnd, type HitPart } from "@/lib/kosh/ledger-draw";
 import type { DrawKind, LedgerDraw, LedgerInd } from "@/lib/kosh/ledger-layout";
 import type { LedgerChartType, LedgerTool } from "@/lib/kosh/ledger-spec";
+import { ledgerChrome, type LedgerTheme } from "@/lib/kosh/ledger-chrome";
 import {
   fmtBarTime,
   fmtShares,
@@ -36,10 +37,6 @@ import {
 type Point = { t: number; time: Time; bar: OhlcBar };
 type DataPoint = { t: number; p: number };
 type Phase = "start" | "move" | "commit" | "cancel";
-
-const UP = "#20b985";
-const DOWN = "#f06470";
-const GRID = "rgba(109,129,155,0.16)";
 
 function chartTime(t: number, intra: boolean): UTCTimestamp | { year: number; month: number; day: number } {
   if (intra) return t as UTCTimestamp;
@@ -138,6 +135,7 @@ export function LedgerChart({
   onSelect,
   onDrawings,
   onContext,
+  theme,
 }: {
   bars: OhlcBar[];
   intra: boolean;
@@ -153,6 +151,7 @@ export function LedgerChart({
   onSelect: (id: string | null) => void;
   onDrawings: (next: LedgerDraw[], phase: Phase) => void;
   onContext: (info: { x: number; y: number; price: number | null; time: number | null }) => void;
+  theme: LedgerTheme;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -168,6 +167,9 @@ export function LedgerChart({
   toolRef.current = tool;
   hiddenRef.current = drawingsHidden;
   intraRef.current = intra;
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
+  const chrome = ledgerChrome(theme);
   const [alive, setAlive] = useState(false);
   const [frame, setFrame] = useState(0);
   const [hover, setHover] = useState<{ t: number; o: number; h: number; l: number; c: number; v: number } | null>(null);
@@ -185,20 +187,21 @@ export function LedgerChart({
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    const paint = ledgerChrome(themeRef.current);
     const chart = createChart(host, {
       width: Math.max(10, host.clientWidth),
       height: Math.max(10, host.clientHeight),
       autoSize: false,
       layout: {
-        background: { type: ColorType.Solid, color: "#0c1118" },
-        textColor: "#8793a5",
+        background: { type: ColorType.Solid, color: paint.background },
+        textColor: paint.text,
         fontSize: 11,
-        panes: { separatorColor: "#28313e", enableResize: true },
+        panes: { separatorColor: paint.border, enableResize: true },
       },
-      grid: { vertLines: { color: GRID }, horzLines: { color: GRID } },
+      grid: { vertLines: { color: paint.grid }, horzLines: { color: paint.grid } },
       crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: "#28313e" },
-      timeScale: { borderColor: "#28313e", timeVisible: true, secondsVisible: false, rightOffset: 4 },
+      rightPriceScale: { borderColor: paint.border },
+      timeScale: { borderColor: paint.border, timeVisible: true, secondsVisible: false, rightOffset: 4 },
       handleScroll: { vertTouchDrag: false },
       localization: {
         locale: "en-IN",
@@ -268,6 +271,22 @@ export function LedgerChart({
 
   useEffect(() => {
     const chart = chartRef.current;
+    if (!chart || !alive) return;
+    const paint = ledgerChrome(theme);
+    chart.applyOptions({
+      layout: {
+        background: { type: ColorType.Solid, color: paint.background },
+        textColor: paint.text,
+        panes: { separatorColor: paint.border, enableResize: true },
+      },
+      grid: { vertLines: { color: paint.grid }, horzLines: { color: paint.grid } },
+      rightPriceScale: { borderColor: paint.border },
+      timeScale: { borderColor: paint.border },
+    });
+  }, [theme, alive]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
     const host = hostRef.current;
     if (!chart || !host || !alive) return;
     const logical = applied.current === viewNonce ? chart.timeScale().getVisibleLogicalRange() : null;
@@ -275,36 +294,39 @@ export function LedgerChart({
     for (const series of existing) chart.removeSeries(series);
     priceRef.current = null;
     if (!points.length) return;
+    const paint = ledgerChrome(theme);
+    const volUp = theme === "light" ? "rgba(15,138,82,0.55)" : "rgba(32,185,133,0.55)";
+    const volDown = theme === "light" ? "rgba(198,55,55,0.5)" : "rgba(240,100,112,0.55)";
     const scale = {
       mode: logScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
-      borderColor: "#28313e",
+      borderColor: paint.border,
     };
     let price: ISeriesApi<SeriesType>;
     if (chartType === "bar") {
-      const series = chart.addSeries(BarSeries, { upColor: UP, downColor: DOWN, thinBars: false });
+      const series = chart.addSeries(BarSeries, { upColor: paint.up, downColor: paint.down, thinBars: false });
       series.setData(points.map((p) => ({ time: p.time, open: p.bar.o, high: p.bar.h, low: p.bar.l, close: p.bar.c })));
       price = series;
     } else if (chartType === "line") {
-      const series = chart.addSeries(LineSeries, { color: UP, lineWidth: 2, priceLineVisible: true });
+      const series = chart.addSeries(LineSeries, { color: paint.up, lineWidth: 2, priceLineVisible: true });
       series.setData(points.map((p) => ({ time: p.time, value: p.bar.c })));
       price = series;
     } else if (chartType === "area") {
       const series = chart.addSeries(AreaSeries, {
-        lineColor: UP,
-        topColor: "rgba(32,185,133,0.28)",
-        bottomColor: "rgba(32,185,133,0.02)",
+        lineColor: paint.up,
+        topColor: theme === "light" ? "rgba(15,138,82,0.18)" : "rgba(32,185,133,0.28)",
+        bottomColor: theme === "light" ? "rgba(15,138,82,0.02)" : "rgba(32,185,133,0.02)",
         lineWidth: 2,
       });
       series.setData(points.map((p) => ({ time: p.time, value: p.bar.c })));
       price = series;
     } else {
       const series = chart.addSeries(CandlestickSeries, {
-        upColor: UP,
-        downColor: DOWN,
-        borderUpColor: UP,
-        borderDownColor: DOWN,
-        wickUpColor: UP,
-        wickDownColor: DOWN,
+        upColor: paint.up,
+        downColor: paint.down,
+        borderUpColor: paint.up,
+        borderDownColor: paint.down,
+        wickUpColor: paint.up,
+        wickDownColor: paint.down,
       });
       series.setData(points.map((p) => ({ time: p.time, open: p.bar.o, high: p.bar.h, low: p.bar.l, close: p.bar.c })));
       price = series;
@@ -321,7 +343,7 @@ export function LedgerChart({
         points.map((p) => ({
           time: p.time,
           value: p.bar.v,
-          color: p.bar.c >= p.bar.o ? "rgba(32,185,133,0.55)" : "rgba(240,100,112,0.55)",
+          color: p.bar.c >= p.bar.o ? volUp : volDown,
         })),
       );
     }
@@ -361,8 +383,8 @@ export function LedgerChart({
         if (ind.kind === "rsi") {
           const series = chart.addSeries(LineSeries, { color: ind.color, lineWidth: 2, priceScaleId: "right" }, index);
           series.setData(lineData(points, rsi(closes, ind.period || 14)));
-          series.createPriceLine({ price: 70, color: "#3a4658", lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false, title: "" });
-          series.createPriceLine({ price: 30, color: "#3a4658", lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false, title: "" });
+          series.createPriceLine({ price: 70, color: paint.border, lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false, title: "" });
+          series.createPriceLine({ price: 30, color: paint.border, lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false, title: "" });
         } else if (ind.kind === "atr") {
           const series = chart.addSeries(LineSeries, { color: ind.color, lineWidth: 2, priceScaleId: "right" }, index);
           series.setData(lineData(points, atr(points.map((p) => p.bar), ind.period || 14)));
@@ -373,7 +395,7 @@ export function LedgerChart({
             points.flatMap((p, i) => {
               const value = pack.hist[i];
               if (value == null || !Number.isFinite(value)) return [];
-              return [{ time: p.time, value, color: value >= 0 ? "rgba(32,185,133,0.7)" : "rgba(240,100,112,0.7)" }];
+              return [{ time: p.time, value, color: value >= 0 ? volUp : volDown }];
             }),
           );
           const line = chart.addSeries(LineSeries, { color: "#4c8dff", lineWidth: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: "right" }, index);
@@ -389,7 +411,7 @@ export function LedgerChart({
       applied.current = viewNonce;
     } else if (logical) chart.timeScale().setVisibleLogicalRange(logical);
     setFrame((n) => n + 1);
-  }, [points, chartType, indicators, logScale, intra, range, viewNonce, alive]);
+  }, [points, chartType, indicators, logScale, intra, range, viewNonce, alive, theme]);
 
   function paneBox() {
     const chart = chartRef.current;
@@ -536,7 +558,7 @@ export function LedgerChart({
   const readout = hover || (bars.length ? { ...bars[bars.length - 1], t: bars[bars.length - 1].t } : null);
 
   return (
-    <div className="lt-chart" data-ledger-chart data-bars={bars.length}>
+    <div className="lt-chart" data-ledger-chart data-bars={bars.length} data-chart-bg={chrome.background} style={{ background: chrome.background }}>
       <div ref={hostRef} className="lt-chart-host" />
       <svg
         ref={svgRef}
@@ -564,6 +586,8 @@ export function LedgerChart({
             height={alive ? box.height : 0}
             selected={draw.id === selectedId}
             activeTool={tool}
+            surface={chrome.background}
+            ink={chrome.text}
           />
         ))}
       </svg>
@@ -585,7 +609,7 @@ export function LedgerChart({
                     t0: textAt.t,
                     p0: textAt.p,
                     text: note,
-                    color: "#e8edf5",
+                    color: chrome.text,
                     locked: false,
                     hidden: false,
                   },
@@ -662,6 +686,8 @@ function DrawShape({
   height,
   selected,
   activeTool,
+  surface,
+  ink,
 }: {
   draw: LedgerDraw;
   project: (t: number, p: number) => { x: number; y: number } | null;
@@ -669,6 +695,8 @@ function DrawShape({
   height: number;
   selected: boolean;
   activeTool: LedgerTool;
+  surface: string;
+  ink: string;
 }) {
   const a = project(draw.t0, draw.p0);
   if (!a || width < 2) return null;
@@ -679,7 +707,7 @@ function DrawShape({
     return (
       <g>
         <line x1={0} y1={a.y} x2={width} y2={a.y} {...common} />
-        {selected ? <Handle x={8} y={a.y} /> : null}
+        {selected ? <Handle x={8} y={a.y} fill={surface} /> : null}
       </g>
     );
   }
@@ -687,7 +715,7 @@ function DrawShape({
     return (
       <g>
         <line x1={a.x} y1={0} x2={a.x} y2={height || 800} {...common} />
-        {selected ? <Handle x={a.x} y={12} /> : null}
+        {selected ? <Handle x={a.x} y={12} fill={surface} /> : null}
       </g>
     );
   }
@@ -709,8 +737,8 @@ function DrawShape({
         <rect x={x} y={y} width={Math.abs(b.x - a.x)} height={Math.abs(b.y - a.y)} {...common} fill={draw.color} fillOpacity={0.12} pointerEvents={activeTool === "cursor" ? "all" : "none"} />
         {selected ? (
           <>
-            <Handle x={a.x} y={a.y} />
-            <Handle x={b.x} y={b.y} />
+            <Handle x={a.x} y={a.y} fill={surface} />
+            <Handle x={b.x} y={b.y} fill={surface} />
           </>
         ) : null}
       </g>
@@ -735,8 +763,8 @@ function DrawShape({
         })}
         {selected ? (
           <>
-            <Handle x={a.x} y={a.y} />
-            <Handle x={b.x} y={b.y} />
+            <Handle x={a.x} y={a.y} fill={surface} />
+            <Handle x={b.x} y={b.y} fill={surface} />
           </>
         ) : null}
       </g>
@@ -753,20 +781,20 @@ function DrawShape({
     <g>
       <line x1={a.x} y1={a.y} x2={end.x} y2={end.y} {...common} />
       {measure ? (
-        <text x={midX} y={midY - 6} fill="#e8edf5" fontSize="11">
+        <text x={midX} y={midY - 6} fill={ink} fontSize="11">
           {measure}
         </text>
       ) : null}
       {selected ? (
         <>
-          <Handle x={a.x} y={a.y} />
-          <Handle x={b.x} y={b.y} />
+          <Handle x={a.x} y={a.y} fill={surface} />
+          <Handle x={b.x} y={b.y} fill={surface} />
         </>
       ) : null}
     </g>
   );
 }
 
-function Handle({ x, y }: { x: number; y: number }) {
-  return <rect x={x - 4} y={y - 4} width={8} height={8} fill="#0c1118" stroke="#b7d5ff" pointerEvents="all" />;
+function Handle({ x, y, fill }: { x: number; y: number; fill: string }) {
+  return <rect x={x - 4} y={y - 4} width={8} height={8} fill={fill} stroke="#4c8dff" pointerEvents="all" />;
 }

@@ -7,6 +7,7 @@ import { quoteMap } from "@/lib/kosh/market-data";
 import { universeName } from "@/lib/kosh/universe";
 import { bareSymbol, useKosh } from "@/lib/store";
 import { CompanyLogo } from "@/components/company-logo";
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 type Source = { kind: "watch"; id: string } | { kind: "book"; id: string };
@@ -182,25 +183,26 @@ export function LedgerWatch({
         {symbols.length && !rows.length ? <p className="lt-note">No names match that filter.</p> : null}
         {quotes.isError ? <p className="lt-note">Quotes did not load. Symbols stay on the list.</p> : null}
         {rows.map((row) => (
-          <button
-            key={row.symbol}
-            type="button"
-            className="lt-watch-row"
-            aria-current={row.symbol === active}
-            draggable={source.kind === "watch" && sort === "none" && !needle}
-            onDragStart={() => setDragFrom(row.index)}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={() => {
-              if (dragFrom == null || source.kind !== "watch") return;
-              moveWatch(dragFrom, row.index);
-              setDragFrom(null);
-            }}
-            onClick={() => onPick(row.symbol, row.name)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              onMenu({ x: e.clientX, y: e.clientY, symbol: row.symbol, name: row.name, price: row.price });
-            }}
-          >
+          <Tooltip key={row.symbol} content={`${row.name || row.symbol} · ${row.symbol}`}>
+            <button
+              type="button"
+              className="lt-watch-row"
+              aria-current={row.symbol === active}
+              aria-label={`${row.symbol}${row.name ? `, ${row.name}` : ""}`}
+              draggable={source.kind === "watch" && sort === "none" && !needle}
+              onDragStart={() => setDragFrom(row.index)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => {
+                if (dragFrom == null || source.kind !== "watch") return;
+                moveWatch(dragFrom, row.index);
+                setDragFrom(null);
+              }}
+              onClick={() => onPick(row.symbol, row.name)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                onMenu({ x: e.clientX, y: e.clientY, symbol: row.symbol, name: row.name, price: row.price });
+              }}
+            >
             <span className="lt-sym">
               <CompanyLogo symbol={row.symbol} name={row.name} size={18} />
               <em>{row.symbol}</em>
@@ -211,6 +213,7 @@ export function LedgerWatch({
               {row.pct == null ? "—" : fmtPct(row.pct)}
             </span>
           </button>
+          </Tooltip>
         ))}
       </div>
       <p className="lt-note">Quotes are the same Yahoo feed as the rest of Kosh. A dash means the price was not in the response.</p>

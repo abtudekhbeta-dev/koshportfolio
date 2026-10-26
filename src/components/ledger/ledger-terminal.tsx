@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -47,7 +48,11 @@ import {
 import { bareSymbol, isWatched, useKosh } from "@/lib/store";
 import { canOpenStock } from "@/components/stock-link";
 import { LayoutSwitch } from "@/components/layout-switch";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { Tooltip } from "@/components/ui/tooltip";
+import { clampWatchWidth, placeMenu } from "@/lib/kosh/ledger-chrome";
 import { LedgerChart } from "./ledger-chart";
+import { LedgerImportDialog } from "./ledger-import-dialog";
 import { LedgerWatch } from "./ledger-watch";
 import "./ledger-terminal.css";
 
@@ -103,7 +108,7 @@ function toolIcon(id: LedgerTool) {
   return <span>/</span>;
 }
 
-export function LedgerTerminal() {
+export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed" }) {
   const search = route.useSearch();
   const navigate = useNavigate();
   const loaded = useMemo(() => loadLedgerLayout(), []);
@@ -121,6 +126,10 @@ export function LedgerTerminal() {
   const [hits, setHits] = useState<{ symbol: string; name: string }[]>([]);
   const [alertPrice, setAlertPrice] = useState("");
   const [alertDir, setAlertDir] = useState<"above" | "below">("above");
+  const [importOpen, setImportOpen] = useState(false);
+  const [indQuery, setIndQuery] = useState("");
+  const [menuBox, setMenuBox] = useState<DOMRect | null>(null);
+  const [resizing, setResizing] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const layoutRef = useRef(layout);
@@ -140,6 +149,7 @@ export function LedgerTerminal() {
   const removeAlert = useKosh((s) => s.removeAlert);
   const alerts = useKosh((s) => s.alerts);
   const toggleWatch = useKosh((s) => s.toggleWatch);
+  const theme = useKosh((s) => (s.theme === "light" ? "light" : "dark"));
 
   useEffect(() => {
     if (search.symbol) return;
@@ -274,7 +284,11 @@ export function LedgerTerminal() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (typingTarget(e.target)) {
-        if (e.key === "Escape") (e.target as HTMLElement).blur();
+        if (e.key === "Escape") {
+          setImportOpen(false);
+          setMenu(null);
+          (e.target as HTMLElement).blur();
+        }
         return;
       }
       const meta = e.metaKey || e.ctrlKey;
@@ -292,6 +306,7 @@ export function LedgerTerminal() {
       if (e.key === "Escape") {
         setTool("cursor");
         setMenu(null);
+        setImportOpen(false);
         setContext(null);
         setSelectedId(null);
         return;
@@ -349,15 +364,53 @@ export function LedgerTerminal() {
 
   const selected = drawings.find((row) => row.id === selectedId) || null;
   const saveLabel = save === "saving" ? "Saving" : save === "saved" ? "Saved" : save === "failed" ? "Save failed" : "Save";
+  const addable = ADDABLE.filter((item) => item.label.toLowerCase().includes(indQuery.trim().toLowerCase()));
+
+  function openMenu(id: "indicators" | "type" | "settings" | "alert", button: HTMLButtonElement) {
+    if (menu === id) {
+      setMenu(null);
+      setMenuBox(null);
+      return;
+    }
+    setMenu(id);
+    setMenuBox(button.getBoundingClientRect());
+  }
+
+  function startResize(event: { clientX: number; preventDefault: () => void }) {
+    if (narrow) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startW = layoutRef.current.watchWidth;
+    setResizing(true);
+    const move = (ev: PointerEvent) => {
+      const next = clampWatchWidth(startW - (ev.clientX - startX));
+      setLayout((prev) => (prev.watchWidth === next ? prev : { ...prev, watchWidth: next }));
+    };
+    const stop = () => {
+      setResizing(false);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  }
 
   return (
-    <div ref={rootRef} className="kosh-ledger-terminal" data-ledger-terminal>
+    <div
+      ref={rootRef}
+      className={`kosh-ledger-terminal${host === "embed" ? " is-embed" : ""}${resizing ? " is-resizing" : ""}`}
+      data-ledger-terminal
+      data-host={host}
+      data-theme={theme}
+      style={{ ["--lt-watch" as string]: `${layout.watchWidth}px` }}
+      data-resizing={resizing ? "true" : "false"}
+    >
       <header className="lt-top">
         <Link to="/" className="lt-brand" aria-label="Kosh home">
           <b>K</b>
           <span>Kosh</span>
         </Link>
-        <span className="lt-muted">Ledger</span>
+        <span className="lt-muted lt-ledger-label">Ledger</span>
         <div className="lt-price">
           <strong>{name}</strong>
           <span className="lt-muted">{ohlc.data?.exchange || "NSE"}</span>
@@ -366,9 +419,11 @@ export function LedgerTerminal() {
           <span className={move == null || move === 0 ? "lt-muted" : move > 0 ? "lt-up" : "lt-down"}>{fmtMove(move)}</span>
           <span className={pct == null || pct === 0 ? "lt-muted" : pct > 0 ? "lt-up" : "lt-down"}>{pct == null ? "—" : fmtPct(pct)}</span>
         </div>
-        <span className="lt-muted" title={fresh.title} data-ledger-fresh={fresh.state}>
-          {fresh.label}
-        </span>
+        <Tip text={fresh.title}>
+          <span className="lt-muted" data-ledger-fresh={fresh.state}>
+            {fresh.label}
+          </span>
+        </Tip>
         <div className="lt-grow" />
         <div className="lt-search">
           <input
@@ -389,18 +444,25 @@ export function LedgerTerminal() {
             </div>
           ) : null}
         </div>
-        <button type="button" className="lt-icon" aria-label={isWatched(symbol, watch) ? "Remove from watchlist" : "Add to watchlist"} title={isWatched(symbol, watch) ? "Remove from watchlist" : "Add to watchlist"} onClick={() => toggleWatch(symbol)}>
-          {isWatched(symbol, watch) ? "★" : "☆"}
-        </button>
-        <button type="button" className="lt-bar" style={{ width: "auto" }} onClick={() => saveLedgerLayout(layout).ok ? setSave("saved") : setSave("failed")}>
-          <span style={{ padding: "0 8px" }}>{saveLabel}</span>
-        </button>
-        <nav className="lt-links" aria-label="Leave the chart" style={{ display: "flex", gap: 8 }}>
+        <Tip text={isWatched(symbol, watch) ? "Remove from watchlist" : "Add to watchlist"}>
+          <button type="button" className="lt-icon" aria-label={isWatched(symbol, watch) ? "Remove from watchlist" : "Add to watchlist"} onClick={() => toggleWatch(symbol)}>
+            {isWatched(symbol, watch) ? "★" : "☆"}
+          </button>
+        </Tip>
+        <Tip text="Save layout">
+          <button type="button" className="lt-bar" style={{ width: "auto" }} onClick={() => (saveLedgerLayout(layout).ok ? setSave("saved") : setSave("failed"))}>
+            <span style={{ padding: "0 8px" }}>{saveLabel}</span>
+          </button>
+        </Tip>
+        <nav className="lt-links lt-leave" aria-label="Leave the chart" style={{ display: "flex", gap: 8 }}>
           <Link to="/markets" search={{ view: "overview" }}>Overview</Link>
           <Link to="/markets/rotation">Rotation</Link>
           <Link to="/app">Books</Link>
         </nav>
-        <LayoutSwitch />
+        <span className="lt-layout-host">
+          <LayoutSwitch />
+        </span>
+        {host === "overlay" ? <ThemeToggle /> : null}
       </header>
       <div className="lt-toolbar">
         <div className="lt-bar" aria-label="Interval">
@@ -422,144 +484,181 @@ export function LedgerTerminal() {
           ))}
         </div>
         <span className="lt-sep" />
-        <div className="lt-bar" aria-label="Range">
-          {LEDGER_RANGES.map((item) => {
-            const enabled = allowedRanges.includes(item.id);
-            return (
+        <div className="lt-bar">
+          <Tip text="Chart type">
+            <button type="button" aria-expanded={menu === "type"} aria-haspopup="menu" onClick={(e) => openMenu("type", e.currentTarget)}>
+              {layout.chartType === "candle" ? "Candles" : layout.chartType === "bar" ? "Bars" : layout.chartType === "line" ? "Line" : "Area"}
+            </button>
+          </Tip>
+          <Tip text="Indicators">
+            <button type="button" aria-expanded={menu === "indicators"} aria-haspopup="menu" onClick={(e) => openMenu("indicators", e.currentTarget)}>
+              Indicators
+            </button>
+          </Tip>
+          <Tip text={layout.logScale ? "Logarithmic scale" : "Linear scale"}>
+            <button type="button" onClick={() => setLayout((prev) => ({ ...prev, logScale: !prev.logScale }))} aria-pressed={layout.logScale}>
+              {layout.logScale ? "Log" : "Linear"}
+            </button>
+          </Tip>
+          <Tip text="Fit chart">
+            <button type="button" onClick={() => setViewNonce((n) => n + 1)}>
+              Fit
+            </button>
+          </Tip>
+          <Tip text="Price alert">
+            <button type="button" aria-expanded={menu === "alert"} aria-haspopup="dialog" onClick={(e) => openMenu("alert", e.currentTarget)}>
+              Alert
+            </button>
+          </Tip>
+          <Tip text="Settings">
+            <button type="button" aria-label="Chart settings" aria-expanded={menu === "settings"} aria-haspopup="menu" onClick={(e) => openMenu("settings", e.currentTarget)}>
+              Settings
+            </button>
+          </Tip>
+          <Tip text="Fullscreen · F">
+            <button type="button" aria-label="Fullscreen" onClick={() => void toggleFullscreen()}>
+              <Maximize2 size={14} />
+            </button>
+          </Tip>
+        </div>
+      </div>
+      <AnchoredMenu open={menu === "type"} anchor={menuBox} label="Chart type" onClose={() => setMenu(null)}>
+        {(["candle", "bar", "line", "area"] as LedgerChartType[]).map((id) => (
+          <button
+            key={id}
+            type="button"
+            role="menuitemradio"
+            aria-checked={layout.chartType === id}
+            onClick={() => {
+              setLayout((prev) => ({ ...prev, chartType: id }));
+              setMenu(null);
+            }}
+          >
+            {id === "candle" ? "Candlesticks" : id === "bar" ? "OHLC bars" : id === "line" ? "Line" : "Area"}
+          </button>
+        ))}
+      </AnchoredMenu>
+      <AnchoredMenu open={menu === "indicators"} anchor={menuBox} label="Indicators" wide onClose={() => setMenu(null)}>
+        <input aria-label="Filter indicators" placeholder="Search indicators" value={indQuery} onChange={(e) => setIndQuery(e.target.value)} />
+        {(
+          [
+            ["Moving averages", ["sma", "ema"]],
+            ["Volatility", ["bb", "atr"]],
+            ["Momentum", ["rsi", "macd"]],
+            ["Volume", ["volume", "vwap"]],
+          ] as const
+        ).map(([title, kinds]) => {
+          const rows = addable.filter((item) => (kinds as readonly string[]).includes(item.kind));
+          if (!rows.length) return null;
+          return (
+            <div key={title}>
+              <div className="lt-group">{title}</div>
+              {rows.map((item) => (
+                <button key={item.kind} type="button" onClick={() => setIndicators(addIndicator(layout.indicators, item.kind))}>
+                  Add {item.label}
+                  {layout.indicators.some((row) => row.kind === item.kind) ? " · on chart" : ""}
+                </button>
+              ))}
+            </div>
+          );
+        })}
+        {layout.indicators.map((ind) => (
+          <div className="lt-ind" key={ind.id}>
+            <span>
+              {ind.kind === "macd" ? "MACD 12, 26, 9" : ind.kind === "vwap" ? "Session VWAP" : `${ind.kind.toUpperCase()}${ind.period ? ` ${ind.period}` : ""}`}
+              {ind.kind === "sma" || ind.kind === "ema" || ind.kind === "rsi" || ind.kind === "atr" || ind.kind === "bb" ? (
+                <input
+                  aria-label={`${ind.kind} period`}
+                  type="number"
+                  min={2}
+                  max={400}
+                  value={ind.period || 14}
+                  onChange={(e) => {
+                    const period = Math.max(2, Math.min(400, Math.round(Number(e.target.value) || ind.period)));
+                    setIndicators(layout.indicators.map((row) => (row.id === ind.id ? { ...row, period } : row)));
+                  }}
+                  style={{ width: 58 }}
+                />
+              ) : null}
+            </span>
+            <span>
+              <button type="button" onClick={() => setIndicators(layout.indicators.map((row) => (row.id === ind.id ? { ...row, hidden: !row.hidden } : row)))}>
+                {ind.hidden ? "Show" : "Hide"}
+              </button>
+              <button type="button" onClick={() => setIndicators(layout.indicators.filter((row) => row.id !== ind.id))}>
+                Remove
+              </button>
+            </span>
+          </div>
+        ))}
+        <p className="lt-muted">VWAP is the session typical-price average and is drawn only on an intraday interval that has volume. MACD stays 12, 26, 9.</p>
+      </AnchoredMenu>
+      <AnchoredMenu open={menu === "alert"} anchor={menuBox} label="Price alert" onClose={() => setMenu(null)}>
+        <p className="lt-muted">Checked only while this browser has Kosh open. Not a server-side alert.</p>
+        <label>
+          Price
+          <input aria-label="Alert price" value={alertPrice} onChange={(e) => setAlertPrice(e.target.value)} placeholder={price ? String(price) : ""} />
+        </label>
+        <label>
+          Direction
+          <select aria-label="Alert direction" value={alertDir} onChange={(e) => setAlertDir(e.target.value === "below" ? "below" : "above")}>
+            <option value="above">Crosses above</option>
+            <option value="below">Crosses below</option>
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={() => {
+            const level = Number(alertPrice || price);
+            if (!(level > 0)) return;
+            addAlert({ symbol, name, price: level, dir: alertDir, kind: "price" });
+            setAlertPrice("");
+            setMenu(null);
+          }}
+        >
+          Save price alert
+        </button>
+        {mine.map((alert) => (
+          <button key={alert.id} type="button" onClick={() => removeAlert(alert.id)}>
+            Remove {alert.dir} {alert.price}
+          </button>
+        ))}
+      </AnchoredMenu>
+      <AnchoredMenu open={menu === "settings"} anchor={menuBox} label="Chart settings" wide onClose={() => setMenu(null)}>
+        <div className="lt-group">Visible history</div>
+        {allowedRanges.length ? (
+          <div className="lt-range" role="group" aria-label="Visible history">
+            {LEDGER_RANGES.filter((item) => allowedRanges.includes(item.id)).map((item) => (
               <button
                 key={item.id}
                 type="button"
-                disabled={!enabled}
-                title={enabled ? item.label : `${spec.label} history is ${intradayWindow(spec)}. This range is not available.`}
-                aria-pressed={enabled && layout.range === item.id}
-                onClick={() => enabled && setLayout((prev) => ({ ...prev, range: item.id as LedgerRangeId }))}
+                aria-pressed={layout.range === item.id}
+                onClick={() => setLayout((prev) => ({ ...prev, range: item.id as LedgerRangeId }))}
               >
                 {item.label}
               </button>
-            );
-          })}
-        </div>
-        <span className="lt-sep" />
-        <div className="lt-bar">
-          <button type="button" aria-expanded={menu === "type"} onClick={() => setMenu(menu === "type" ? null : "type")}>
-            {layout.chartType === "candle" ? "Candles" : layout.chartType === "bar" ? "Bars" : layout.chartType === "line" ? "Line" : "Area"}
-          </button>
-          <button type="button" aria-expanded={menu === "indicators"} onClick={() => setMenu(menu === "indicators" ? null : "indicators")}>
-            Indicators
-          </button>
-          <button type="button" onClick={() => setLayout((prev) => ({ ...prev, logScale: !prev.logScale }))} aria-pressed={layout.logScale}>
-            {layout.logScale ? "Log" : "Linear"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setViewNonce((n) => n + 1);
-            }}
-          >
-            Fit
-          </button>
-          <button type="button" aria-expanded={menu === "alert"} onClick={() => setMenu(menu === "alert" ? null : "alert")}>
-            Alert
-          </button>
-          <button type="button" aria-label="Chart settings" onClick={() => setMenu(menu === "settings" ? null : "settings")}>
-            Settings
-          </button>
-          <button type="button" aria-label="Fullscreen" onClick={() => void toggleFullscreen()}>
-            <Maximize2 size={14} />
-          </button>
-        </div>
-      </div>
-      {menu === "type" ? (
-        <Panel onClose={() => setMenu(null)}>
-          {(["candle", "bar", "line", "area"] as LedgerChartType[]).map((id) => (
-            <button key={id} type="button" onClick={() => { setLayout((prev) => ({ ...prev, chartType: id })); setMenu(null); }}>
-              {id === "candle" ? "Candles" : id === "bar" ? "OHLC bars" : id === "line" ? "Line" : "Area"}
-            </button>
-          ))}
-        </Panel>
-      ) : null}
-      {menu === "indicators" ? (
-        <Panel onClose={() => setMenu(null)}>
-          {ADDABLE.map((item) => (
-            <button key={item.kind} type="button" onClick={() => setIndicators(addIndicator(layout.indicators, item.kind))}>
-              Add {item.label}
-            </button>
-          ))}
-          {layout.indicators.map((ind) => (
-            <label key={ind.id}>
-              <span>
-                {ind.kind === "macd" ? "MACD 12, 26, 9" : ind.kind === "vwap" ? "Session VWAP" : `${ind.kind.toUpperCase()}${ind.period ? ` ${ind.period}` : ""}`}
-              </span>
-              <span>
-                {ind.kind === "sma" || ind.kind === "ema" || ind.kind === "rsi" || ind.kind === "atr" || ind.kind === "bb" ? (
-                  <input
-                    aria-label={`${ind.kind} period`}
-                    type="number"
-                    min={2}
-                    max={400}
-                    value={ind.period || 14}
-                    onChange={(e) => {
-                      const period = Math.max(2, Math.min(400, Math.round(Number(e.target.value) || ind.period)));
-                      setIndicators(layout.indicators.map((row) => (row.id === ind.id ? { ...row, period } : row)));
-                    }}
-                    style={{ width: 58 }}
-                  />
-                ) : null}
-                <button type="button" onClick={() => setIndicators(layout.indicators.map((row) => (row.id === ind.id ? { ...row, hidden: !row.hidden } : row)))}>
-                  {ind.hidden ? "Show" : "Hide"}
-                </button>
-                <button type="button" onClick={() => setIndicators(layout.indicators.filter((row) => row.id !== ind.id))}>
-                  Remove
-                </button>
-              </span>
-            </label>
-          ))}
-          <p className="lt-muted">VWAP is the session typical-price average and is drawn only on an intraday interval that has volume. MACD stays 12, 26, 9.</p>
-        </Panel>
-      ) : null}
-      {menu === "alert" ? (
-        <Panel onClose={() => setMenu(null)}>
-          <p className="lt-muted">Checked only while this browser has Kosh open. Not a server-side alert.</p>
-          <label>
-            Price
-            <input aria-label="Alert price" value={alertPrice} onChange={(e) => setAlertPrice(e.target.value)} placeholder={price ? String(price) : ""} />
-          </label>
-          <label>
-            Direction
-            <select aria-label="Alert direction" value={alertDir} onChange={(e) => setAlertDir(e.target.value === "below" ? "below" : "above")}>
-              <option value="above">Crosses above</option>
-              <option value="below">Crosses below</option>
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={() => {
-              const level = Number(alertPrice || price);
-              if (!(level > 0)) return;
-              addAlert({ symbol, name, price: level, dir: alertDir, kind: "price" });
-              setAlertPrice("");
-            }}
-          >
-            Save price alert
-          </button>
-          {mine.map((alert) => (
-            <button key={alert.id} type="button" onClick={() => removeAlert(alert.id)}>
-              Remove {alert.dir} {alert.price}
-            </button>
-          ))}
-        </Panel>
-      ) : null}
-      {menu === "settings" ? (
-        <Panel onClose={() => setMenu(null)}>
-          <p className="lt-muted">/ search · F fullscreen · Esc leaves a tool · Delete removes the selected drawing · Ctrl or Cmd Z undo.</p>
-          <button type="button" onClick={() => setLayout((prev) => ({ ...prev, drawingsHidden: !prev.drawingsHidden }))}>
-            {layout.drawingsHidden ? "Show drawings" : "Hide drawings"}
-          </button>
-          <button type="button" onClick={() => setLayout((prev) => ({ ...prev, logScale: !prev.logScale }))}>
-            {layout.logScale ? "Use linear scale" : "Use log scale"}
-          </button>
-        </Panel>
-      ) : null}
+            ))}
+          </div>
+        ) : (
+          <p className="lt-muted">{spec.label} loads {intradayWindow(spec)}. Pan and zoom inside that window.</p>
+        )}
+        <p className="lt-muted">/ search · F fullscreen · Esc leaves a tool · Delete removes the selected drawing · Ctrl or Cmd Z undo · Ctrl or Cmd Shift Z, or Ctrl or Cmd Y, redo.</p>
+        <button type="button" onClick={() => setLayout((prev) => ({ ...prev, drawingsHidden: !prev.drawingsHidden }))}>
+          {layout.drawingsHidden ? "Show drawings" : "Hide drawings"}
+        </button>
+        <button type="button" onClick={() => setLayout((prev) => ({ ...prev, logScale: !prev.logScale }))}>
+          {layout.logScale ? "Use linear scale" : "Use log scale"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMenu(null);
+            setImportOpen(true);
+          }}
+        >
+          Import from TradingView
+        </button>
+      </AnchoredMenu>
       <div className="lt-head">
         <b>
           {symbol} · {spec.label}
@@ -572,32 +671,43 @@ export function LedgerTerminal() {
       <div className="lt-body">
         <aside className="lt-draw" aria-label="Drawing tools">
           {TOOLS.map((item) => (
-            <button key={item.id} type="button" className="lt-tool" aria-label={item.label} title={item.label} aria-pressed={tool === item.id} onClick={() => setTool(item.id)}>
-              {toolIcon(item.id)}
-            </button>
+            <Tip key={item.id} text={item.label}>
+              <button type="button" className="lt-tool" aria-label={item.label} aria-pressed={tool === item.id} onClick={() => setTool(item.id)}>
+                {toolIcon(item.id)}
+              </button>
+            </Tip>
           ))}
-          <button type="button" className="lt-tool" aria-label="Undo drawing" title="Undo" disabled={!pastRef.current.length && hist >= 0 && pastRef.current.length === 0} onClick={undo}>
-            <Undo2 size={15} />
-          </button>
-          <button type="button" className="lt-tool" aria-label="Redo drawing" title="Redo" onClick={redo}>
-            <Redo2 size={15} />
-          </button>
-          <button type="button" className="lt-tool" aria-label="Delete selected drawing" title="Delete selected" disabled={!selected} onClick={() => selected && (commitDrawings(drawings.filter((row) => row.id !== selected.id)), setSelectedId(null))}>
-            <Trash2 size={15} />
-          </button>
-          <button
-            type="button"
-            className="lt-tool"
-            aria-label={selected?.locked ? "Unlock drawing" : "Lock drawing"}
-            title={selected?.locked ? "Unlock" : "Lock"}
-            disabled={!selected}
-            onClick={() => selected && commitDrawings(drawings.map((row) => (row.id === selected.id ? { ...row, locked: !row.locked } : row)))}
-          >
-            <Lock size={15} />
-          </button>
-          <button type="button" className="lt-tool" aria-label={layout.drawingsHidden ? "Show drawings" : "Hide drawings"} title={layout.drawingsHidden ? "Show drawings" : "Hide drawings"} aria-pressed={layout.drawingsHidden} onClick={() => setLayout((prev) => ({ ...prev, drawingsHidden: !prev.drawingsHidden }))}>
-            {layout.drawingsHidden ? <EyeOff size={15} /> : <Eye size={15} />}
-          </button>
+          <Tip text="Undo · Ctrl/Cmd Z">
+            <button type="button" className="lt-tool" aria-label="Undo drawing" disabled={pastRef.current.length === 0} onClick={undo}>
+              <Undo2 size={15} />
+            </button>
+          </Tip>
+          <Tip text="Redo · Ctrl/Cmd Shift Z or Ctrl/Cmd Y">
+            <button type="button" className="lt-tool" aria-label="Redo drawing" disabled={futureRef.current.length === 0} onClick={redo}>
+              <Redo2 size={15} />
+            </button>
+          </Tip>
+          <Tip text="Delete selected drawing · Delete">
+            <button type="button" className="lt-tool" aria-label="Delete selected drawing" disabled={!selected} onClick={() => selected && (commitDrawings(drawings.filter((row) => row.id !== selected.id)), setSelectedId(null))}>
+              <Trash2 size={15} />
+            </button>
+          </Tip>
+          <Tip text={selected?.locked ? "Unlock drawing" : "Lock drawing"}>
+            <button
+              type="button"
+              className="lt-tool"
+              aria-label={selected?.locked ? "Unlock drawing" : "Lock drawing"}
+              disabled={!selected}
+              onClick={() => selected && commitDrawings(drawings.map((row) => (row.id === selected.id ? { ...row, locked: !row.locked } : row)))}
+            >
+              <Lock size={15} />
+            </button>
+          </Tip>
+          <Tip text={layout.drawingsHidden ? "Show drawings" : "Hide drawings"}>
+            <button type="button" className="lt-tool" aria-label={layout.drawingsHidden ? "Show drawings" : "Hide drawings"} aria-pressed={layout.drawingsHidden} onClick={() => setLayout((prev) => ({ ...prev, drawingsHidden: !prev.drawingsHidden }))}>
+              {layout.drawingsHidden ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+          </Tip>
         </aside>
         <section className="lt-stage">
           <div style={{ position: "relative", minHeight: 0, flex: 1, display: "flex", flexDirection: "column" }}>
@@ -617,6 +727,7 @@ export function LedgerTerminal() {
                 onSelect={setSelectedId}
                 onDrawings={onDrawings}
                 onContext={(info) => setContext(info)}
+                theme={theme}
               />
             ) : (
               <div className="lt-chart" data-ledger-chart data-bars="0" />
@@ -642,9 +753,31 @@ export function LedgerTerminal() {
               {spec.note ? ` · ${spec.note}` : ""}
             </span>
             <span className="lt-grow" />
-            <span title="Yahoo Finance chart endpoint. Not a licensed exchange feed.">{ohlc.isFetching ? "Refreshing" : "Yahoo Finance · not a live exchange feed"}</span>
+            <span>{ohlc.isFetching ? "Refreshing" : "Yahoo Finance · not a live exchange feed"}</span>
           </footer>
         </section>
+        <button
+          type="button"
+          className="lt-split"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize watchlist"
+          aria-valuemin={220}
+          aria-valuemax={480}
+          aria-valuenow={layout.watchWidth}
+          tabIndex={0}
+          onPointerDown={startResize}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              setLayout((prev) => ({ ...prev, watchWidth: clampWatchWidth(prev.watchWidth + 16) }));
+            }
+            if (e.key === "ArrowRight") {
+              e.preventDefault();
+              setLayout((prev) => ({ ...prev, watchWidth: clampWatchWidth(prev.watchWidth - 16) }));
+            }
+          }}
+        />
         <LedgerWatch
           active={symbol}
           open={watchShown}
@@ -723,17 +856,79 @@ export function LedgerTerminal() {
         </div>
       ) : null}
       <span className="lt-sr" data-hist={hist} hidden />
+      <LedgerImportDialog
+        open={importOpen}
+        symbol={symbol}
+        drawings={layout.drawings}
+        onClose={() => setImportOpen(false)}
+        onCommit={(next, symbols) => {
+          setLayout((prev) => ({ ...prev, drawings: next }));
+          for (const item of symbols) {
+            const current = useKosh.getState().watch;
+            if (item && !isWatched(item, current)) useKosh.getState().toggleWatch(item);
+          }
+        }}
+        onRollback={(restored) => setLayout((prev) => ({ ...prev, drawings: restored }))}
+      />
     </div>
   );
 }
 
-function Panel({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+function Tip({ text, children }: { text: string; children: ReactElement }) {
   return (
+    <Tooltip content={<span>{text}</span>}>
+      <span className="lt-tip">{children}</span>
+    </Tooltip>
+  );
+}
+
+function AnchoredMenu({
+  open,
+  anchor,
+  label,
+  wide,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  anchor: DOMRect | null;
+  label: string;
+  wide?: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!open || !anchor || !node) return;
+    const rect = node.getBoundingClientRect();
+    const placed = placeMenu(
+      { left: anchor.left, right: anchor.right, top: anchor.top, bottom: anchor.bottom },
+      { width: window.innerWidth, height: window.innerHeight },
+      { width: rect.width || (wide ? 340 : 260), height: rect.height || 180 },
+    );
+    setPos((prev) => (prev && prev.left === placed.left && prev.top === placed.top ? prev : { left: placed.left, top: placed.top }));
+  }, [open, anchor, wide]);
+  if (!open || !anchor || typeof document === "undefined") return null;
+  const guess = placeMenu(
+    { left: anchor.left, right: anchor.right, top: anchor.top, bottom: anchor.bottom },
+    { width: window.innerWidth, height: window.innerHeight },
+    { width: wide ? 340 : 260, height: 180 },
+  );
+  return createPortal(
     <>
-      <button type="button" aria-label="Close menu" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 24, background: "transparent", border: 0 }} />
-      <div className="lt-pop" style={{ position: "fixed", top: 92, right: 12, zIndex: 26 }}>
+      <button type="button" className="lt-menu-back" aria-label="Close menu" onClick={onClose} />
+      <div
+        ref={ref}
+        className={wide ? "lt-pop lt-pop-wide" : "lt-pop"}
+        role="menu"
+        aria-label={label}
+        style={{ left: pos?.left ?? guess.left, top: pos?.top ?? guess.top }}
+      >
         {children}
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

@@ -30,14 +30,21 @@ function Markets() {
   const layout = typeof document === "undefined" ? hooked : readLayout();
   if (pathname.startsWith("/markets/")) return <Outlet />;
   const terminal = view !== "overview";
-  if (terminal && layout === "ledger") return <LedgerTerminal />;
+  if (terminal && layout === "ledger") return <LedgerTerminal host="overlay" />;
   return (
     <AppShell full={terminal}>
       {terminal ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <MarketsSwitch view="terminal" />
-          <MarketsDesk />
-        </div>
+        layout === "classic" ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <MarketsSwitch view="terminal" />
+            <LedgerTerminal host="embed" />
+          </div>
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <MarketsSwitch view="terminal" />
+            <MarketsDesk />
+          </div>
+        )
       ) : (
         <>
           <MarketsSwitch view="overview" />

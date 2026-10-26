@@ -1,4 +1,5 @@
 import { clampRange, intervalSpec, type LedgerChartType, type LedgerRangeId } from "./ledger-spec.ts";
+import { clampWatchWidth } from "./ledger-chrome.ts";
 
 export const LEDGER_LAYOUT_KEY = "kosh-ledger-terminal-v1";
 
@@ -40,6 +41,8 @@ export type LedgerLayout = {
   indicators: LedgerInd[];
   drawings: Record<string, LedgerDraw[]>;
   drawingsHidden: boolean;
+  /** Watchlist column width in pixels. Older saves omit this and keep 286. */
+  watchWidth: number;
 };
 
 const COLORS = /^#[0-9a-fA-F]{6}$/;
@@ -60,6 +63,7 @@ export function defaultLedgerLayout(): LedgerLayout {
     indicators: [{ id: "volume", kind: "volume", period: 0, hidden: false, color: "#7f8ea3" }],
     drawings: {},
     drawingsHidden: false,
+    watchWidth: 286,
   };
 }
 
@@ -123,6 +127,7 @@ export function sanitizeLayout(input: unknown): { layout: LedgerLayout; recovere
       indicators: indicators.length ? (indicators as LedgerInd[]) : base.indicators,
       drawings,
       drawingsHidden: row.drawingsHidden === true,
+      watchWidth: clampWatchWidth(typeof row.watchWidth === "number" ? row.watchWidth : 286),
     },
     recovered,
   };
