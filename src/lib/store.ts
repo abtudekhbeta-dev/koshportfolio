@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Holding, Portfolio, JournalEntry, TradeLine, Fundamentals } from "@/lib/kosh/types";
+import type { Holding, Portfolio, JournalEntry, TradeLine, Fundamentals, ImportRecord } from "@/lib/kosh/types";
 import { applyHoldingPatch, fillHoldings, mergeHoldings, mergeTradeLines, sanitizeHoldings, sanitizeTrades, upsertHoldings, type FillOpts } from "@/lib/kosh/parse";
 import { samplePortfolio, SAMPLE_TRADES } from "@/lib/kosh/sample";
 import type { ScreenFilter, SkillRead } from "@/lib/kosh/screens";
@@ -262,6 +262,8 @@ type KoshState = {
   improveRun: ImproveRun | null;
   qualitySeed: string[];
   tourDone: boolean;
+  /** null means every current portfolio is in the combined total. */
+  combineIds: string[] | null;
   chartPrefs: ChartPrefs;
   navPrefs: NavPrefs;
   watchSorts: Record<string, { key: "last" | "chg" | "chgPct"; dir: "asc" | "desc" }>;
@@ -281,7 +283,7 @@ type KoshState = {
   setTheme: (t: ThemeId) => void;
   addPortfolio: (name: string, holdings?: Holding[], bench?: string, trades?: TradeLine[]) => string;
   renamePortfolio: (id: string, name: string) => void;
-  duplicatePortfolio: (id: string) => string | null;
+  duplicatePortfolio: (id: string, name?: string) => string | null;
   deletePortfolio: (id: string) => void;
   setBench: (id: string, bench: string) => void;
   setIncludeCommodities: (id: string, on: boolean) => void;
@@ -293,6 +295,7 @@ type KoshState = {
   replaceHoldings: (id: string, holdings: Holding[]) => void;
   setTrades: (id: string, trades: TradeLine[]) => void;
   mergeTrades: (id: string, trades: TradeLine[]) => void;
+  recordImport: (id: string, rec: ImportRecord) => void;
   rememberPathFacts: (id: string, facts: import("@/lib/kosh/types").PathPriceFact[]) => void;
   setDeepFund: (symbol: string, snap: DeepFundSnap) => void;
   setDeepFunds: (rows: Record<string, DeepFundSnap>) => void;
@@ -335,6 +338,7 @@ type KoshState = {
   setImproveRun: (run: ImproveRun | null) => void;
   setQualitySeed: (names: string[]) => void;
   setTourDone: (on: boolean) => void;
+  setCombineIds: (ids: string[] | null) => void;
   patchChartPrefs: (p: Omit<Partial<ChartPrefs>, "inds"> & { inds?: Partial<IndFlags> }) => void;
   patchNavPrefs: (p: Partial<NavPrefs>) => void;
   setWatchSort: (id: string, sort: { key: "last" | "chg" | "chgPct"; dir: "asc" | "desc" } | null) => void;
@@ -377,6 +381,7 @@ export const useKosh = create<KoshState>()(
       improveRun: null,
       qualitySeed: [],
       tourDone: false,
+      combineIds: null,
       chartPrefs: { ...DEFAULT_CHART_PREFS, inds: { ...DEFAULT_INDS } },
       navPrefs: { ...DEFAULT_NAV_PREFS },
       watchSorts: {},
@@ -420,10 +425,33 @@ export const useKosh = create<KoshState>()(
       },
       renamePortfolio: (id, name) =>
         set({ portfolios: get().portfolios.map((p) => (p.id === id ? { ...p, name } : p)) }),
-      duplicatePortfolio: (id) => {
+      duplicatePortfolio: (id, name) => {
         const p = get().portfolios.find((x) => x.id === id);
         if (!p) return null;
-        return get().addPortfolio(`${p.name} copy`, p.holdings, p.bench, p.trades);
+        const wanted = (name || `${p.name} Copy`).trim();
+        if (!wanted) return null;
+        const taken = get().portfolios.some((x) => x.name.trim().toLowerCase() === wanted.toLowerCase());
+        if (taken) return null;
+        const newId = uid();
+        const holdings = sanitizeHoldings(
+          p.holdings.map((h) => ({ ...h, lots: h.lots?.map((lot) => ({ ...lot })) })),
+          bookFrom(get()),
+        );
+        set({
+          portfolios: [
+            {
+              id: newId,
+              name: wanted,
+              holdings,
+              bench: p.bench,
+              includeCommodities: p.includeCommodities,
+              trades: [],
+              updatedAt: Date.now(),
+            },
+            ...get().portfolios,
+          ],
+        });
+        return newId;
       },
       deletePortfolio: (id) => {
         const at = Date.now();
@@ -480,8 +508,9 @@ export const useKosh = create<KoshState>()(
         });
       },
       replaceHoldings: (id, holdings) => {
+        const clean = sanitizeHoldings(holdings || [], bookFrom(get()));
         const prev = get().portfolios.find((p) => p.id === id);
-        const nextSyms = new Set((holdings || []).map((h) => h.symbol));
+        const nextSyms = new Set(clean.map((h) => h.symbol));
         const at = Date.now();
         let drops = get().cloudDrops;
         for (const h of prev?.holdings || []) {
@@ -489,7 +518,7 @@ export const useKosh = create<KoshState>()(
         }
         set({
           cloudDrops: drops,
-          portfolios: get().portfolios.map((p) => (p.id === id ? { ...p, holdings, updatedAt: at } : p)),
+          portfolios: get().portfolios.map((p) => (p.id === id ? { ...p, holdings: clean, updatedAt: at } : p)),
         });
       },
       setTrades: (id, trades) => {
@@ -521,6 +550,12 @@ export const useKosh = create<KoshState>()(
         });
         saveBook(id, next);
       },
+      recordImport: (id, rec) =>
+        set({
+          portfolios: get().portfolios.map((p) =>
+            p.id === id ? { ...p, imports: [rec, ...(p.imports || [])].slice(0, 40) } : p,
+          ),
+        }),
       rememberPathFacts: (id, facts) => {
         if (!id || !facts?.length) return;
         set({
@@ -746,6 +781,7 @@ export const useKosh = create<KoshState>()(
       setQualitySeed: (names) =>
         set({ qualitySeed: names.map(bareSymbol).filter(Boolean).slice(0, 6) }),
       setTourDone: (tourDone) => set({ tourDone }),
+      setCombineIds: (combineIds) => set({ combineIds }),
       patchChartPrefs: (p) =>
         set((s) => ({
           chartPrefs: {
@@ -872,6 +908,7 @@ export const useKosh = create<KoshState>()(
           improveRun: null,
           qualitySeed: p.qualitySeed || [],
           tourDone: Boolean(p.tourDone),
+          combineIds: Array.isArray(p.combineIds) ? p.combineIds.filter((id) => typeof id === "string").slice(0, 80) : null,
           chartPrefs: (() => {
             const old = (p.chartPrefs || {}) as Partial<ChartPrefs>;
             const migrated = (old.rev ?? 0) >= 3;

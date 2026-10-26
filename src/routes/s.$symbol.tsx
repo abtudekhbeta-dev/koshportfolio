@@ -36,7 +36,7 @@ import { seedCompletion } from "@/lib/kosh/complete";
 import { buildValuationModels, earningsQualityRead } from "@/lib/kosh/valuation";
 import { buildCoverage, peDiscrepancy } from "@/lib/kosh/coverage";
 import { bareSymbol, isWatched, useKosh, type AlertKind } from "@/lib/store";
-import { useAppLayout } from "@/lib/layout-mode";
+
 import { cn } from "@/lib/utils";
 import type { ChartRange, DealEvent, OhlcPack } from "@/lib/kosh/types";
 
@@ -94,7 +94,7 @@ function StockBody({
   const alerts = useKosh((s) => s.alerts);
   const removeAlert = useKosh((s) => s.removeAlert);
   const watched = isWatched(symbol, watch);
-  const intel = useAppLayout() === "intelligence";
+  const intel = false;
   const name = pack.name || universeName(symbol);
   const bars = pack.bars;
   const px = pack.price;

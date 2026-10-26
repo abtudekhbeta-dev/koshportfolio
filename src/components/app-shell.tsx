@@ -16,6 +16,7 @@ import { StudioShell } from "@/components/studio-shell";
 import { SyncChip } from "@/components/sync-chip";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { MarketsMenu } from "@/components/markets-menu";
 import { useAppLayout } from "@/lib/layout-mode";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -101,6 +102,7 @@ function ClassicShell({ children, wide, full }: { children: ReactNode; wide?: bo
             <BrandLink to="/" />
             <nav className="hidden items-center gap-1 md:flex">
               {MAIN.map((n) => {
+                if (n.to === "/markets") return <MarketsMenu key="markets" />;
                 const on = navOn(n.to, pathname);
                 return (
                   <Link
@@ -172,19 +174,23 @@ function ClassicShell({ children, wide, full }: { children: ReactNode; wide?: bo
       </main>
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
         <div className="flex items-stretch">
-          {PRIMARY.map((n) => (
-            <Link
-              key={n.to}
-              to={n.to}
-              className={cn(
-                "grid min-h-14 flex-1 place-items-center px-0.5 text-center text-[12px] font-medium leading-tight",
-                navOn(n.to, pathname) ? "bg-surface text-fg" : "text-muted",
-                (n.to === "/markets" || n.to === "/screen" || n.to === "/app") && "font-semibold",
-              )}
-            >
-              {n.label}
-            </Link>
-          ))}
+          {PRIMARY.map((n) =>
+            n.to === "/markets" ? (
+              <MarketsMenu key="markets" placement="up" tone="tab" />
+            ) : (
+              <Link
+                key={n.to}
+                to={n.to}
+                className={cn(
+                  "grid min-h-14 flex-1 place-items-center px-0.5 text-center text-[12px] font-medium leading-tight",
+                  navOn(n.to, pathname) ? "bg-surface text-fg" : "text-muted",
+                  (n.to === "/screen" || n.to === "/app") && "font-semibold",
+                )}
+              >
+                {n.label}
+              </Link>
+            ),
+          )}
         </div>
       </nav>
     </div>

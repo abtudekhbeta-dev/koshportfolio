@@ -32,14 +32,30 @@ function FlowChart({ rows }: { rows: FiidiiRow[] }) {
 }
 
 export function FlowsCard() {
-  const q = useQuery({ queryKey: ["macro"], queryFn: apiMacro, staleTime: 20 * 60_000 });
+  const q = useQuery({ queryKey: ["macro"], queryFn: apiMacro, staleTime: 60_000 });
   const [period, setPeriod] = useState<FlowPeriod>("daily");
+  const [refreshing, setRefreshing] = useState(false);
   const rows = q.data?.fiidii || [];
   const latest = rows[0];
+  const flow = q.data?.flow;
   const buckets = useMemo(() => (period === "daily" ? [] : bucketFlows(rows, period)), [rows, period]);
   const shown = period === "daily" ? null : buckets[0];
   const fiiGross = latest ? grossOk(latest.fiiBuy, latest.fiiSell, latest.fiiNet) : false;
   const diiGross = latest ? grossOk(latest.diiBuy, latest.diiSell, latest.diiNet) : false;
+
+  async function refresh() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/flows-refresh", { method: "POST" });
+      if (!res.ok) throw new Error("refresh");
+      await q.refetch();
+    } catch {
+      /* the last stored rows stay on screen */
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   return (
     <section className="rounded-lg bg-surface p-3 shadow-[var(--shadow-border)]" aria-label="FII and DII cash flows">
@@ -47,11 +63,16 @@ export function FlowsCard() {
         <div>
           <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">FII / FPI and DII</h2>
           <p className="mt-1 max-w-2xl text-[11px] text-subtle">
-            Equity cash-market nets only. Not debt, mutual funds, or a confirmed NSDL/CDSL print.
-            {q.data?.asOf ? ` File time ${q.data.asOf}.` : ""}
+            Equity cash-market nets only. Not debt, mutual funds, or derivatives.
+            {flow?.latest ? ` Session ${flow.latest}.` : ""}
+            {flow?.refreshedAt ? ` Refreshed ${flow.refreshedAt.slice(0, 16).replace("T", " ")} UTC.` : ""}
+            {flow?.status ? ` Status ${flow.status}.` : ""}
           </p>
         </div>
-        <div className="flex rounded-sm bg-bg p-0.5 shadow-[var(--shadow-border)]" role="tablist" aria-label="Flow period">
+        <div className="flex items-center gap-2">
+          <button type="button" className="h-7 rounded-sm border border-border px-2 text-[11px] text-muted disabled:opacity-50" disabled={refreshing} onClick={() => void refresh()}>
+            {refreshing ? "Refreshing…" : "Refresh FII/DII"}
+          </button>
           {(["daily", "monthly", "yearly"] as const).map((id) => (
             <button
               key={id}
@@ -71,7 +92,7 @@ export function FlowsCard() {
         <p className="mt-3 text-[13px] text-muted">Loading the flow file…</p>
       ) : !rows.length ? (
         <p className="mt-3 text-[13px] text-muted">
-          Data temporarily unavailable. The third-party cash-market file did not return rows, and NSE / NSDL / CDSL are not connected here. No figures are filled in.
+          Data temporarily unavailable. The cash file did not return rows. No figures are filled in.
         </p>
       ) : period === "daily" && latest ? (
         <div className="mt-3 grid gap-2 sm:grid-cols-3">
@@ -99,6 +120,7 @@ export function FlowsCard() {
         <p className="mt-3 text-[13px] text-muted">No dated rows could be grouped for this period.</p>
       )}
 
+      {flow?.warning ? <p className="mt-2 text-[12px] text-warn">{flow.warning}</p> : null}
       {period === "daily" && latest ? (
         <p className="mt-2 text-[11px] text-subtle">
           {fiiGross
@@ -125,7 +147,7 @@ export function FlowsCard() {
         )}
       </div>
       <p className="mt-2 text-[10px] text-subtle">
-        Source: third-party cash file when it answers. Provisional versus confirmed depository status is not labeled because this feed does not say which it is.
+        Source: {flow?.source || "cash archive"}{flow?.sourceUrl ? ` · ${flow.sourceUrl}` : ""}. A missing day is left missing. Not a confirmed NSDL print.
       </p>
     </section>
   );

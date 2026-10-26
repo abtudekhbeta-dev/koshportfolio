@@ -1,64 +1,98 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { classifyIncoming, parseHoldingsFiles, parseVoice, type FillOpts } from "@/lib/kosh/parse";
+import { IngestSuggestions } from "@/components/ingest-suggestions";
+import { classifyIncoming, parseHoldingsFiles, parseVoice, type FillOpts, type TradeParseAudit } from "@/lib/kosh/parse";
 import { enrichHoldings } from "@/lib/kosh/enrich";
 import { downloadHoldingsExcel } from "@/lib/kosh/export";
 import { displayName, isIsin } from "@/lib/kosh/names";
 import { apiCloseOn, apiQuotes, apiSearch } from "@/lib/kosh/api";
 import { deriveMetal, formatGrams, METALS, type MetalId } from "@/lib/kosh/commodities";
+import { requestIngestReview } from "@/lib/kosh/ingest-client";
+import {
+  aiStatusLabel,
+  applyDate,
+  applySymbol,
+  holdingsDiff,
+  makeImportRecord,
+  reviewPayload,
+  type Proposal,
+} from "@/lib/kosh/ingest-review";
+import { assessImport } from "@/lib/kosh/import-safety";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import type { Holding, TradeLine } from "@/lib/kosh/types";
+import type { AiFailureClass, Holding, ImportAiStatus, TradeLine } from "@/lib/kosh/types";
 
 type Tab = "file" | "manual" | "metals" | "voice";
 
 const NONE: Holding[] = [];
 
+type CommitMeta = {
+  filename?: string;
+  rowsRead: number;
+  ignored: number;
+  duplicates: number;
+  ambiguous: number;
+  missingPrices: number;
+  unresolved: number;
+  aiStatus: ImportAiStatus;
+  aiClass?: AiFailureClass;
+};
+
 export function AddHoldings({
   portfolioId,
   trigger,
+  intent = "add",
 }: {
   portfolioId?: string;
   trigger: React.ReactNode;
+  intent?: "add" | "update";
 }) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent title={portfolioId ? "Add holdings" : "New portfolio"}>
-        <AddForm
-          portfolioId={portfolioId}
-          onDone={() => setOpen(false)}
-        />
+      <DialogContent title={!portfolioId ? "New portfolio" : intent === "update" ? "Update holdings" : "Add holdings"}>
+        <AddForm portfolioId={portfolioId} intent={intent} onDone={() => setOpen(false)} />
       </DialogContent>
     </Dialog>
   );
 }
 
-function AddForm({ portfolioId, onDone }: { portfolioId?: string; onDone: () => void }) {
+function AddForm({ portfolioId, intent, onDone }: { portfolioId?: string; intent: "add" | "update"; onDone: () => void }) {
   const [tab, setTab] = useState<Tab>("file");
   const [name, setName] = useState("Main");
   const addPortfolio = useKosh((s) => s.addPortfolio);
   const addHoldings = useKosh((s) => s.addHoldings);
   const fillHoldingsStore = useKosh((s) => s.fillHoldings);
   const upsertHoldingsStore = useKosh((s) => s.upsertHoldings);
+  const replaceHoldings = useKosh((s) => s.replaceHoldings);
   const mergeTradesStore = useKosh((s) => s.mergeTrades);
+  const recordImport = useKosh((s) => s.recordImport);
   const held = useKosh((s) =>
     portfolioId ? s.portfolios.find((p) => p.id === portfolioId)?.holdings : undefined,
   );
   const existing = held ?? NONE;
   const navigate = useNavigate();
 
-  function commit(incoming: Holding[], pname?: string, mode: "add" | "fill" | "upsert" = "add", opts?: FillOpts, trades?: TradeLine[]) {
+  function commit(
+    incoming: Holding[],
+    pname?: string,
+    mode: "add" | "fill" | "upsert" | "replace" = "add",
+    opts?: FillOpts,
+    trades?: TradeLine[],
+    meta?: CommitMeta,
+  ) {
     if (!incoming.length) {
       toast.error("No holdings found");
       return;
     }
+    let savedId = portfolioId;
+    let kind: "holdings" | "holdings-update" | "holdings-replace" = "holdings";
     if (portfolioId) {
       if (mode === "fill") {
         const { matched, fresh } = classifyIncoming(existing, incoming);
@@ -72,8 +106,33 @@ function AddForm({ portfolioId, onDone }: { portfolioId?: string; onDone: () => 
             : `Filled ${bits.join(" & ") || "data"} on ${matched.length} matching name${matched.length === 1 ? "" : "s"} — nothing new added`,
         );
       } else if (mode === "upsert") {
+        const diff = holdingsDiff(existing, incoming);
+        if (diff.ambiguous.length) {
+          toast.error("Two rows in the file point at the same holding. Fix the file before updating.");
+          return;
+        }
+        if (diff.changed.some((c) => c.large)) {
+          const n = diff.changed.filter((c) => c.large).length;
+          if (!confirm(`${n} quantit${n === 1 ? "y changes" : "ies change"} by more than half. Names missing from the file stay. Update anyway?`)) return;
+        }
         upsertHoldingsStore(portfolioId, incoming);
-        toast.success(`Updated ${incoming.length} line${incoming.length === 1 ? "" : "s"} from the file`);
+        kind = "holdings-update";
+        toast.success(
+          `Updated ${incoming.length} line${incoming.length === 1 ? "" : "s"}. ${diff.missingFromFile.length} name${diff.missingFromFile.length === 1 ? "" : "s"} not in the file stay.`,
+        );
+      } else if (mode === "replace") {
+        const missing = holdingsDiff(existing, incoming).missingFromFile;
+        if (
+          !confirm(
+            missing.length
+              ? `Replace this snapshot? ${missing.length} name${missing.length === 1 ? "" : "s"} not in the file will be removed. That is not recorded as a sale.`
+              : "Replace this snapshot with the file?",
+          )
+        )
+          return;
+        replaceHoldings(portfolioId, incoming);
+        kind = "holdings-replace";
+        toast.success("Holdings snapshot replaced.");
       } else {
         addHoldings(portfolioId, incoming);
         toast.success(`Added ${incoming.length} line${incoming.length === 1 ? "" : "s"}`);
@@ -83,9 +142,22 @@ function AddForm({ portfolioId, onDone }: { portfolioId?: string; onDone: () => 
         toast.message(`Kept ${trades.length} buy/sell line${trades.length === 1 ? "" : "s"} for your path`);
       }
     } else {
-      const id = addPortfolio(pname || name || "Main", incoming, "nifty", trades);
+      savedId = addPortfolio(pname || name || "Main", incoming, "nifty", trades);
       toast.success("Portfolio created");
-      void navigate({ to: "/p/$id", params: { id } });
+      void navigate({ to: "/p/$id", params: { id: savedId } });
+    }
+    if (savedId && meta) {
+      recordImport(
+        savedId,
+        makeImportRecord({
+          ...meta,
+          kind,
+          accepted: incoming.length,
+          applied: incoming.length,
+          fallback: meta.aiStatus !== "ok",
+          note: meta.aiStatus === "ok" ? undefined : aiStatusLabel(meta.aiStatus, meta.aiClass),
+        }),
+      );
     }
     onDone();
   }
@@ -116,9 +188,11 @@ function AddForm({ portfolioId, onDone }: { portfolioId?: string; onDone: () => 
       {tab === "file" ? (
         <FilePane
           existing={portfolioId ? existing : undefined}
-          onCommit={(h, trades) => commit(h, "Imported", "add", undefined, trades)}
-          onFill={portfolioId ? (h, opts, trades) => commit(h, undefined, "fill", opts, trades) : undefined}
-          onUpsert={portfolioId ? (h, trades) => commit(h, undefined, "upsert", undefined, trades) : undefined}
+          preferUpdate={intent === "update"}
+          onCommit={(h, trades, meta) => commit(h, "Imported", "add", undefined, trades, meta)}
+          onFill={portfolioId ? (h, opts, trades, meta) => commit(h, undefined, "fill", opts, trades, meta) : undefined}
+          onUpsert={portfolioId ? (h, trades, meta) => commit(h, undefined, "upsert", undefined, trades, meta) : undefined}
+          onReplace={portfolioId ? (h, meta) => commit(h, undefined, "replace", undefined, undefined, meta) : undefined}
         />
       ) : null}
       {tab === "manual" ? <ManualPane onCommit={(h) => commit(h)} /> : null}
@@ -132,33 +206,123 @@ function FilePane({
   onCommit,
   onFill,
   onUpsert,
+  onReplace,
   existing,
+  preferUpdate,
 }: {
-  onCommit: (h: Holding[], trades?: TradeLine[]) => void;
-  onFill?: (h: Holding[], opts: FillOpts, trades?: TradeLine[]) => void;
-  onUpsert?: (h: Holding[], trades?: TradeLine[]) => void;
+  onCommit: (h: Holding[], trades?: TradeLine[], meta?: CommitMeta) => void;
+  onFill?: (h: Holding[], opts: FillOpts, trades?: TradeLine[], meta?: CommitMeta) => void;
+  onUpsert?: (h: Holding[], trades?: TradeLine[], meta?: CommitMeta) => void;
+  onReplace?: (h: Holding[], meta?: CommitMeta) => void;
   existing?: Holding[];
+  preferUpdate?: boolean;
 }) {
   const [msg, setMsg] = useState(
-    "CSV or Excel from your broker. Broker files can contain sensitive identifiers. The raw file stays in the browser and is not sent to AI.",
+    "CSV or Excel from your broker. The full file stays on this device. AI, when it is available, sees only redacted headers and a short label sample. Quantities and prices stay with the parser.",
   );
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<Holding[] | null>(null);
   const [previewTrades, setPreviewTrades] = useState<TradeLine[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
+  const [filename, setFilename] = useState<string | undefined>();
+  const [audit, setAudit] = useState<TradeParseAudit | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [ai, setAi] = useState<{ status: ImportAiStatus; aiClass?: AiFailureClass; proposals: Proposal[]; sources: string[] }>({
+    status: "not-run",
+    proposals: [],
+    sources: [],
+  });
+  const gen = useRef(0);
+  const genAttempt = useRef("");
+
+  function metaNow(): CommitMeta {
+    return {
+      filename,
+      rowsRead: audit?.rowsRead || preview?.length || 0,
+      ignored: audit?.ignored || 0,
+      duplicates: audit?.duplicates || 0,
+      ambiguous: (audit?.ambiguous || 0) + (existing && preview ? holdingsDiff(existing, preview).ambiguous.length : 0),
+      missingPrices: audit?.missingPrices || 0,
+      unresolved: audit?.unresolved || 0,
+      aiStatus: ai.status,
+      aiClass: ai.aiClass,
+    };
+  }
+
+  async function headerLine(file: File) {
+    const name = file.name.toLowerCase();
+    if (!/\.(csv|tsv|txt)$/.test(name)) return [] as string[];
+    try {
+      const text = (await file.slice(0, 4000).text()).replace(/^\uFEFF/, "");
+      const line = text.split(/\r?\n/).find((l) => l.trim()) || "";
+      return line.split(/[,;\t|]/).slice(0, 12);
+    } catch {
+      return [];
+    }
+  }
+
+  async function reviewLabels(file: File | undefined, rows: Holding[], attempt: string) {
+    const ticket = ++gen.current;
+    setAiBusy(true);
+    setAi({ status: "not-run", proposals: [], sources: [] });
+    try {
+      const headers = file ? await headerLine(file) : [];
+      const payload = reviewPayload({ filename: file?.name, headers, holdings: rows.slice(0, 12) });
+      const got = await requestIngestReview(payload);
+      if (ticket !== gen.current || attempt !== genAttempt.current) return;
+      setAi({
+        status: got.status === "ok" ? "ok" : got.status === "unconfigured" ? "unconfigured" : "failed",
+        aiClass: got.aiClass,
+        proposals: got.proposals || [],
+        sources: payload.sources,
+      });
+    } catch {
+      if (ticket !== gen.current || attempt !== genAttempt.current) return;
+      setAi({ status: "failed", aiClass: "network", proposals: [], sources: [] });
+    } finally {
+      if (ticket === gen.current) setAiBusy(false);
+    }
+  }
+
+  function accept(p: Proposal) {
+    const source = ai.sources[p.row] || "";
+    setPreview((rows) =>
+      (rows || []).map((h, i) => {
+        if (i !== p.row) return h;
+        if (p.kind === "symbol") return { ...h, symbol: applySymbol(h.symbol, p, source) };
+        if (p.kind === "date") return { ...h, date: applyDate(h.date, p, source) };
+        return h;
+      }),
+    );
+  }
 
   async function ingest(files: FileList | File[]) {
     const list = [...files];
     if (!list.length) return;
+    gen.current += 1;
+    genAttempt.current = "";
+    setAi({ status: "not-run", proposals: [], sources: [] });
+    setAiBusy(false);
     setBusy(true);
     setMsg("Reading " + list.length + " file(s)…");
     setErrors([]);
+    setFilename(list[0]?.name);
     try {
-      const { holdings: all, trades, errors: fails } = await parseHoldingsFiles(list);
-      setErrors(fails);
+      const { holdings: all, trades, errors: fails, audit: got } = await parseHoldingsFiles(list);
+      setAudit(got);
+      const report = assessImport({
+        rowsRead: got?.rowsRead || 0,
+        accepted: got?.accepted || all.length,
+        ignored: got?.ignored || 0,
+        holdings: all.length,
+        trades: (trades || []).length,
+        errors: fails,
+      });
+      setErrors([...fails, ...report.warnings.filter((line) => !fails.includes(line))]);
       if (!all.length) {
         setPreview(null);
         setPreviewTrades([]);
+        setAi({ status: "not-run", proposals: [], sources: [] });
         setMsg("No holdings found. Need a ticker (or company name) and a quantity column. Title rows are fine.");
         return;
       }
@@ -172,15 +336,24 @@ function FilePane({
       setPreview(resolved);
       setPreviewTrades(trades || []);
       const isins = resolved.filter((h) => isIsin(h.symbol)).length;
+      const needs = (got?.ambiguous || 0) + (got?.unresolved || 0);
       setMsg(
         `Ready · ${resolved.length} stock${resolved.length === 1 ? "" : "s"}` +
+          (got?.rowsRead ? ` · read ${got.rowsRead.toLocaleString("en-IN")}` : "") +
+          (needs ? ` · ${needs} need review` : "") +
           (trades?.length ? ` · ${trades.length} buy/sell line${trades.length === 1 ? "" : "s"} for your path` : "") +
           (isins ? ` · ${isins} still need a name match` : ""),
       );
+      const attempt = `hold-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      genAttempt.current = attempt;
+      void reviewLabels(list[0], resolved, attempt);
     } finally {
       setBusy(false);
     }
   }
+
+  const diff = existing && preview ? holdingsDiff(existing, preview) : null;
+  const shown = preview ? preview.slice(0, 80) : [];
 
   return (
     <div>
@@ -206,29 +379,37 @@ function FilePane({
         />
         Drop a holdings export or a buy/sell trade book
         <div className="mt-1 text-[12px] text-subtle">
-          Click to pick · CSV or Excel. Read on this device — your original broker file is not uploaded to Kosh.
-          Trade books are netted (partial exits kept, sold names dropped). Dated buy/sell lines stay on Path only.
-          This overview chart is the current mix and does not draw that path. Fill never adds extras. Update from file
-          sets quantity on matches without doubling.
+          Click to pick · CSV or Excel. Read on this device. Fill never adds extras. Update holdings changes matches and
+          keeps names that are missing from the file. Replace snapshot is the only action that removes them.
         </div>
       </label>
       <p className="mt-2 text-[12px] text-subtle">{busy ? "Reading…" : msg}</p>
       {errors.length ? (
         <ul className="mt-2 grid gap-1 text-[12px] text-down">
-          {errors.map((e) => (
+          {errors.slice(0, 40).map((e) => (
             <li key={e}>{e}</li>
           ))}
         </ul>
       ) : null}
       {preview?.length ? (
+        <IngestSuggestions busy={aiBusy} status={ai.status} aiClass={ai.aiClass} proposals={ai.proposals} onAccept={accept} />
+      ) : null}
+      {preview?.length ? (
         <div className="mt-3">
+          {diff ? (
+            <p className="text-[12px] text-muted">
+              {diff.fresh.length} new · {diff.changed.length} changed · {diff.unchanged} unchanged · {diff.missingFromFile.length} not
+              in the file (kept, not sold)
+              {diff.ambiguous.length ? ` · ${diff.ambiguous.length} ambiguous` : ""}
+            </p>
+          ) : null}
           <div className="max-h-[40dvh] overflow-y-auto rounded-sm bg-bg px-3 py-2 text-[12px] shadow-[var(--shadow-border)] sm:max-h-56">
             <div className="grid grid-cols-[1fr_56px_72px] gap-2 pb-1.5 font-medium tracking-[0.06em] text-subtle uppercase sm:grid-cols-[1fr_72px_88px]">
               <span>Stock</span>
               <span className="text-right">Qty</span>
               <span className="text-right">Avg cost</span>
             </div>
-            {preview.map((h) => (
+            {shown.map((h) => (
               <div key={h.symbol + h.name} className="grid grid-cols-[1fr_56px_72px] gap-2 border-t border-border/60 py-1.5 sm:grid-cols-[1fr_72px_88px]">
                 <span className="min-w-0">
                   <span className="block truncate text-fg">{h.name}</span>
@@ -244,6 +425,9 @@ function FilePane({
               </div>
             ))}
           </div>
+          {preview.length > shown.length ? (
+            <p className="mt-2 text-[12px] text-subtle">Showing {shown.length} of {preview.length}. The rest are included when you save.</p>
+          ) : null}
           {preview.some((h) => !h.avg) ? (
             <p className="mt-2 text-[12px] text-warn">Some rows have no buy price — unrealised P&L for those will stay blank until you edit them.</p>
           ) : null}
@@ -252,57 +436,72 @@ function FilePane({
               {previewTrades.length} buy/sell line{previewTrades.length === 1 ? "" : "s"} in this file — kept for Path only. This mix is unchanged.
             </p>
           ) : null}
-          {existing?.length ? (
+          {existing?.length && !diff ? (
             <p className="mt-2 text-[12px] text-muted">
-              {classifyIncoming(existing, preview).matched.length} match this portfolio
-              {classifyIncoming(existing, preview).fresh.length
-                ? ` · ${classifyIncoming(existing, preview).fresh.length} not in this portfolio (sold or new)`
-                : ""}
-              . Fill never adds those extras.
+              {classifyIncoming(existing, preview).matched.length} match this portfolio. Fill never adds extras.
             </p>
           ) : null}
           <div className="sticky bottom-0 mt-3 flex flex-wrap gap-2 bg-bg-elevated pt-2">
-            {onFill && existing?.length ? (
+            {onUpsert && existing?.length ? (
+              <Button className="min-h-11 flex-1 min-w-[9rem]" onClick={() => onUpsert(preview, previewTrades, metaNow())}>
+                Update holdings
+              </Button>
+            ) : null}
+            {onFill && existing?.length && !preferUpdate ? (
               <>
                 <Button
-                  className="flex-1 min-w-[9rem]"
+                  className="min-h-11 flex-1 min-w-[9rem]"
                   variant="secondary"
-                  onClick={() => onFill(preview, { dates: true, prices: false, addNew: false }, previewTrades)}
+                  onClick={() => onFill(preview, { dates: true, prices: false, addNew: false }, previewTrades, metaNow())}
                 >
                   Fill dates
                 </Button>
                 <Button
-                  className="flex-1 min-w-[9rem]"
+                  className="min-h-11 flex-1 min-w-[9rem]"
                   variant="secondary"
-                  onClick={() => onFill(preview, { dates: false, prices: true, addNew: false }, previewTrades)}
+                  onClick={() => onFill(preview, { dates: false, prices: true, addNew: false }, previewTrades, metaNow())}
                 >
                   Fill prices
                 </Button>
-                <Button className="flex-1 min-w-[9rem]" onClick={() => onFill(preview, { dates: true, prices: true, addNew: false }, previewTrades)}>
+                <Button
+                  className="min-h-11 flex-1 min-w-[9rem]"
+                  variant="secondary"
+                  onClick={() => onFill(preview, { dates: true, prices: true, addNew: false }, previewTrades, metaNow())}
+                >
                   Fill dates & prices
                 </Button>
                 {classifyIncoming(existing, preview).fresh.length ? (
                   <Button
                     variant="secondary"
-                    className="flex-1 min-w-[9rem]"
-                    onClick={() => onFill(preview, { dates: false, prices: false, addNew: true }, previewTrades)}
+                    className="min-h-11 flex-1 min-w-[9rem]"
+                    onClick={() => onFill(preview, { dates: false, prices: false, addNew: true }, previewTrades, metaNow())}
                   >
                     Add {classifyIncoming(existing, preview).fresh.length} new
                   </Button>
                 ) : null}
               </>
-            ) : (
-              <Button className="flex-1" onClick={() => onCommit(preview, previewTrades)}>
+            ) : null}
+            {!existing?.length ? (
+              <Button className="min-h-11 flex-1" onClick={() => onCommit(preview, previewTrades, metaNow())}>
                 Add {preview.length} stock{preview.length === 1 ? "" : "s"}
               </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                className="min-h-11 flex-1 min-w-[9rem]"
+                onClick={() => onCommit(preview, previewTrades, metaNow())}
+              >
+                Add onto book
+              </Button>
             )}
-            {!onFill ? null : existing?.length ? (
-              <Button variant="ghost" className="flex-1 min-w-[9rem]" onClick={() => (onUpsert ? onUpsert(preview, previewTrades) : onCommit(preview, previewTrades))}>
-                Update from file
+            {onReplace && existing?.length ? (
+              <Button variant="ghost" className="min-h-11 flex-1 min-w-[9rem]" onClick={() => onReplace(preview, metaNow())}>
+                Replace snapshot
               </Button>
             ) : null}
             <Button
               variant="secondary"
+              className="min-h-11"
               onClick={() => {
                 try {
                   downloadHoldingsExcel("preview", preview);

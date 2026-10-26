@@ -24,16 +24,19 @@ import { Route as TradeRouteImport } from './routes/trade'
 import { Route as WatchRouteImport } from './routes/watch'
 import { Route as ApiCloseRouteImport } from './routes/api/close'
 import { Route as ApiEnrichRouteImport } from './routes/api/enrich'
+import { Route as ApiFlowsRefreshRouteImport } from './routes/api/flows-refresh'
 import { Route as ApiFundamentalsRouteImport } from './routes/api/fundamentals'
 import { Route as ApiHistoriesRouteImport } from './routes/api/histories'
 import { Route as ApiHistoryRouteImport } from './routes/api/history'
 import { Route as ApiIndexConstituentsRouteImport } from './routes/api/index-constituents'
+import { Route as ApiIngestRouteImport } from './routes/api/ingest'
 import { Route as ApiMacroRouteImport } from './routes/api/macro'
 import { Route as ApiMarketFlowsRouteImport } from './routes/api/market-flows'
 import { Route as ApiNewsRouteImport } from './routes/api/news'
 import { Route as ApiNoteRouteImport } from './routes/api/note'
 import { Route as ApiOhlcRouteImport } from './routes/api/ohlc'
 import { Route as ApiQuoteRouteImport } from './routes/api/quote'
+import { Route as ApiRrgRouteImport } from './routes/api/rrg'
 import { Route as ApiScreenBuildRouteImport } from './routes/api/screen-build'
 import { Route as ApiScreenerRouteImport } from './routes/api/screener'
 import { Route as ApiSearchRouteImport } from './routes/api/search'
@@ -42,6 +45,7 @@ import { Route as ApiSkillBoardRouteImport } from './routes/api/skill-board'
 import { Route as ApiTapeRouteImport } from './routes/api/tape'
 import { Route as ApiWikiRouteImport } from './routes/api/wiki'
 import { Route as MarketsFlowsRouteImport } from './routes/markets.flows'
+import { Route as MarketsRotationRouteImport } from './routes/markets.rotation'
 import { Route as PIdRouteImport } from './routes/p.$id'
 import { Route as SSymbolRouteImport } from './routes/s.$symbol'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -129,6 +133,11 @@ const ApiEnrichRoute = ApiEnrichRouteImport.update({
   path: '/api/enrich',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFlowsRefreshRoute = ApiFlowsRefreshRouteImport.update({
+  id: '/api/flows-refresh',
+  path: '/api/flows-refresh',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiFundamentalsRoute = ApiFundamentalsRouteImport.update({
   id: '/api/fundamentals',
   path: '/api/fundamentals',
@@ -147,6 +156,11 @@ const ApiHistoryRoute = ApiHistoryRouteImport.update({
 const ApiIndexConstituentsRoute = ApiIndexConstituentsRouteImport.update({
   id: '/api/index-constituents',
   path: '/api/index-constituents',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiIngestRoute = ApiIngestRouteImport.update({
+  id: '/api/ingest',
+  path: '/api/ingest',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMacroRoute = ApiMacroRouteImport.update({
@@ -177,6 +191,11 @@ const ApiOhlcRoute = ApiOhlcRouteImport.update({
 const ApiQuoteRoute = ApiQuoteRouteImport.update({
   id: '/api/quote',
   path: '/api/quote',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRrgRoute = ApiRrgRouteImport.update({
+  id: '/api/rrg',
+  path: '/api/rrg',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiScreenBuildRoute = ApiScreenBuildRouteImport.update({
@@ -217,6 +236,11 @@ const ApiWikiRoute = ApiWikiRouteImport.update({
 const MarketsFlowsRoute = MarketsFlowsRouteImport.update({
   id: '/flows',
   path: '/flows',
+  getParentRoute: () => MarketsRoute,
+} as any)
+const MarketsRotationRoute = MarketsRotationRouteImport.update({
+  id: '/rotation',
+  path: '/rotation',
   getParentRoute: () => MarketsRoute,
 } as any)
 const PIdRoute = PIdRouteImport.update({
@@ -291,16 +315,19 @@ export interface FileRoutesByFullPath {
   '/watch': typeof WatchRoute
   '/api/close': typeof ApiCloseRoute
   '/api/enrich': typeof ApiEnrichRoute
+  '/api/flows-refresh': typeof ApiFlowsRefreshRoute
   '/api/fundamentals': typeof ApiFundamentalsRoute
   '/api/histories': typeof ApiHistoriesRoute
   '/api/history': typeof ApiHistoryRoute
   '/api/index-constituents': typeof ApiIndexConstituentsRoute
+  '/api/ingest': typeof ApiIngestRoute
   '/api/macro': typeof ApiMacroRoute
   '/api/market-flows': typeof ApiMarketFlowsRoute
   '/api/news': typeof ApiNewsRoute
   '/api/note': typeof ApiNoteRoute
   '/api/ohlc': typeof ApiOhlcRoute
   '/api/quote': typeof ApiQuoteRoute
+  '/api/rrg': typeof ApiRrgRoute
   '/api/screen-build': typeof ApiScreenBuildRoute
   '/api/screener': typeof ApiScreenerRoute
   '/api/search': typeof ApiSearchRoute
@@ -309,6 +336,7 @@ export interface FileRoutesByFullPath {
   '/api/tape': typeof ApiTapeRoute
   '/api/wiki': typeof ApiWikiRoute
   '/markets/flows': typeof MarketsFlowsRoute
+  '/markets/rotation': typeof MarketsRotationRoute
   '/p/$id': typeof PIdRouteWithChildren
   '/s/$symbol': typeof SSymbolRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -337,16 +365,19 @@ export interface FileRoutesByTo {
   '/watch': typeof WatchRoute
   '/api/close': typeof ApiCloseRoute
   '/api/enrich': typeof ApiEnrichRoute
+  '/api/flows-refresh': typeof ApiFlowsRefreshRoute
   '/api/fundamentals': typeof ApiFundamentalsRoute
   '/api/histories': typeof ApiHistoriesRoute
   '/api/history': typeof ApiHistoryRoute
   '/api/index-constituents': typeof ApiIndexConstituentsRoute
+  '/api/ingest': typeof ApiIngestRoute
   '/api/macro': typeof ApiMacroRoute
   '/api/market-flows': typeof ApiMarketFlowsRoute
   '/api/news': typeof ApiNewsRoute
   '/api/note': typeof ApiNoteRoute
   '/api/ohlc': typeof ApiOhlcRoute
   '/api/quote': typeof ApiQuoteRoute
+  '/api/rrg': typeof ApiRrgRoute
   '/api/screen-build': typeof ApiScreenBuildRoute
   '/api/screener': typeof ApiScreenerRoute
   '/api/search': typeof ApiSearchRoute
@@ -355,6 +386,7 @@ export interface FileRoutesByTo {
   '/api/tape': typeof ApiTapeRoute
   '/api/wiki': typeof ApiWikiRoute
   '/markets/flows': typeof MarketsFlowsRoute
+  '/markets/rotation': typeof MarketsRotationRoute
   '/s/$symbol': typeof SSymbolRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/p/$id/holdings': typeof PIdHoldingsRoute
@@ -383,16 +415,19 @@ export interface FileRoutesById {
   '/watch': typeof WatchRoute
   '/api/close': typeof ApiCloseRoute
   '/api/enrich': typeof ApiEnrichRoute
+  '/api/flows-refresh': typeof ApiFlowsRefreshRoute
   '/api/fundamentals': typeof ApiFundamentalsRoute
   '/api/histories': typeof ApiHistoriesRoute
   '/api/history': typeof ApiHistoryRoute
   '/api/index-constituents': typeof ApiIndexConstituentsRoute
+  '/api/ingest': typeof ApiIngestRoute
   '/api/macro': typeof ApiMacroRoute
   '/api/market-flows': typeof ApiMarketFlowsRoute
   '/api/news': typeof ApiNewsRoute
   '/api/note': typeof ApiNoteRoute
   '/api/ohlc': typeof ApiOhlcRoute
   '/api/quote': typeof ApiQuoteRoute
+  '/api/rrg': typeof ApiRrgRoute
   '/api/screen-build': typeof ApiScreenBuildRoute
   '/api/screener': typeof ApiScreenerRoute
   '/api/search': typeof ApiSearchRoute
@@ -401,6 +436,7 @@ export interface FileRoutesById {
   '/api/tape': typeof ApiTapeRoute
   '/api/wiki': typeof ApiWikiRoute
   '/markets/flows': typeof MarketsFlowsRoute
+  '/markets/rotation': typeof MarketsRotationRoute
   '/p/$id': typeof PIdRouteWithChildren
   '/s/$symbol': typeof SSymbolRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -431,16 +467,19 @@ export interface FileRouteTypes {
     | '/watch'
     | '/api/close'
     | '/api/enrich'
+    | '/api/flows-refresh'
     | '/api/fundamentals'
     | '/api/histories'
     | '/api/history'
     | '/api/index-constituents'
+    | '/api/ingest'
     | '/api/macro'
     | '/api/market-flows'
     | '/api/news'
     | '/api/note'
     | '/api/ohlc'
     | '/api/quote'
+    | '/api/rrg'
     | '/api/screen-build'
     | '/api/screener'
     | '/api/search'
@@ -449,6 +488,7 @@ export interface FileRouteTypes {
     | '/api/tape'
     | '/api/wiki'
     | '/markets/flows'
+    | '/markets/rotation'
     | '/p/$id'
     | '/s/$symbol'
     | '/api/auth/$'
@@ -477,16 +517,19 @@ export interface FileRouteTypes {
     | '/watch'
     | '/api/close'
     | '/api/enrich'
+    | '/api/flows-refresh'
     | '/api/fundamentals'
     | '/api/histories'
     | '/api/history'
     | '/api/index-constituents'
+    | '/api/ingest'
     | '/api/macro'
     | '/api/market-flows'
     | '/api/news'
     | '/api/note'
     | '/api/ohlc'
     | '/api/quote'
+    | '/api/rrg'
     | '/api/screen-build'
     | '/api/screener'
     | '/api/search'
@@ -495,6 +538,7 @@ export interface FileRouteTypes {
     | '/api/tape'
     | '/api/wiki'
     | '/markets/flows'
+    | '/markets/rotation'
     | '/s/$symbol'
     | '/api/auth/$'
     | '/p/$id/holdings'
@@ -522,16 +566,19 @@ export interface FileRouteTypes {
     | '/watch'
     | '/api/close'
     | '/api/enrich'
+    | '/api/flows-refresh'
     | '/api/fundamentals'
     | '/api/histories'
     | '/api/history'
     | '/api/index-constituents'
+    | '/api/ingest'
     | '/api/macro'
     | '/api/market-flows'
     | '/api/news'
     | '/api/note'
     | '/api/ohlc'
     | '/api/quote'
+    | '/api/rrg'
     | '/api/screen-build'
     | '/api/screener'
     | '/api/search'
@@ -540,6 +587,7 @@ export interface FileRouteTypes {
     | '/api/tape'
     | '/api/wiki'
     | '/markets/flows'
+    | '/markets/rotation'
     | '/p/$id'
     | '/s/$symbol'
     | '/api/auth/$'
@@ -569,16 +617,19 @@ export interface RootRouteChildren {
   WatchRoute: typeof WatchRoute
   ApiCloseRoute: typeof ApiCloseRoute
   ApiEnrichRoute: typeof ApiEnrichRoute
+  ApiFlowsRefreshRoute: typeof ApiFlowsRefreshRoute
   ApiFundamentalsRoute: typeof ApiFundamentalsRoute
   ApiHistoriesRoute: typeof ApiHistoriesRoute
   ApiHistoryRoute: typeof ApiHistoryRoute
   ApiIndexConstituentsRoute: typeof ApiIndexConstituentsRoute
+  ApiIngestRoute: typeof ApiIngestRoute
   ApiMacroRoute: typeof ApiMacroRoute
   ApiMarketFlowsRoute: typeof ApiMarketFlowsRoute
   ApiNewsRoute: typeof ApiNewsRoute
   ApiNoteRoute: typeof ApiNoteRoute
   ApiOhlcRoute: typeof ApiOhlcRoute
   ApiQuoteRoute: typeof ApiQuoteRoute
+  ApiRrgRoute: typeof ApiRrgRoute
   ApiScreenBuildRoute: typeof ApiScreenBuildRoute
   ApiScreenerRoute: typeof ApiScreenerRoute
   ApiSearchRoute: typeof ApiSearchRoute
@@ -698,6 +749,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiEnrichRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/flows-refresh': {
+      id: '/api/flows-refresh'
+      path: '/api/flows-refresh'
+      fullPath: '/api/flows-refresh'
+      preLoaderRoute: typeof ApiFlowsRefreshRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/fundamentals': {
       id: '/api/fundamentals'
       path: '/api/fundamentals'
@@ -724,6 +782,13 @@ declare module '@tanstack/react-router' {
       path: '/api/index-constituents'
       fullPath: '/api/index-constituents'
       preLoaderRoute: typeof ApiIndexConstituentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ingest': {
+      id: '/api/ingest'
+      path: '/api/ingest'
+      fullPath: '/api/ingest'
+      preLoaderRoute: typeof ApiIngestRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/macro': {
@@ -766,6 +831,13 @@ declare module '@tanstack/react-router' {
       path: '/api/quote'
       fullPath: '/api/quote'
       preLoaderRoute: typeof ApiQuoteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/rrg': {
+      id: '/api/rrg'
+      path: '/api/rrg'
+      fullPath: '/api/rrg'
+      preLoaderRoute: typeof ApiRrgRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/screen-build': {
@@ -822,6 +894,13 @@ declare module '@tanstack/react-router' {
       path: '/flows'
       fullPath: '/markets/flows'
       preLoaderRoute: typeof MarketsFlowsRouteImport
+      parentRoute: typeof MarketsRoute
+    }
+    '/markets/rotation': {
+      id: '/markets/rotation'
+      path: '/rotation'
+      fullPath: '/markets/rotation'
+      preLoaderRoute: typeof MarketsRotationRouteImport
       parentRoute: typeof MarketsRoute
     }
     '/p/$id': {
@@ -906,10 +985,12 @@ declare module '@tanstack/react-router' {
 
 interface MarketsRouteChildren {
   MarketsFlowsRoute: typeof MarketsFlowsRoute
+  MarketsRotationRoute: typeof MarketsRotationRoute
 }
 
 const MarketsRouteChildren: MarketsRouteChildren = {
   MarketsFlowsRoute: MarketsFlowsRoute,
+  MarketsRotationRoute: MarketsRotationRoute,
 }
 
 const MarketsRouteWithChildren =
@@ -955,16 +1036,19 @@ const rootRouteChildren: RootRouteChildren = {
   WatchRoute: WatchRoute,
   ApiCloseRoute: ApiCloseRoute,
   ApiEnrichRoute: ApiEnrichRoute,
+  ApiFlowsRefreshRoute: ApiFlowsRefreshRoute,
   ApiFundamentalsRoute: ApiFundamentalsRoute,
   ApiHistoriesRoute: ApiHistoriesRoute,
   ApiHistoryRoute: ApiHistoryRoute,
   ApiIndexConstituentsRoute: ApiIndexConstituentsRoute,
+  ApiIngestRoute: ApiIngestRoute,
   ApiMacroRoute: ApiMacroRoute,
   ApiMarketFlowsRoute: ApiMarketFlowsRoute,
   ApiNewsRoute: ApiNewsRoute,
   ApiNoteRoute: ApiNoteRoute,
   ApiOhlcRoute: ApiOhlcRoute,
   ApiQuoteRoute: ApiQuoteRoute,
+  ApiRrgRoute: ApiRrgRoute,
   ApiScreenBuildRoute: ApiScreenBuildRoute,
   ApiScreenerRoute: ApiScreenerRoute,
   ApiSearchRoute: ApiSearchRoute,

@@ -1,0 +1,253 @@
+[
+  {
+    "symbol": "NIFTY AUTO",
+    "saved": [
+      "^CNXAUTO",
+      "2011-07-12",
+      "2026-10-23",
+      3747
+    ],
+    "errors": []
+  },
+  {
+    "symbol": "NIFTY FMCG",
+    "saved": [
+      "^CNXFMCG",
+      "2011-01-31",
+      "2026-10-23",
+      3858
+    ],
+    "errors": []
+  },
+  {
+    "symbol": "NIFTY METAL",
+    "saved": [
+      "^CNXMETAL",
+      "2011-07-12",
+      "2026-10-23",
+      3747
+    ],
+    "errors": []
+  },
+  {
+    "symbol": "NIFTY ENERGY",
+    "saved": [
+      "^CNXENERGY",
+      "2011-01-31",
+      "2026-10-23",
+      3859
+    ],
+    "errors": []
+  },
+  {
+    "symbol": "NIFTY REALTY",
+    "saved": [
+      "^CNXREALTY",
+      "2010-07-19",
+      "2026-10-23",
+      3994
+    ],
+    "errors": []
+  },
+  {
+    "symbol": "NIFTY MEDIA",
+    "saved": null,
+    "errors": [
+      "^CNXMEDIA: not an index series"
+    ]
+  },
+  {
+    "symbol": "NIFTY PSU BANK",
+    "saved": [
+      "^CNXPSUBANK",
+      "2011-01-31",
+      "2026-10-23",
+      3859
+    ],
+    "errors": []
+  },
+  {
+    "symbol": "NIFTY PRIVATE BANK",
+    "saved": null,
+    "errors": [
+      "NIFTY_PVT_BANK.NS: not an index series"
+    ]
+  },
+  {
+    "symbol": "NIFTY FINANCIAL SERVICES",
+    "saved": [
+      "NIFTY_FIN_SERVICE.NS",
+      "2011-09-07",
+      "2026-10-23",
+      3708
+    ],
+    "errors": []
+  },
+  {
+    "symbol": "NIFTY FINANCIAL SERVICES 25 50",
+    "saved": null,
+    "errors": [
+      "^CNXFIN: not an index series"
+    ]
+  },
+  {
+    "symbol": "NIFTY FINANCIAL SERVICES EX BANK",
+    "saved": null,
+    "errors": [
+      "NIFTY_FIN_SERVICE_EX_BANK.NS: HTTPError",
+      "NIFTYFINEXBANK.NS: HTTPError"
+    ]
+  },
+  {
+    "symbol": "NIFTY HEALTHCARE INDEX",
+    "saved": null,
+    "errors": [
+      "NIFTY_HEALTHCARE.NS: not an index series"
+    ]
+  },
+  {
+    "symbol": "NIFTY OIL GAS",
+    "saved": null,
+    "errors": [
+      "NIFTY_OIL_AND_GAS.NS: not an index series"
+    ]
+  },
+  {
+    "symbol": "NIFTY CONSUMER DURABLES",
+    "saved": null,
+    "errors": [
+      "NIFTY_CONSR_DURBL.NS: not an index series"
+    ]
+  },
+  {
+    "symbol": "NIFTY CEMENT",
+    "saved": null,
+    "errors": [
+      "NIFTY_CEMENT.NS: not an index series"
+    ]
+  },
+  {
+    "symbol": "NIFTY CHEMICALS",
+    "saved": null,
+    "errors": [
+      "NIFTY_CHEMICALS.NS: not an index series"
+    ]
+  },
+  {
+    "symbol": "NIFTY CAPITAL GOODS",
+    "saved": null,
+    "errors": [
+      "NIFTY_CAPITAL_GOODS.NS: HTTPError",
+      "NIFTYCG.NS: HTTPError"
+    ]
+  },
+  {
+    "symbol": "NIFTY POWER",
+    "saved": null,
+    "errors": [
+      "NIFTY_POWER.NS: HTTPError",
+      "^CNXPOWER: HTTPError"
+    ]
+  },
+  {
+    "symbol": "NIFTY NBFC",
+    "saved": null,
+    "errors": [
+      "NIFTY_NBFC.NS: HTTPError"
+    ]
+  },
+  {
+    "symbol": "NIFTY INSURANCE",
+    "saved": null,
+    "errors": [
+      "NIFTY_INSURANCE.NS: HTTPError"
+    ]
+  },
+  {
+    "symbol": "NIFTY HOSPITALS",
+    "saved": null,
+    "errors": [
+      "NIFTY_HOSPITALS.NS: HTTPError"
+    ]
+  },
+  {
+    "symbol": "NIFTY HOUSING FINANCE",
+    "saved": null,
+    "errors": [
+      "NIFTY_HOUSING_FINANCE.NS: HTTPError",
+      "NIFTY_HOUSING.NS: not an index series"
+    ]
+  },
+  {
+    "symbol": "NIFTY RETAIL",
+    "saved": null,
+    "errors": [
+      "NIFTY_RETAIL.NS: HTTPError"
+    ]
+  },
+  {
+    "symbol": "NIFTY CONSTRUCTION",
+    "saved": null,
+    "errors": [
+      "NIFTY_CONSTRUCTION.NS: HTTPError"
+    ]
+  },
+  {
+    "symbol": "NIFTY TELECOMMUNICATIONS",
+    "saved": null,
+    "errors": [
+      "NIFTY_TELECOM.NS: HTTPError",
+      "NIFTY_TELECOMMUNICATIONS.NS: HTTPError"
+    ]
+  },
+  {
+    "symbol": "NIFTY CONSUMER SERVICES",
+    "saved": null,
+    "errors": [
+      "NIFTY_CONSUMER_SERVICES.NS: HTTPError"
+    ]
+  },
+  {
+    "symbol": "NIFTY COMMERCIAL TRANSPORT SERVICES",
+    "saved": null,
+    "errors": [
+      "NIFTY_COMM_TRANS.NS: HTTPError",
+      "NIFTY_COMMERCIAL_TRANSPORT.NS: HTTPError"
+    ]
+  },
+  {
+    "symbol": "NIFTY MIDSMALL FINANCIAL SERVICES",
+    "saved": null,
+    "errors": [
+      "NIFTY_MIDSML_FIN_SERVICE.NS: HTTPError"
+    ]
+  },
+  {
+    "symbol": "NIFTY MIDSMALL HEALTHCARE",
+    "saved": null,
+    "errors": [
+      "NIFTY_MIDSML_HEALTH.NS: HTTPError"
+    ]
+  },
+  {
+    "symbol": "NIFTY MIDSMALL IT TELECOM",
+    "saved": null,
+    "errors": [
+      "NIFTY_MIDSML_IT_TEL.NS: HTTPError"
+    ]
+  },
+  {
+    "symbol": "NIFTY500 HEALTHCARE",
+    "saved": null,
+    "errors": [
+      "NIFTY500_HEALTHCARE.NS: HTTPError"
+    ]
+  },
+  {
+    "symbol": "NIFTY REITS REALTY",
+    "saved": null,
+    "errors": [
+      "NIFTY_REITS_REALTY.NS: not an index series"
+    ]
+  }
+]

@@ -1,0 +1,1531 @@
+{
+  "generatedAt": "2026-10-24T18:37:39.599Z",
+  "membership": "current-only",
+  "note": "Tracking-fund or published weight snapshot. Not historical index membership. Weights are not an RRG input.",
+  "items": [
+    {
+      "catalogueSymbol": "^NSEBANK",
+      "name": "Nifty Bank",
+      "source": "Bajaj Finserv Nifty Bank ETF",
+      "benchmark": "Nifty Bank TRI",
+      "asOf": null,
+      "note": null,
+      "unavailable": null,
+      "weightSum": 99.98,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "HDFCBANK",
+          "name": "HDFC Bank",
+          "weight": 18.61
+        },
+        {
+          "symbol": "ICICIBANK",
+          "name": "ICICI Bank",
+          "weight": 14.18
+        },
+        {
+          "symbol": "KOTAKBANK",
+          "name": "Kotak Mahindra Bank",
+          "weight": 10.2
+        },
+        {
+          "symbol": "AXISBANK",
+          "name": "Axis Bank",
+          "weight": 10.05
+        },
+        {
+          "symbol": "SBIN",
+          "name": "State Bank of India",
+          "weight": 9.92
+        },
+        {
+          "symbol": "FEDERALBNK",
+          "name": "The Federal Bank",
+          "weight": 6.56
+        },
+        {
+          "symbol": "INDUSINDBK",
+          "name": "IndusInd Bank",
+          "weight": 4.97
+        },
+        {
+          "symbol": "AUBANK",
+          "name": "AU Small Finance Bank",
+          "weight": 4.85
+        },
+        {
+          "symbol": "IDFCFIRSTB",
+          "name": "IDFC First Bank",
+          "weight": 4.54
+        },
+        {
+          "symbol": "BANKBARODA",
+          "name": "Bank of Baroda",
+          "weight": 3.59
+        },
+        {
+          "symbol": "CANBK",
+          "name": "Canara Bank",
+          "weight": 3.37
+        },
+        {
+          "symbol": "PNB",
+          "name": "Punjab National Bank",
+          "weight": 3.27
+        },
+        {
+          "symbol": "YESBANK",
+          "name": "Yes Bank",
+          "weight": 3.01
+        },
+        {
+          "symbol": "UNIONBANK",
+          "name": "Union Bank of India",
+          "weight": 2.86
+        }
+      ]
+    },
+    {
+      "catalogueSymbol": "NIFTY_FIN_SERVICE.NS",
+      "name": "Nifty Financial Services",
+      "source": "Mirae Asset Nifty Financial Services ETF",
+      "benchmark": "Nifty Financial Services TRI",
+      "asOf": null,
+      "note": null,
+      "unavailable": null,
+      "weightSum": 100.01,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "HDFCBANK",
+          "name": "HDFC Bank",
+          "weight": 18.63647
+        },
+        {
+          "symbol": "ICICIBANK",
+          "name": "ICICI Bank",
+          "weight": 14.19858
+        },
+        {
+          "symbol": "AXISBANK",
+          "name": "Axis Bank",
+          "weight": 10.18032
+        },
+        {
+          "symbol": "KOTAKBANK",
+          "name": "Kotak Mahindra Bank",
+          "weight": 10.10812
+        },
+        {
+          "symbol": "SBIN",
+          "name": "State Bank of India",
+          "weight": 9.93757
+        },
+        {
+          "symbol": "BAJFINANCE",
+          "name": "Bajaj Finance",
+          "weight": 8.61752
+        },
+        {
+          "symbol": "SHRIRAMFIN",
+          "name": "Shriram Finance",
+          "weight": 4.5314
+        },
+        {
+          "symbol": "BSE",
+          "name": "BSE",
+          "weight": 4.15889
+        },
+        {
+          "symbol": "BAJAJFINSV",
+          "name": "Bajaj Finserv",
+          "weight": 3.31234
+        },
+        {
+          "symbol": "SBILIFE",
+          "name": "SBI Life Insurance Company",
+          "weight": 2.50993
+        },
+        {
+          "symbol": "JIOFIN",
+          "name": "JIO Financial Services",
+          "weight": 2.34326
+        },
+        {
+          "symbol": "CHOLAFIN",
+          "name": "Cholamandalam Investment and Finance Company",
+          "weight": 2.31285
+        },
+        {
+          "symbol": "HDFCLIFE",
+          "name": "HDFC Life Insurance Company",
+          "weight": 1.84573
+        },
+        {
+          "symbol": "PFC",
+          "name": "Power Finance Corporation",
+          "weight": 1.56011
+        },
+        {
+          "symbol": "ICICIGI",
+          "name": "ICICI Lombard General Insurance Company",
+          "weight": 1.25418
+        },
+        {
+          "symbol": "RECLTD",
+          "name": "REC",
+          "weight": 1.22929
+        },
+        {
+          "symbol": "MFSL",
+          "name": "Max Financial Services",
+          "weight": 1.18319
+        },
+        {
+          "symbol": "MUTHOOTFIN",
+          "name": "Muthoot Finance",
+          "weight": 0.98251
+        },
+        {
+          "symbol": "SBICARD",
+          "name": "SBI Cards And Payment Services",
+          "weight": 0.57504
+        },
+        {
+          "symbol": "LICHSGFIN",
+          "name": "LIC Housing Finance",
+          "weight": 0.53366
+        }
+      ]
+    },
+    {
+      "catalogueSymbol": "^CNXFIN",
+      "name": "Nifty FinServ 25/50",
+      "source": "Tickertape Nifty Financial Services 25/50 index weights",
+      "benchmark": "Nifty FinServ 25/50",
+      "asOf": "2026-10-14",
+      "note": "No tracking ETF publishes this basket. Tile size is the free-float index share reported on 14 Oct 2026.",
+      "unavailable": null,
+      "weightSum": 100,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "HDFCBANK",
+          "name": "HDFC Bank",
+          "weight": 25.73
+        },
+        {
+          "symbol": "ICICIBANK",
+          "name": "ICICI Bank",
+          "weight": 21.85
+        },
+        {
+          "symbol": "AXISBANK",
+          "name": "Axis Bank",
+          "weight": 8.87
+        },
+        {
+          "symbol": "SBIN",
+          "name": "State Bank of India",
+          "weight": 8.77
+        },
+        {
+          "symbol": "KOTAKBANK",
+          "name": "Kotak Mahindra Bank",
+          "weight": 7.35
+        },
+        {
+          "symbol": "BAJFINANCE",
+          "name": "Bajaj Finance",
+          "weight": 5.95
+        },
+        {
+          "symbol": "SHRIRAMFIN",
+          "name": "Shriram Finance",
+          "weight": 4.14
+        },
+        {
+          "symbol": "BSE",
+          "name": "BSE",
+          "weight": 3.23
+        },
+        {
+          "symbol": "BAJAJFINSV",
+          "name": "Bajaj Finserv",
+          "weight": 2.35
+        },
+        {
+          "symbol": "JIOFIN",
+          "name": "Jio Financial Services",
+          "weight": 1.68
+        },
+        {
+          "symbol": "SBILIFE",
+          "name": "SBI Life Insurance",
+          "weight": 1.61
+        },
+        {
+          "symbol": "CHOLAFIN",
+          "name": "Cholamandalam Investment",
+          "weight": 1.53
+        },
+        {
+          "symbol": "HDFCLIFE",
+          "name": "HDFC Life Insurance",
+          "weight": 1.2
+        },
+        {
+          "symbol": "PFC",
+          "name": "Power Finance Corporation",
+          "weight": 1.16
+        },
+        {
+          "symbol": "MFSL",
+          "name": "Max Financial Services",
+          "weight": 1.04
+        },
+        {
+          "symbol": "ICICIGI",
+          "name": "ICICI Lombard General Insurance",
+          "weight": 0.92
+        },
+        {
+          "symbol": "RECLTD",
+          "name": "REC",
+          "weight": 0.89
+        },
+        {
+          "symbol": "LICHSGFIN",
+          "name": "LIC Housing Finance",
+          "weight": 0.68
+        },
+        {
+          "symbol": "MUTHOOTFIN",
+          "name": "Muthoot Finance",
+          "weight": 0.65
+        },
+        {
+          "symbol": "SBICARD",
+          "name": "SBI Cards",
+          "weight": 0.4
+        }
+      ]
+    },
+    {
+      "catalogueSymbol": "NIFTY_PVT_BANK.NS",
+      "name": "Nifty Private Bank",
+      "source": "ICICI Prudential Nifty Private Bank ETF",
+      "benchmark": "NIFTY Private Bank Index TRI",
+      "asOf": null,
+      "note": null,
+      "unavailable": null,
+      "weightSum": 100,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "ICICIBANK",
+          "name": "ICICI Bank",
+          "weight": 21.53235
+        },
+        {
+          "symbol": "HDFCBANK",
+          "name": "HDFC Bank",
+          "weight": 20.82496
+        },
+        {
+          "symbol": "KOTAKBANK",
+          "name": "Kotak Mahindra Bank",
+          "weight": 19.83847
+        },
+        {
+          "symbol": "AXISBANK",
+          "name": "Axis Bank",
+          "weight": 19.27662
+        },
+        {
+          "symbol": "FEDERALBNK",
+          "name": "The Federal Bank",
+          "weight": 5.35456
+        },
+        {
+          "symbol": "INDUSINDBK",
+          "name": "IndusInd Bank",
+          "weight": 4.05522
+        },
+        {
+          "symbol": "IDFCFIRSTB",
+          "name": "IDFC First Bank",
+          "weight": 3.69399
+        },
+        {
+          "symbol": "YESBANK",
+          "name": "Yes Bank",
+          "weight": 2.51392
+        },
+        {
+          "symbol": "RBLBANK",
+          "name": "RBL Bank",
+          "weight": 1.70596
+        },
+        {
+          "symbol": "BANDHANBNK",
+          "name": "Bandhan Bank",
+          "weight": 1.20019
+        }
+      ]
+    },
+    {
+      "catalogueSymbol": "^CNXPSUBANK",
+      "name": "Nifty PSU Bank",
+      "source": "Nippon India ETF PSU Bank BeES",
+      "benchmark": "Nifty PSU Bank TRI",
+      "asOf": null,
+      "note": null,
+      "unavailable": null,
+      "weightSum": 99.95,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "SBIN",
+          "name": "State Bank of India",
+          "weight": 33.31
+        },
+        {
+          "symbol": "BANKBARODA",
+          "name": "Bank of Baroda",
+          "weight": 12.47
+        },
+        {
+          "symbol": "CANBK",
+          "name": "Canara Bank",
+          "weight": 11.7
+        },
+        {
+          "symbol": "PNB",
+          "name": "Punjab National Bank",
+          "weight": 11.35
+        },
+        {
+          "symbol": "UNIONBANK",
+          "name": "Union Bank of India",
+          "weight": 9.63
+        },
+        {
+          "symbol": "INDIANB",
+          "name": "Indian Bank",
+          "weight": 8.3
+        },
+        {
+          "symbol": "MAHABANK",
+          "name": "Bank of Maharashtra",
+          "weight": 4.71
+        },
+        {
+          "symbol": "BANKINDIA",
+          "name": "Bank Of India",
+          "weight": 4.6
+        },
+        {
+          "symbol": "CENTRALBK",
+          "name": "Central Bank of India",
+          "weight": 1.52
+        },
+        {
+          "symbol": "IOB",
+          "name": "Indian Overseas Bank",
+          "weight": 1.32
+        },
+        {
+          "symbol": "UCOBANK",
+          "name": "UCO Bank",
+          "weight": 0.77
+        },
+        {
+          "symbol": "PSB",
+          "name": "Punjab & Sind Bank",
+          "weight": 0.27
+        }
+      ]
+    },
+    {
+      "catalogueSymbol": "^CNXIT",
+      "name": "Nifty IT",
+      "source": "Nippon India ETF Nifty IT",
+      "benchmark": "Nifty IT TRI",
+      "asOf": null,
+      "note": null,
+      "unavailable": null,
+      "weightSum": 99.97,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "INFY",
+          "name": "Infosys",
+          "weight": 31.29
+        },
+        {
+          "symbol": "TCS",
+          "name": "Tata Consultancy Services",
+          "weight": 19.07
+        },
+        {
+          "symbol": "HCLTECH",
+          "name": "HCL Technologies",
+          "weight": 11.8
+        },
+        {
+          "symbol": "TECHM",
+          "name": "Tech Mahindra",
+          "weight": 10.47
+        },
+        {
+          "symbol": "COFORGE",
+          "name": "Coforge",
+          "weight": 6.59
+        },
+        {
+          "symbol": "PERSISTENT",
+          "name": "Persistent Systems",
+          "weight": 6.21
+        },
+        {
+          "symbol": "WIPRO",
+          "name": "Wipro",
+          "weight": 4.64
+        },
+        {
+          "symbol": "LTM",
+          "name": "LTM",
+          "weight": 4.06
+        },
+        {
+          "symbol": "MPHASIS",
+          "name": "Mphasis",
+          "weight": 3.09
+        },
+        {
+          "symbol": "OFSS",
+          "name": "Oracle Financial Services Software",
+          "weight": 2.75
+        }
+      ]
+    },
+    {
+      "catalogueSymbol": "^CNXAUTO",
+      "name": "Nifty Auto",
+      "source": "Nippon India Nifty Auto ETF",
+      "benchmark": "NIFTY Auto TRI",
+      "asOf": null,
+      "note": null,
+      "unavailable": null,
+      "weightSum": 99.96,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "M&M",
+          "name": "Mahindra & Mahindra",
+          "weight": 22.26
+        },
+        {
+          "symbol": "MARUTI",
+          "name": "Maruti Suzuki India",
+          "weight": 13.14
+        },
+        {
+          "symbol": "BAJAJ-AUTO",
+          "name": "Bajaj Auto",
+          "weight": 10.02
+        },
+        {
+          "symbol": "EICHERMOT",
+          "name": "Eicher Motors",
+          "weight": 8.33
+        },
+        {
+          "symbol": "TVSMOTOR",
+          "name": "TVS Motor Company",
+          "weight": 8.14
+        },
+        {
+          "symbol": "MOTHERSON",
+          "name": "Samvardhana Motherson International",
+          "weight": 6.09
+        },
+        {
+          "symbol": "HEROMOTOCO",
+          "name": "Hero MotoCorp",
+          "weight": 5.75
+        },
+        {
+          "symbol": "TMPV",
+          "name": "Tata Motors Passenger Vehicles",
+          "weight": 5
+        },
+        {
+          "symbol": "BHARATFORG",
+          "name": "Bharat Forge",
+          "weight": 4.52
+        },
+        {
+          "symbol": "ASHOKLEY",
+          "name": "Ashok Leyland",
+          "weight": 3.73
+        },
+        {
+          "symbol": "BOSCHLTD",
+          "name": "Bosch",
+          "weight": 3.45
+        },
+        {
+          "symbol": "SONACOMS",
+          "name": "Sona BLW Precision Forgings",
+          "weight": 3.15
+        },
+        {
+          "symbol": "HYUNDAI",
+          "name": "Hyundai Motor India",
+          "weight": 2.44
+        },
+        {
+          "symbol": "TIINDIA",
+          "name": "Tube Investments of India",
+          "weight": 2.14
+        },
+        {
+          "symbol": "UNOMINDA",
+          "name": "UNO Minda",
+          "weight": 1.8
+        }
+      ]
+    },
+    {
+      "catalogueSymbol": "^CNXFMCG",
+      "name": "Nifty FMCG",
+      "source": "ICICI Prudential Nifty FMCG ETF",
+      "benchmark": "Nifty FMCG TRI",
+      "asOf": null,
+      "note": null,
+      "unavailable": null,
+      "weightSum": 99.99,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "ITC",
+          "name": "ITC",
+          "weight": 27.64633
+        },
+        {
+          "symbol": "HINDUNILVR",
+          "name": "Hindustan Unilever",
+          "weight": 18.19638
+        },
+        {
+          "symbol": "NESTLEIND",
+          "name": "Nestle India",
+          "weight": 10.25163
+        },
+        {
+          "symbol": "TATACONSUM",
+          "name": "Tata Consumer Products",
+          "weight": 6.74824
+        },
+        {
+          "symbol": "VBL",
+          "name": "Varun Beverages",
+          "weight": 6.44616
+        },
+        {
+          "symbol": "BRITANNIA",
+          "name": "Britannia Industries",
+          "weight": 6.20891
+        },
+        {
+          "symbol": "MARICO",
+          "name": "Marico",
+          "weight": 4.54684
+        },
+        {
+          "symbol": "UNITDSPR",
+          "name": "United Spirits",
+          "weight": 4.3659
+        },
+        {
+          "symbol": "RADICO",
+          "name": "Radico Khaitan",
+          "weight": 3.73577
+        },
+        {
+          "symbol": "GODREJCP",
+          "name": "Godrej Consumer Products",
+          "weight": 3.72733
+        },
+        {
+          "symbol": "COLPAL",
+          "name": "Colgate-Palmolive (India)",
+          "weight": 2.53526
+        },
+        {
+          "symbol": "DABUR",
+          "name": "Dabur India",
+          "weight": 2.44808
+        },
+        {
+          "symbol": "PATANJALI",
+          "name": "Patanjali Foods",
+          "weight": 1.37237
+        },
+        {
+          "symbol": "UBL",
+          "name": "United Breweries",
+          "weight": 0.91297
+        },
+        {
+          "symbol": "GODFRYPHLP",
+          "name": "Godfrey Phillips India",
+          "weight": 0.84379
+        }
+      ]
+    },
+    {
+      "catalogueSymbol": "^CNXPHARMA",
+      "name": "Nifty Pharma",
+      "source": "Nippon India Nifty Pharma ETF",
+      "benchmark": "Nifty Pharma TRI",
+      "asOf": null,
+      "note": null,
+      "unavailable": null,
+      "weightSum": 99.94,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "SUNPHARMA",
+          "name": "Sun Pharmaceutical Industries",
+          "weight": 19.5
+        },
+        {
+          "symbol": "DIVISLAB",
+          "name": "Divi's Laboratories",
+          "weight": 11.97
+        },
+        {
+          "symbol": "LAURUSLABS",
+          "name": "Laurus Labs",
+          "weight": 7.82
+        },
+        {
+          "symbol": "CIPLA",
+          "name": "Cipla",
+          "weight": 7.68
+        },
+        {
+          "symbol": "DRREDDY",
+          "name": "Dr. Reddy's Laboratories",
+          "weight": 7.62
+        },
+        {
+          "symbol": "TORNTPHARM",
+          "name": "Torrent Pharmaceuticals",
+          "weight": 7.16
+        },
+        {
+          "symbol": "LUPIN",
+          "name": "Lupin",
+          "weight": 5
+        },
+        {
+          "symbol": "AUROPHARMA",
+          "name": "Aurobindo Pharma",
+          "weight": 4.69
+        },
+        {
+          "symbol": "GLENMARK",
+          "name": "Glenmark Pharmaceuticals",
+          "weight": 3.56
+        },
+        {
+          "symbol": "ALKEM",
+          "name": "Alkem Laboratories",
+          "weight": 3.16
+        },
+        {
+          "symbol": "ZYDUSLIFE",
+          "name": "Zydus Lifesciences",
+          "weight": 2.92
+        },
+        {
+          "symbol": "MANKIND",
+          "name": "Mankind Pharma",
+          "weight": 2.88
+        },
+        {
+          "symbol": "IPCALAB",
+          "name": "Ipca Laboratories",
+          "weight": 2.71
+        },
+        {
+          "symbol": "BIOCON",
+          "name": "Biocon",
+          "weight": 2.62
+        },
+        {
+          "symbol": "GLAND",
+          "name": "Gland Pharma",
+          "weight": 2.34
+        },
+        {
+          "symbol": "SAILIFE",
+          "name": "Sai Life Sciences",
+          "weight": 2.14
+        },
+        {
+          "symbol": "WOCKPHARMA",
+          "name": "Wockhardt",
+          "weight": 1.77
+        },
+        {
+          "symbol": "AJANTPHARM",
+          "name": "Ajanta Pharma",
+          "weight": 1.67
+        },
+        {
+          "symbol": "ABBOTINDIA",
+          "name": "Abbott India",
+          "weight": 1.43
+        },
+        {
+          "symbol": "PPLPHARMA",
+          "name": "Piramal Pharma",
+          "weight": 1.3
+        }
+      ]
+    },
+    {
+      "catalogueSymbol": "NIFTY_HEALTHCARE.NS",
+      "name": "Nifty Healthcare",
+      "source": "Aditya Birla Sun Life Nifty Healthcare ETF",
+      "benchmark": "NIFTY Healthcare TRI",
+      "asOf": null,
+      "note": null,
+      "unavailable": null,
+      "weightSum": 99.98,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "SUNPHARMA",
+          "name": "Sun Pharmaceutical Industries",
+          "weight": 16.99976
+        },
+        {
+          "symbol": "DIVISLAB",
+          "name": "Divi's Laboratories",
+          "weight": 10.46107
+        },
+        {
+          "symbol": "APOLLOHOSP",
+          "name": "Apollo Hospitals Enterprise",
+          "weight": 7.45243
+        },
+        {
+          "symbol": "LAURUSLABS",
+          "name": "Laurus Labs",
+          "weight": 6.81418
+        },
+        {
+          "symbol": "CIPLA",
+          "name": "Cipla",
+          "weight": 6.6937
+        },
+        {
+          "symbol": "DRREDDY",
+          "name": "Dr. Reddy's Laboratories",
+          "weight": 6.64248
+        },
+        {
+          "symbol": "TORNTPHARM",
+          "name": "Torrent Pharmaceuticals",
+          "weight": 6.26173
+        },
+        {
+          "symbol": "MAXHEALTH",
+          "name": "Max Healthcare Institute",
+          "weight": 6.11156
+        },
+        {
+          "symbol": "LUPIN",
+          "name": "Lupin",
+          "weight": 4.35019
+        },
+        {
+          "symbol": "AUROPHARMA",
+          "name": "Aurobindo Pharma",
+          "weight": 4.08065
+        },
+        {
+          "symbol": "FORTIS",
+          "name": "Fortis Healthcare",
+          "weight": 3.54246
+        },
+        {
+          "symbol": "GLENMARK",
+          "name": "Glenmark Pharmaceuticals",
+          "weight": 3.09821
+        },
+        {
+          "symbol": "ALKEM",
+          "name": "Alkem Laboratories",
+          "weight": 2.77154
+        },
+        {
+          "symbol": "ZYDUSLIFE",
+          "name": "Zydus Lifesciences",
+          "weight": 2.53888
+        },
+        {
+          "symbol": "MANKIND",
+          "name": "Mankind Pharma",
+          "weight": 2.49841
+        },
+        {
+          "symbol": "IPCALAB",
+          "name": "Ipca Laboratories",
+          "weight": 2.36027
+        },
+        {
+          "symbol": "BIOCON",
+          "name": "Biocon",
+          "weight": 2.28
+        },
+        {
+          "symbol": "GLAND",
+          "name": "Gland Pharma",
+          "weight": 2.04008
+        },
+        {
+          "symbol": "KIMS",
+          "name": "Krishna Institute of Medical Sciences",
+          "weight": 1.75688
+        },
+        {
+          "symbol": "ABBOTINDIA",
+          "name": "Abbott India",
+          "weight": 1.22419
+        }
+      ]
+    },
+    {
+      "catalogueSymbol": "^CNXMETAL",
+      "name": "Nifty Metal",
+      "source": "ICICI Prudential Nifty Metal ETF",
+      "benchmark": "Nifty Metal TRI",
+      "asOf": null,
+      "note": null,
+      "unavailable": null,
+      "weightSum": 99.95,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "TATASTEEL",
+          "name": "Tata Steel",
+          "weight": 17.29332
+        },
+        {
+          "symbol": "HINDALCO",
+          "name": "Hindalco Industries",
+          "weight": 15.42002
+        },
+        {
+          "symbol": "JSWSTEEL",
+          "name": "JSW Steel",
+          "weight": 13.64641
+        },
+        {
+          "symbol": "ADANIENT",
+          "name": "Adani Enterprises",
+          "weight": 11.13281
+        },
+        {
+          "symbol": "VAML",
+          "name": "Vedanta Aluminium Metal",
+          "weight": 7.91502
+        },
+        {
+          "symbol": "VEDL",
+          "name": "Vedanta",
+          "weight": 5.15571
+        },
+        {
+          "symbol": "JINDALSTEL",
+          "name": "Jindal Steel",
+          "weight": 4.75974
+        },
+        {
+          "symbol": "APLAPOLLO",
+          "name": "APL Apollo Tubes",
+          "weight": 4.50839
+        },
+        {
+          "symbol": "NATIONALUM",
+          "name": "National Aluminium Company",
+          "weight": 3.45737
+        },
+        {
+          "symbol": "HINDZINC",
+          "name": "Hindustan Zinc",
+          "weight": 3.078
+        },
+        {
+          "symbol": "NMDC",
+          "name": "NMDC",
+          "weight": 2.99157
+        },
+        {
+          "symbol": "SAIL",
+          "name": "Steel Authority Of India",
+          "weight": 2.96701
+        },
+        {
+          "symbol": "LLOYDSME",
+          "name": "Lloyds Metals & Energy",
+          "weight": 2.91541
+        },
+        {
+          "symbol": "JSL",
+          "name": "Jindal Stainless",
+          "weight": 2.64833
+        },
+        {
+          "symbol": "HINDCOPPER",
+          "name": "Hindustan Copper",
+          "weight": 2.06516
+        }
+      ]
+    },
+    {
+      "catalogueSymbol": "^CNXREALTY",
+      "name": "Nifty Realty",
+      "source": "Motilal Oswal Nifty Realty ETF",
+      "benchmark": "Nifty Realty Total Return Index",
+      "asOf": null,
+      "note": null,
+      "unavailable": null,
+      "weightSum": 100.02,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "DLF",
+          "name": "DLF",
+          "weight": 20.38
+        },
+        {
+          "symbol": "PHOENIXLTD",
+          "name": "The Phoenix Mills",
+          "weight": 17.05
+        },
+        {
+          "symbol": "LODHA",
+          "name": "Lodha Developers",
+          "weight": 15.9
+        },
+        {
+          "symbol": "PRESTIGE",
+          "name": "Prestige Estates Projects",
+          "weight": 11.79
+        },
+        {
+          "symbol": "GODREJPROP",
+          "name": "Godrej Properties",
+          "weight": 10.39
+        },
+        {
+          "symbol": "OBEROIRLTY",
+          "name": "Oberoi Realty",
+          "weight": 9.8
+        },
+        {
+          "symbol": "BRIGADE",
+          "name": "Brigade Enterprises",
+          "weight": 5.03
+        },
+        {
+          "symbol": "ANANTRAJ",
+          "name": "Anant Raj",
+          "weight": 4.31
+        },
+        {
+          "symbol": "ABREL",
+          "name": "Aditya Birla Real Estate",
+          "weight": 2.81
+        },
+        {
+          "symbol": "SOBHA",
+          "name": "Sobha",
+          "weight": 2.56
+        }
+      ]
+    },
+    {
+      "catalogueSymbol": "^CNXMEDIA",
+      "name": "Nifty Media",
+      "source": "Tickertape Nifty Media index weights",
+      "benchmark": "Nifty Media",
+      "asOf": "2026-10-14",
+      "note": "No tracking ETF publishes this basket. Tile size is the free-float index share reported on 14 Oct 2026.",
+      "unavailable": null,
+      "weightSum": 100,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "PVRINOX",
+          "name": "PVR INOX",
+          "weight": 22.08
+        },
+        {
+          "symbol": "NAZARA",
+          "name": "Nazara Technologies",
+          "weight": 20.34
+        },
+        {
+          "symbol": "ZEEL",
+          "name": "Zee Entertainment",
+          "weight": 15.83
+        },
+        {
+          "symbol": "SUNTV",
+          "name": "Sun TV Network",
+          "weight": 12.42
+        },
+        {
+          "symbol": "SAREGAMA",
+          "name": "Saregama India",
+          "weight": 7.8
+        },
+        {
+          "symbol": "PFOCUS",
+          "name": "Prime Focus",
+          "weight": 7.27
+        },
+        {
+          "symbol": "TIPSMUSIC",
+          "name": "Tips Music",
+          "weight": 6.95
+        },
+        {
+          "symbol": "NETWORK18",
+          "name": "Network18 Media",
+          "weight": 3.48
+        },
+        {
+          "symbol": "MPSLTD",
+          "name": "MPS",
+          "weight": 2.64
+        },
+        {
+          "symbol": "DBCORP",
+          "name": "DB Corp",
+          "weight": 1.19
+        }
+      ]
+    },
+    {
+      "catalogueSymbol": "^CNXENERGY",
+      "name": "Nifty Energy",
+      "source": "Motilal Oswal Nifty Energy ETF",
+      "benchmark": "Nifty Energy TRI",
+      "asOf": null,
+      "note": null,
+      "unavailable": null,
+      "weightSum": 99.96,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "COALINDIA",
+          "name": "Coal India",
+          "weight": 10.18
+        },
+        {
+          "symbol": "RELIANCE",
+          "name": "Reliance Industries",
+          "weight": 9.89
+        },
+        {
+          "symbol": "ONGC",
+          "name": "Oil & Natural Gas Corporation",
+          "weight": 9.26
+        },
+        {
+          "symbol": "NTPC",
+          "name": "NTPC",
+          "weight": 6.09
+        },
+        {
+          "symbol": "GAIL",
+          "name": "GAIL (India)",
+          "weight": 4.86
+        },
+        {
+          "symbol": "POWERGRID",
+          "name": "Power Grid Corporation Of India",
+          "weight": 4.69
+        },
+        {
+          "symbol": "BHEL",
+          "name": "Bharat Heavy Electricals",
+          "weight": 3.84
+        },
+        {
+          "symbol": "CGPOWER",
+          "name": "CG Power and Industrial Solutions",
+          "weight": 3.72
+        },
+        {
+          "symbol": "ADANIPOWER",
+          "name": "Adani Power",
+          "weight": 3.37
+        },
+        {
+          "symbol": "GVT&D",
+          "name": "GE Vernova T&D India",
+          "weight": 3.3
+        },
+        {
+          "symbol": "SUZLON",
+          "name": "Suzlon Energy",
+          "weight": 3.05
+        },
+        {
+          "symbol": "OIL",
+          "name": "Oil India",
+          "weight": 2.58
+        },
+        {
+          "symbol": "POWERINDIA",
+          "name": "Hitachi Energy India",
+          "weight": 2.47
+        },
+        {
+          "symbol": "TATAPOWER",
+          "name": "Tata Power Company",
+          "weight": 2.4
+        },
+        {
+          "symbol": "ABB",
+          "name": "ABB India",
+          "weight": 2.26
+        },
+        {
+          "symbol": "PETRONET",
+          "name": "Petronet LNG",
+          "weight": 2.25
+        },
+        {
+          "symbol": "BPCL",
+          "name": "Bharat Petroleum Corporation",
+          "weight": 2.23
+        },
+        {
+          "symbol": "SIEMENS",
+          "name": "Siemens",
+          "weight": 2.09
+        },
+        {
+          "symbol": "IOC",
+          "name": "Indian Oil Corporation",
+          "weight": 1.84
+        },
+        {
+          "symbol": "AEGISLOG",
+          "name": "Aegis Logistics",
+          "weight": 1.83
+        },
+        {
+          "symbol": "ENRIN",
+          "name": "Siemens Energy India",
+          "weight": 1.8
+        },
+        {
+          "symbol": "ATGL",
+          "name": "Adani Total Gas",
+          "weight": 1.74
+        },
+        {
+          "symbol": "ADANIENSOL",
+          "name": "Adani Energy Solutions",
+          "weight": 1.7
+        },
+        {
+          "symbol": "ADANIGREEN",
+          "name": "Adani Green Energy",
+          "weight": 1.7
+        },
+        {
+          "symbol": "HINDPETRO",
+          "name": "Hindustan Petroleum Corporation",
+          "weight": 1.23
+        },
+        {
+          "symbol": "JSWENERGY",
+          "name": "JSW Energy",
+          "weight": 1.2
+        },
+        {
+          "symbol": "TDPOWERSYS",
+          "name": "TD Power Systems",
+          "weight": 1.14
+        },
+        {
+          "symbol": "NHPC",
+          "name": "NHPC",
+          "weight": 1.09
+        },
+        {
+          "symbol": "IGL",
+          "name": "Indraprastha Gas",
+          "weight": 1.08
+        },
+        {
+          "symbol": "TORNTPOWER",
+          "name": "Torrent Power",
+          "weight": 0.93999
+        },
+        {
+          "symbol": "THERMAX",
+          "name": "Thermax",
+          "weight": 0.83
+        },
+        {
+          "symbol": "MGL",
+          "name": "Mahanagar Gas",
+          "weight": 0.64
+        },
+        {
+          "symbol": "INOXWIND",
+          "name": "Inox Wind",
+          "weight": 0.43
+        },
+        {
+          "symbol": "NLCINDIA",
+          "name": "NLC India",
+          "weight": 0.38
+        },
+        {
+          "symbol": "CASTROLIND",
+          "name": "Castrol India",
+          "weight": 0.35
+        },
+        {
+          "symbol": "CESC",
+          "name": "CESC",
+          "weight": 0.34
+        },
+        {
+          "symbol": "NTPCGREEN",
+          "name": "NTPC Green Energy",
+          "weight": 0.34
+        },
+        {
+          "symbol": "NAVA",
+          "name": "Nava",
+          "weight": 0.31
+        },
+        {
+          "symbol": "JPPOWER",
+          "name": "Jaiprakash Power Ventures",
+          "weight": 0.29
+        },
+        {
+          "symbol": "RPOWER",
+          "name": "Reliance Power",
+          "weight": 0.23
+        }
+      ]
+    },
+    {
+      "catalogueSymbol": "NIFTY_OIL_AND_GAS.NS",
+      "name": "Nifty Oil & Gas",
+      "source": "ICICI Prudential Nifty Oil & Gas ETF",
+      "benchmark": "Nifty Oil & Gas TRI",
+      "asOf": null,
+      "note": null,
+      "unavailable": null,
+      "weightSum": 99.93,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "RELIANCE",
+          "name": "Reliance Industries",
+          "weight": 32.67575
+        },
+        {
+          "symbol": "ONGC",
+          "name": "Oil & Natural Gas Corporation",
+          "weight": 14.92605
+        },
+        {
+          "symbol": "BPCL",
+          "name": "Bharat Petroleum Corporation",
+          "weight": 10.35723
+        },
+        {
+          "symbol": "IOC",
+          "name": "Indian Oil Corporation",
+          "weight": 8.57941
+        },
+        {
+          "symbol": "GAIL",
+          "name": "GAIL (India)",
+          "weight": 7.82863
+        },
+        {
+          "symbol": "HINDPETRO",
+          "name": "Hindustan Petroleum Corporation",
+          "weight": 5.72511
+        },
+        {
+          "symbol": "OIL",
+          "name": "Oil India",
+          "weight": 4.16406
+        },
+        {
+          "symbol": "PETRONET",
+          "name": "Petronet LNG",
+          "weight": 3.62807
+        },
+        {
+          "symbol": "AEGISLOG",
+          "name": "Aegis Logistics",
+          "weight": 2.94878
+        },
+        {
+          "symbol": "ATGL",
+          "name": "Adani Total Gas",
+          "weight": 2.80357
+        },
+        {
+          "symbol": "IGL",
+          "name": "Indraprastha Gas",
+          "weight": 1.73813
+        },
+        {
+          "symbol": "CASTROLIND",
+          "name": "Castrol India",
+          "weight": 1.62173
+        },
+        {
+          "symbol": "CHENNPETRO",
+          "name": "Chennai Petroleum Corporation",
+          "weight": 1.17577
+        },
+        {
+          "symbol": "MGL",
+          "name": "Mahanagar Gas",
+          "weight": 1.02535
+        },
+        {
+          "symbol": "AEGISVOPAK",
+          "name": "Aegis Vopak Terminals",
+          "weight": 0.72879
+        }
+      ]
+    },
+    {
+      "catalogueSymbol": "NIFTY_CONSR_DURBL.NS",
+      "name": "Nifty Consumer Durables",
+      "source": "Tickertape Nifty Consumer Durables index weights",
+      "benchmark": "Nifty Consumer Durables",
+      "asOf": "2026-10-14",
+      "note": "No tracking ETF publishes this basket. Tile size is the free-float index share reported on 14 Oct 2026.",
+      "unavailable": null,
+      "weightSum": 100.01,
+      "membership": "current",
+      "retrievedAt": "2026-10-24",
+      "rows": [
+        {
+          "symbol": "TITAN",
+          "name": "Titan Company",
+          "weight": 43.5
+        },
+        {
+          "symbol": "DIXON",
+          "name": "Dixon Technologies",
+          "weight": 12.4
+        },
+        {
+          "symbol": "HAVELLS",
+          "name": "Havells India",
+          "weight": 6.56
+        },
+        {
+          "symbol": "KALYANKJIL",
+          "name": "Kalyan Jewellers",
+          "weight": 5.83
+        },
+        {
+          "symbol": "VOLTAS",
+          "name": "Voltas",
+          "weight": 5.74
+        },
+        {
+          "symbol": "BLUESTARCO",
+          "name": "Blue Star",
+          "weight": 5.48
+        },
+        {
+          "symbol": "LGEINDIA",
+          "name": "LG Electronics India",
+          "weight": 4.75
+        },
+        {
+          "symbol": "AMBER",
+          "name": "Amber Enterprises",
+          "weight": 3.8
+        },
+        {
+          "symbol": "CROMPTON",
+          "name": "Crompton Greaves Consumer Electricals",
+          "weight": 3.67
+        },
+        {
+          "symbol": "PGEL",
+          "name": "PG Electroplast",
+          "weight": 2.2
+        },
+        {
+          "symbol": "KAJARIACER",
+          "name": "Kajaria Ceramics",
+          "weight": 1.94
+        },
+        {
+          "symbol": "WHIRLPOOL",
+          "name": "Whirlpool of India",
+          "weight": 1.61
+        },
+        {
+          "symbol": "THANGAMAYL",
+          "name": "Thangamayil Jewellery",
+          "weight": 1.48
+        },
+        {
+          "symbol": "BATAINDIA",
+          "name": "Bata India",
+          "weight": 1.05
+        }
+      ]
+    }
+  ]
+}

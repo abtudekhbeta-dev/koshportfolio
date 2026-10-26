@@ -1,8 +1,9 @@
-/** FII/DII (mrchartist) + NSE event calendar + recurring macro dates. Server-only. */
+/** Cash-market FII/DII from the flow archive, plus NSE events. Server-only. */
 
 import type { DealEvent, FiidiiRow, MacroPack, ResultEvent } from "./types";
 import { SCREEN_UNIVERSE, universeName } from "./universe";
 import { parseIstDate } from "./dates";
+import { loadFlowPack } from "./market-flows.server";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -19,40 +20,34 @@ async function getJson(url: string, extra: Record<string, string> = {}): Promise
   return res.json();
 }
 
-function num(v: unknown): number {
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function asFiidii(row: Record<string, unknown>): FiidiiRow {
-  return {
-    date: String(row.date || ""),
-    fiiNet: num(row.fii_net ?? row.fiiNet),
-    diiNet: num(row.dii_net ?? row.diiNet),
-    fiiBuy: num(row.fii_buy ?? row.fiiBuy),
-    fiiSell: num(row.fii_sell ?? row.fiiSell),
-    diiBuy: num(row.dii_buy ?? row.diiBuy),
-    diiSell: num(row.dii_sell ?? row.diiSell),
-  };
-}
-
-async function fetchFiidii(): Promise<FiidiiRow[]> {
+async function fetchFiidii(): Promise<{ rows: FiidiiRow[]; flow: MacroPack["flow"] }> {
   try {
-    const raw = await getJson("https://fii-diidata.mrchartist.com/api/history");
-    const list = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
-    return list
-      .filter((x) => x && typeof x === "object")
-      .map((x) => asFiidii(x as Record<string, unknown>))
-      .filter((x) => x.date)
-      .slice(0, 1400);
+    const pack = await loadFlowPack();
+    const rows = [...pack.daily]
+      .reverse()
+      .filter((bar) => bar.end && Number.isFinite(bar.fiiNet) && Number.isFinite(bar.diiNet))
+      .slice(0, 1400)
+      .map((bar) => ({ date: bar.end, fiiNet: bar.fiiNet, diiNet: bar.diiNet, fiiBuy: 0, fiiSell: 0, diiBuy: 0, diiSell: 0 }));
+    const health = pack.health;
+    return {
+      rows,
+      flow: {
+        status: health?.status || (rows.length ? "delayed" : "unavailable"),
+        latest: health?.latest || rows[0]?.date || null,
+        expected: health?.expected || null,
+        refreshedAt: health?.lastSuccess || pack.source.retrievedAt,
+        source: health?.sourceName || pack.source.name,
+        sourceUrl: health?.sourceUrl || pack.source.url,
+        warning:
+          health?.status === "delayed"
+            ? `Latest cash session on file is ${health.latest || "missing"}. Expected ${health.expected || "a later session"}. Older rows are unchanged.`
+            : health?.failure
+              ? `Last refresh did not replace the stored rows (${health.failure}).`
+              : null,
+      },
+    };
   } catch {
-    try {
-      const raw = await getJson("https://fii-diidata.mrchartist.com/api/data");
-      if (raw && typeof raw === "object") return [asFiidii(raw as Record<string, unknown>)].filter((x) => x.date);
-    } catch {
-      /* empty */
-    }
-    return [];
+    return { rows: [], flow: { status: "unavailable", latest: null, expected: null, refreshedAt: null, source: "Stored cash archive", sourceUrl: "", warning: "The cash file could not be read. No figures were filled in." } };
   }
 }
 
@@ -263,15 +258,16 @@ async function fetchDeals(): Promise<DealEvent[]> {
 }
 
 export async function fetchMacro(): Promise<MacroPack> {
-  const hit = cache.get("v4");
+  const hit = cache.get("v5");
   if (hit && Date.now() - hit.at < TTL) return hit.data;
-  const [fiidii, results, deals] = await Promise.all([fetchFiidii(), fetchResults(), fetchDeals()]);
+  const [flows, results, deals] = await Promise.all([fetchFiidii(), fetchResults(), fetchDeals()]);
   const data: MacroPack = {
-    fiidii,
+    fiidii: flows.rows,
+    flow: flows.flow,
     results,
     deals,
     asOf: new Date().toISOString(),
   };
-  cache.set("v4", { at: Date.now(), data });
+  cache.set("v5", { at: Date.now(), data });
   return data;
 }

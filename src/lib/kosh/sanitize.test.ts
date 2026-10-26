@@ -32,4 +32,38 @@ describe("cloud sanitizer", () => {
     assert.equal(out.holdings[0].isin, "INE467B01029");
     assert.equal("id" in sanitizeHolding(p.holdings[0]), false);
   });
+
+  it("keeps an import summary and strips a PAN from the filename", () => {
+    const p: Portfolio = {
+      id: "p1",
+      name: "Main",
+      bench: "nifty",
+      holdings: [],
+      imports: [
+        {
+          id: "imp-1",
+          at: 1,
+          kind: "path",
+          filename: "ABCDE1234F.csv",
+          rowsRead: 4,
+          accepted: 3,
+          ignored: 1,
+          duplicates: 1,
+          ambiguous: 0,
+          missingPrices: 0,
+          unresolved: 0,
+          aiStatus: "failed",
+          aiClass: "quota",
+          fallback: true,
+          applied: 3,
+          note: "parser kept the rows",
+        },
+      ],
+    };
+    const out = sanitizePortfolio(p);
+    assert.equal(out.imports?.length, 1);
+    assert.equal(out.imports?.[0].rowsRead, 4);
+    assert.equal(out.imports?.[0].fallback, true);
+    assert.equal(out.imports?.[0].filename?.includes("ABCDE1234F"), false);
+  });
 });

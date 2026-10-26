@@ -787,3 +787,34 @@ html[data-layout="ledger"] .kosh-card:hover {
   background: transparent;
   box-shadow: none;
 }
+
+/* Portfolio page only. Shared chrome keeps the app theme. */
+.portfolio-board {
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  border-radius: 16px;
+}
+html[data-theme="light"] .portfolio-board {
+  --k-bg: #f3f4f6;
+  --k-bg-elevated: #e8eaee;
+  --k-surface: #ffffff;
+  --k-surface-2: #f6f7f9;
+  --k-border: #e4e7ec;
+  --k-border-strong: #d0d5dd;
+  --k-shadow-border: 0 1px 2px rgba(16, 24, 40, 0.04), 0 0 0 1px rgba(16, 24, 40, 0.07);
+  --k-shadow-border-hover: 0 8px 18px -14px rgba(16, 24, 40, 0.4), 0 0 0 1px rgba(16, 24, 40, 0.12);
+}
+html[data-theme="dark"] .portfolio-board {
+  --k-bg: #101114;
+  --k-bg-elevated: #16171b;
+  --k-surface: #18191d;
+  --k-surface-2: #222328;
+  --k-border: #2c2e34;
+  --k-border-strong: #3a3d45;
+  --k-shadow-border: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --k-shadow-border-hover: 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+

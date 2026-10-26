@@ -142,6 +142,52 @@ export type PathPriceFact = {
   evidence: string;
 };
 
+/** Why an optional AI read did not produce a usable interpretation. */
+export type AiFailureClass = "unconfigured" | "auth" | "quota" | "rate" | "timeout" | "malformed" | "schema" | "network";
+
+export type ImportAiStatus = "not-run" | "ok" | "unavailable" | "failed" | "unconfigured";
+
+/** One upload. Counts and status only — never the file body. */
+export type ImportRecord = {
+  id: string;
+  at: number;
+  kind: "holdings" | "holdings-update" | "holdings-replace" | "path" | "path-replace";
+  filename?: string;
+  rowsRead: number;
+  accepted: number;
+  ignored: number;
+  duplicates: number;
+  ambiguous: number;
+  missingPrices: number;
+  unresolved: number;
+  aiStatus: ImportAiStatus;
+  aiClass?: AiFailureClass;
+  fallback: boolean;
+  applied: number;
+  note?: string;
+  /** Rows the parser saw before acceptance. Optional on older logs. */
+  detected?: number;
+  rejected?: number;
+  skipped?: number;
+  flagged?: number;
+  corrections?: number;
+  commit?: "applied" | "reverted" | "empty";
+  affectedFrom?: string;
+  /** Enough to undo this import when those rows are still unchanged. Capped. */
+  touches?: {
+    op: "add" | "correct";
+    id?: string;
+    symbol: string;
+    date: string | null;
+    side: 1 | -1;
+    qty: number;
+    price: number;
+    beforeQty?: number;
+    beforePrice?: number;
+    beforeSide?: 1 | -1;
+  }[];
+};
+
 export type Portfolio = {
   id: string;
   name: string;
@@ -151,6 +197,8 @@ export type Portfolio = {
   trades?: TradeLine[];
   /** Source-backed closes used only when market history has no series. */
   pathFacts?: PathPriceFact[];
+  /** Newest first. Optional so older saved portfolios still load. */
+  imports?: ImportRecord[];
   updatedAt?: number;
 };
 
@@ -690,7 +738,22 @@ export type DealEvent = {
   note: string;
 };
 
-export type MacroPack = { fiidii: FiidiiRow[]; results: ResultEvent[]; deals: DealEvent[]; asOf: string };
+export type MacroPack = {
+  fiidii: FiidiiRow[];
+  results: ResultEvent[];
+  deals: DealEvent[];
+  asOf: string;
+  /** Cash-flow freshness. Absent on older responses. */
+  flow?: {
+    status: "fresh" | "updating" | "delayed" | "unavailable";
+    latest: string | null;
+    expected: string | null;
+    refreshedAt: string | null;
+    source: string;
+    sourceUrl: string;
+    warning: string | null;
+  };
+};
 
 export type ChartFacts = {
   interval: string;

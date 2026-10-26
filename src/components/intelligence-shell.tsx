@@ -13,6 +13,7 @@ import { LayoutSwitch } from "@/components/layout-switch";
 import { SyncChip } from "@/components/sync-chip";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { MarketsMenu } from "@/components/markets-menu";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -45,12 +46,15 @@ export function IntelligenceShell({ children, full }: { children: ReactNode; wid
           Kosh
         </Link>
         <Rail label="Markets">
-          <RailLink to="/markets" search={{ view: "terminal" }} on={pathname.startsWith("/markets") && !marketsOverview}>
-            Terminal
+          <RailLink to="/markets" search={{ view: "terminal" }} on={pathname.startsWith("/markets") && !marketsOverview && !pathname.startsWith("/markets/rotation")}>
+            Market Terminal
           </RailLink>
           <RailLink to="/markets" search={{ view: "overview" }} on={marketsOverview}>
-            Overview
+            Market Overview
           </RailLink>
+          <Link to="/markets/rotation" className={cn("rounded-sm px-2 py-1.5 text-[13px]", pathname.startsWith("/markets/rotation") ? "bg-surface text-fg" : "text-muted hover:text-fg")}>
+            Sector Rotation
+          </Link>
         </Rail>
         <Rail label="Research">
           <RailLink to="/watch" on={navOn("/watch", pathname)}>
@@ -114,7 +118,7 @@ export function IntelligenceShell({ children, full }: { children: ReactNode; wid
       </div>
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/95 pb-[env(safe-area-inset-bottom)] md:hidden">
         <div className="flex">
-          <Tab to="/markets" label="Markets" on={navOn("/markets", pathname)} />
+          <MarketsMenu placement="up" tone="tab" />
           <Tab to="/watch" label="Watch" on={navOn("/watch", pathname)} />
           <Tab to="/screen" label="Screen" on={navOn("/screen", pathname)} />
           <Tab to="/app" label="Portfolio" on={navOn("/app", pathname)} />

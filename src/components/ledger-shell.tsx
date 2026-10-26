@@ -11,6 +11,7 @@ import { SearchBar } from "@/components/search-bar";
 import { SyncChip } from "@/components/sync-chip";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useKosh } from "@/lib/store";
+import { MarketsMenu } from "@/components/markets-menu";
 import { cn } from "@/lib/utils";
 
 const InspectorContext = createContext<((node: ReactNode) => void) | null>(null);
@@ -21,7 +22,8 @@ export function useLedgerInspector() {
 
 const NAV = [
   { to: "/" as const, label: "Brief", on: (p: string) => p === "/" },
-  { to: "/markets" as const, label: "Markets", on: (p: string) => p.startsWith("/markets") },
+  { to: "/markets" as const, label: "Markets", on: (p: string) => (p === "/markets" || p.startsWith("/markets?")) || (p.startsWith("/markets") && !p.startsWith("/markets/rotation")) },
+  { to: "/markets/rotation" as const, label: "Sector Rotation", on: (p: string) => p.startsWith("/markets/rotation") },
   { to: "/screen" as const, label: "Screener", on: (p: string) => p.startsWith("/screen") },
   { to: "/app" as const, label: "Books", on: (p: string) => p === "/app" || (p.startsWith("/p/") && !p.includes("/path")) },
   { to: "/watch" as const, label: "Watch", on: (p: string) => p.startsWith("/watch") },
@@ -65,18 +67,22 @@ export function LedgerShell({ children, full }: { children: ReactNode; wide?: bo
             </div>
           </div>
           <nav className="mx-auto mt-4 hidden max-w-5xl gap-6 px-5 pb-3 md:flex" aria-label="Ledger">
-            {NAV.map((item) => (
-              <Link
-                key={item.label}
-                to={item.to}
-                className={cn(
-                  "border-b pb-2 text-[14px]",
-                  item.on(pathname) ? "border-accent text-fg" : "border-transparent text-muted hover:text-fg",
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {NAV.map((item) =>
+              item.label === "Markets" ? (
+                <MarketsMenu key="markets" tone="plain" />
+              ) : (
+                <Link
+                  key={item.label}
+                  to={item.to}
+                  className={cn(
+                    "border-b pb-2 text-[14px]",
+                    item.on(pathname) ? "border-accent text-fg" : "border-transparent text-muted hover:text-fg",
+                  )}
+                >
+                  {item.label}
+                </Link>
+              ),
+            )}
             <Link
               to={book ? "/p/$id/path" : "/app"}
               params={book ? { id: book.id } : undefined}
@@ -100,7 +106,7 @@ export function LedgerShell({ children, full }: { children: ReactNode; wide?: bo
         </div>
         <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-bg pb-[env(safe-area-inset-bottom)] md:hidden">
           <Tab to="/" label="Brief" on={pathname === "/"} />
-          <Tab to="/markets" label="Markets" on={pathname.startsWith("/markets")} />
+          <MarketsMenu placement="up" tone="tab" />
           <Tab to="/app" label="Books" on={pathname === "/app" || pathname.startsWith("/p/")} />
           <Tab to={book ? "/p/$id/path" : "/app"} params={book ? { id: book.id } : undefined} label="Path" on={pathname.includes("/path")} />
         </nav>

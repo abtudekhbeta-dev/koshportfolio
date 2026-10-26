@@ -3,3 +3,10 @@ node_modules/
 .github_repo
 .env
 .env.*
+.vercel/
+screenshots/
+data/rrg/cache/
+data/rrg/extracted/
+*.sqlite
+*.parquet
+

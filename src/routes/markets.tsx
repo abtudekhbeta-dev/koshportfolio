@@ -4,7 +4,8 @@ import { ClassicOverview } from "@/components/terminal/classic-overview";
 import { MarketOverview } from "@/components/terminal/market-overview";
 import { MarketsDesk } from "@/components/terminal/markets-desk";
 import { MarketsSwitch } from "@/components/terminal/markets-switch";
-import { useAppLayout } from "@/lib/layout-mode";
+import { LedgerTerminal } from "@/components/ledger/ledger-terminal";
+import { readLayout, useAppLayout } from "@/lib/layout-mode";
 
 export type MarketsSearch = { view?: "terminal" | "overview"; symbol?: string; name?: string };
 
@@ -25,9 +26,11 @@ export const Route = createFileRoute("/markets")({
 function Markets() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { view } = Route.useSearch();
-  const layout = useAppLayout();
+  const hooked = useAppLayout();
+  const layout = typeof document === "undefined" ? hooked : readLayout();
   if (pathname.startsWith("/markets/")) return <Outlet />;
   const terminal = view !== "overview";
+  if (terminal && layout === "ledger") return <LedgerTerminal />;
   return (
     <AppShell full={terminal}>
       {terminal ? (

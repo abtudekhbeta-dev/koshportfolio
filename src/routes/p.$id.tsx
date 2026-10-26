@@ -83,6 +83,13 @@ function PortfolioLayout() {
           ) : query.isPending ? (
             <Skeleton className="mt-2 h-4 w-40" />
           ) : null}
+          {portfolio.imports?.[0] ? (
+            <p className="mt-1 text-[12px] text-muted">
+              Last import {new Date(portfolio.imports[0].at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} ·{" "}
+              {portfolio.imports[0].accepted} accepted
+              {portfolio.imports[0].fallback ? " · parser used, AI did not finish" : ""}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -103,6 +110,18 @@ function PortfolioLayout() {
             <BenchPicker value={portfolio.bench} onChange={(v) => setBench(id, v)} />
           </label>
           <AddHoldings portfolioId={id} trigger={<Button size="sm" variant="secondary">Add holdings</Button>} />
+          <AddHoldings
+            portfolioId={id}
+            intent="update"
+            trigger={
+              <Button size="sm" variant="secondary" className="min-h-11">
+                Update holdings
+              </Button>
+            }
+          />
+          <Link to="/p/$id/path" params={{ id }} className="inline-flex min-h-11 items-center rounded-md px-2 text-[12px] text-muted hover:text-fg">
+            Import path
+          </Link>
           <EnrichButton
             symbols={[
               ...portfolio.holdings.map((h) => h.symbol),
@@ -113,8 +132,17 @@ function PortfolioLayout() {
             size="sm"
             variant="secondary"
             onClick={() => {
-              const nid = duplicatePortfolio(id);
-              if (nid) void navigate({ to: "/p/$id", params: { id: nid } });
+              const suggested = `${portfolio.name} Copy`;
+              const raw = window.prompt("Name for the copy. Holdings and settings are copied. Path history is not.", suggested);
+              if (raw == null) return;
+              const name = raw.trim();
+              if (!name) return;
+              const nid = duplicatePortfolio(id, name);
+              if (!nid) {
+                window.alert("That name is already used, or the portfolio could not be copied. Nothing was changed.");
+                return;
+              }
+              void navigate({ to: "/p/$id", params: { id: nid } });
             }}
           >
             Duplicate

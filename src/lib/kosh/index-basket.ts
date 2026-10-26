@@ -191,18 +191,7 @@ function worst(row: SquarifyItem[], side: number) {
 
 function placeRow(row: SquarifyItem[], rect: { x: number; y: number; w: number; h: number }, out: Tile[]) {
   const sum = row.reduce((total, item) => total + item.area, 0);
-  const horizontal = rect.w >= rect.h;
-  if (horizontal) {
-    const rowH = sum / rect.w;
-    let x = rect.x;
-    for (const item of row) {
-      const w = item.area / rowH;
-      out[item.i] = { x, y: rect.y, w, h: rowH };
-      x += w;
-    }
-    rect.y += rowH;
-    rect.h -= rowH;
-  } else {
+  if (rect.w >= rect.h) {
     const rowW = sum / rect.h;
     let y = rect.y;
     for (const item of row) {
@@ -212,6 +201,16 @@ function placeRow(row: SquarifyItem[], rect: { x: number; y: number; w: number; 
     }
     rect.x += rowW;
     rect.w -= rowW;
+  } else {
+    const rowH = sum / rect.w;
+    let x = rect.x;
+    for (const item of row) {
+      const w = item.area / rowH;
+      out[item.i] = { x, y: rect.y, w, h: rowH };
+      x += w;
+    }
+    rect.y += rowH;
+    rect.h -= rowH;
   }
 }
 

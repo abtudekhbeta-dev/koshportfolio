@@ -28,7 +28,7 @@ const COPY = {
   },
 } as const;
 
-export function MixNudge({ where = "landing" }: { where?: keyof typeof COPY }) {
+export function MixNudge({ where = "landing", variant = "banner" }: { where?: keyof typeof COPY; variant?: "banner" | "button" }) {
   const ports = useKosh((s) => s.portfolios);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -46,6 +46,37 @@ export function MixNudge({ where = "landing" }: { where?: keyof typeof COPY }) {
     else void navigate({ to: "/app" });
   }
 
+  const dialog = (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent title="Which portfolio?" className="max-w-sm">
+        <div className="grid gap-1">
+          {filled.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => go(p.id)}
+              className="rounded-sm px-3 py-2 text-left text-[13px] hover:bg-surface-2"
+            >
+              {p.name}
+              <span className="ml-2 text-[11px] text-subtle">{p.holdings.length} names</span>
+            </button>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
+  if (variant === "button") {
+    return (
+      <>
+        <Button type="button" variant="secondary" className="min-h-10" onClick={onSee}>
+          Compare with Nifty
+        </Button>
+        {dialog}
+      </>
+    );
+  }
+
   return (
     <aside className="rounded-lg border-l-[4px] border-l-chart bg-surface p-4 shadow-[var(--shadow-border)]">
       <div className="text-[11px] font-semibold tracking-[0.14em] text-chart uppercase">{c.kicker}</div>
@@ -60,23 +91,7 @@ export function MixNudge({ where = "landing" }: { where?: keyof typeof COPY }) {
           <Link to="/compare">Compare</Link>
         </Button>
       </div>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent title="Which portfolio?" className="max-w-sm">
-          <div className="grid gap-1">
-            {filled.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => go(p.id)}
-                className="rounded-sm px-3 py-2 text-left text-[13px] hover:bg-surface-2"
-              >
-                {p.name}
-                <span className="ml-2 text-[11px] text-subtle">{p.holdings.length} names</span>
-              </button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {dialog}
     </aside>
   );
 }

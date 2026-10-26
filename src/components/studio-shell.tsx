@@ -14,6 +14,7 @@ import { SearchBar } from "@/components/search-bar";
 import { SyncChip } from "@/components/sync-chip";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { MarketsMenu } from "@/components/markets-menu";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +46,7 @@ export function StudioShell({ children, full }: { children: ReactNode; wide?: bo
   const ports = useKosh((s) => s.portfolios);
   const book = ports.find((p) => p.id === port) || ports.find((p) => p.id !== "sample") || ports[0];
   const fresh = tapeFreshness(tape.data, isIstSession());
+  const rotation = pathname.startsWith("/markets/rotation");
   const overview = pathname.startsWith("/markets") && /(?:^|[?&])view=overview(?:&|$)/.test(searchStr);
   const [inspector, setInspector] = useState<ReactNode>(null);
   const set = useMemo(() => (node: ReactNode) => setInspector(node), []);
@@ -59,12 +61,15 @@ export function StudioShell({ children, full }: { children: ReactNode; wide?: bo
           </Link>
           <p className="mt-1 text-[11px] text-subtle" title={fresh.title}>Studio · {fresh.label}</p>
           <Rail n="01" label="Markets">
-            <A to="/markets" search={{ view: "terminal" }} on={pathname.startsWith("/markets") && !overview}>
-              Terminal
+            <A to="/markets" search={{ view: "terminal" }} on={pathname.startsWith("/markets") && !overview && !rotation}>
+              Market Terminal
             </A>
             <A to="/markets" search={{ view: "overview" }} on={overview}>
-              Overview
+              Market Overview
             </A>
+            <Link to="/markets/rotation" className={item(rotation)}>
+              Sector Rotation
+            </Link>
           </Rail>
           <Rail n="02" label="Research">
             <A to="/watch" on={pathname.startsWith("/watch")}>
@@ -104,6 +109,9 @@ export function StudioShell({ children, full }: { children: ReactNode; wide?: bo
         <div className={cn("flex min-w-0 flex-col", full && "min-h-0 flex-1")}>
           <header className={cn("z-30 border-b border-border", full ? "shrink-0" : "sticky top-0 bg-bg/95")}>
             <div className="flex h-12 items-center gap-3 px-3 sm:px-5">
+              <span className="lg:hidden">
+                <MarketsMenu tone="compact" />
+              </span>
               <div className="hidden min-w-0 sm:block">
                 <div className="text-[10px] tracking-[0.16em] text-subtle uppercase">{section}</div>
               </div>
