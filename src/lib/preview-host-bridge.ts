@@ -114,6 +114,22 @@ export function installPreviewHostBridge(
     window.parent.postMessage(message, parentOrigin);
   };
 
+  let readyQueued = false;
+  const signalReady = () => {
+    if (readyQueued) return;
+    readyQueued = true;
+    queueMicrotask(() => {
+      readyQueued = false;
+      post({
+        channel: PREVIEW_BRIDGE_CHANNEL,
+        version: PREVIEW_BRIDGE_VERSION,
+        type: "ready",
+      });
+    });
+  };
+
+  const here = () => `${window.location.pathname || "/"}${window.location.search}${window.location.hash}`;
+
   const reportLocation = () => {
     post({
       channel: PREVIEW_BRIDGE_CHANNEL,
@@ -123,6 +139,9 @@ export function installPreviewHostBridge(
       search: window.location.search,
       hash: window.location.hash,
     });
+    // SPA navigations do not reinstall the bridge. The preview chrome keeps its
+    // spinner up after a location change until it hears ready again.
+    signalReady();
   };
 
   const reportRoutes = () => {
@@ -185,8 +204,20 @@ export function installPreviewHostBridge(
     if (envelope.data.type === "navigate") {
       const parsed = NavigateSchema.safeParse(event.data);
       if (!parsed.success) return;
+      let target = parsed.data.path;
+      try {
+        const url = new URL(target, window.location.origin);
+        if (url.origin !== window.location.origin) return;
+        target = `${url.pathname}${url.search}${url.hash}`;
+      } catch {
+        return;
+      }
+      // An echoed navigate for the URL we just reported must not push again.
+      if (target === here()) {
+        signalReady();
+        return;
+      }
       navigate(parsed.data.path);
-      // Router navigations often update location asynchronously; report after a tick.
       queueMicrotask(reportLocation);
       return;
     }

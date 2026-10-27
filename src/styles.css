@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./components/ledger/ledger-terminal.css";
 
 :root,
 html[data-theme="dark"] {

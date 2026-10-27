@@ -9,7 +9,9 @@ const THEME_BOOT = `(function(){try{var t=JSON.parse(localStorage.getItem("kosh-
 
 // After a publish, hashed route chunks change. A tab still holding the previous
 // page then fails with "Failed to fetch dynamically imported module". Reload once.
-const CHUNK_BOOT = `(function(){var k="kosh-chunk-reload";window.addEventListener("vite:preloadError",function(e){if(e&&e.preventDefault)e.preventDefault();try{if(sessionStorage.getItem(k)==="1")return;sessionStorage.setItem(k,"1")}catch(err){}location.reload()});})();`;
+// A second failure must reject: preventDefault on every event swallows the import
+// and the router stays pending on an empty page forever.
+const CHUNK_BOOT = `(function(){var k="kosh-chunk-reload";window.addEventListener("vite:preloadError",function(e){var n=0;try{n=Number(sessionStorage.getItem(k)||"0")||0}catch(err){}if(n>=1)return;if(e&&e.preventDefault)e.preventDefault();try{sessionStorage.setItem(k,"1")}catch(err){}location.reload()});window.setTimeout(function(){try{sessionStorage.removeItem(k)}catch(err){}},12000)})();`;
 
 export const Route = createRootRoute({
   notFoundComponent: NotFound,

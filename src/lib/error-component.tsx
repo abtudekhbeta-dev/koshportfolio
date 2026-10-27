@@ -16,6 +16,20 @@ export function AppErrorComponent({ error }: ErrorComponentProps) {
       <p className="max-w-md text-sm break-words text-zinc-500 dark:text-zinc-400">
         {(error instanceof Error ? error.message : "") || "An unexpected error occurred. Try reloading the page."}
       </p>
+      <button
+        type="button"
+        className="mt-1 inline-flex h-10 items-center rounded-sm bg-zinc-900 px-4 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+        onClick={() => {
+          try {
+            sessionStorage.removeItem("kosh-chunk-reload");
+          } catch {
+            /* ignore */
+          }
+          window.location.reload();
+        }}
+      >
+        Reload
+      </button>
     </main>
   );
 }
