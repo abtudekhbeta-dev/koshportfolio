@@ -48,6 +48,29 @@ describe("saved terminal layout", () => {
     assert.equal(layout.range, "5Y");
     assert.equal(layout.drawings["TCS|1D"]?.[0].p0, 10);
   });
+
+  it("keeps stroke width and dash on a saved drawing and still loads older drawings", () => {
+    const styled = sanitizeLayout({
+      v: 1,
+      symbol: "RELIANCE",
+      interval: "1D",
+      drawings: {
+        "RELIANCE|1D": [{ id: "b", kind: "trend", t0: 1, p0: 2, t1: 3, p1: 4, color: "#4c8dff", width: 3, dash: "dashed", locked: false, hidden: false }],
+      },
+    });
+    assert.equal(styled.layout.drawings["RELIANCE|1D"]?.[0].width, 3);
+    assert.equal(styled.layout.drawings["RELIANCE|1D"]?.[0].dash, "dashed");
+    const plain = sanitizeLayout({
+      v: 1,
+      symbol: "RELIANCE",
+      interval: "1D",
+      drawings: {
+        "RELIANCE|1D": [{ id: "c", kind: "hline", t0: 1, p0: 9, color: "#4c8dff", locked: false, hidden: false }],
+      },
+    });
+    assert.equal(plain.layout.drawings["RELIANCE|1D"]?.[0].width, undefined);
+    assert.equal(plain.layout.drawings["RELIANCE|1D"]?.[0].p0, 9);
+  });
 });
 
 describe("drawing import", () => {
@@ -65,6 +88,9 @@ describe("drawing import", () => {
     assert.deepEqual(parsed?.symbols, ["NSE:RELIANCE", "NSE:GMRP&UI", "BSE:TCS"]);
     assert.equal(parseSymbolToken("NSE:RELIANCE").symbol, "RELIANCE");
     assert.equal(parseSymbolToken("NSE:GMRP&UI").status, "needs-review");
+    assert.equal(parseSymbolToken("BSE:TCS").status, "needs-review");
+    assert.match(parseSymbolToken("BSE:TCS").reason, /BSE/);
+    assert.equal(parseSymbolToken("NSE:TCS").status, "resolved");
   });
 
   it("does not treat a public chart shell as a drawing export", () => {

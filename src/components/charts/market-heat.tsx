@@ -21,6 +21,12 @@ export function MarketHeat({ rows }: { rows: ScreenRow[] }) {
   if (!rows.length) return <p className="text-sm text-muted">Heat fills once prices are in.</p>;
   return (
     <div className="grid gap-4">
+      <div className="flex items-center gap-3 text-[11px] text-muted">
+        <span>Daily change</span>
+        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-[2px] bg-down/70" /> Down</span>
+        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-[2px] bg-surface-2" /> Flat</span>
+        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-[2px] bg-up/70" /> Up</span>
+      </div>
       {groups.map((g) => {
         const expanded = g.collapseDefault ? Boolean(open[g.sector]) : true;
         return (
@@ -45,13 +51,13 @@ export function MarketHeat({ rows }: { rows: ScreenRow[] }) {
             </div>
             {expanded ? (
               <>
-                <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                   {g.rows.map((r) => (
                     <Link
                       key={r.symbol}
                       to="/s/$symbol"
                       params={{ symbol: r.symbol }}
-                      className={cn("rounded-sm px-2 py-2 transition-transform duration-150 hover:scale-[1.01]", heat(r.changePct))}
+                      className={cn("min-h-[52px] rounded-md px-2 py-2 transition-transform duration-150 hover:scale-[1.01]", heat(r.changePct))}
                     >
                       <div className="truncate text-[12px] font-medium">{r.symbol}</div>
                       <div className="font-mono text-[11px] tabular">{fmtPct(r.changePct)}</div>

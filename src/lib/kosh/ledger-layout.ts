@@ -15,6 +15,7 @@ export type LedgerInd = {
 };
 
 export type DrawKind = "trend" | "ray" | "hline" | "vline" | "rect" | "fib" | "measure" | "text";
+export type DrawDash = "solid" | "dashed" | "dotted";
 
 export type LedgerDraw = {
   id: string;
@@ -25,6 +26,9 @@ export type LedgerDraw = {
   p1?: number;
   text?: string;
   color: string;
+  /** Stroke width in pixels, or text size step. Older saves omit it. */
+  width?: number;
+  dash?: DrawDash;
   locked: boolean;
   hidden: boolean;
 };
@@ -166,6 +170,8 @@ function cleanDraw(value: unknown): LedgerDraw | null {
   if (!Number.isFinite(t0) || !Number.isFinite(p0)) return null;
   const t1 = Number(row.t1);
   const p1 = Number(row.p1);
+  const width = Number(row.width);
+  const dash = row.dash === "dashed" || row.dash === "dotted" || row.dash === "solid" ? row.dash : undefined;
   return {
     id: String(row.id || "draw").slice(0, 40),
     kind: row.kind as DrawKind,
@@ -175,6 +181,8 @@ function cleanDraw(value: unknown): LedgerDraw | null {
     ...(Number.isFinite(p1) ? { p1 } : {}),
     ...(typeof row.text === "string" && row.text.trim() ? { text: row.text.trim().slice(0, 80) } : {}),
     color: COLORS.test(String(row.color || "")) ? String(row.color) : "#4c8dff",
+    ...(Number.isFinite(width) ? { width: Math.max(1, Math.min(6, Math.round(width))) } : {}),
+    ...(dash ? { dash } : {}),
     locked: row.locked === true,
     hidden: row.hidden === true,
   };

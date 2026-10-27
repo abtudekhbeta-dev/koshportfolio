@@ -36,12 +36,10 @@ function Markets() {
       {terminal ? (
         layout === "classic" ? (
           <div className="flex min-h-0 flex-1 flex-col">
-            <MarketsSwitch view="terminal" />
             <LedgerTerminal host="embed" />
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
-            <MarketsSwitch view="terminal" />
             <MarketsDesk />
           </div>
         )

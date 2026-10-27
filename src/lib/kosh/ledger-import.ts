@@ -117,6 +117,15 @@ export function parseSymbolToken(raw: string): SymbolRow {
   if (!/^[\^A-Z0-9._=-]{1,32}$/.test(body)) {
     return { raw: text, symbol: body.slice(0, 32), exchange, status: "needs-review", reason: "Kosh could not match this symbol without guessing a rename." };
   }
+  if (exchange === "BSE") {
+    return {
+      raw: text,
+      symbol: body,
+      exchange,
+      status: "needs-review",
+      reason: "BSE listing was not treated as the NSE ticker. Confirm the instrument before adding it.",
+    };
+  }
   return { raw: text, symbol: body, exchange: exchange || "NSE", status: "resolved", reason: exchange ? `Taken from the ${exchange} prefix.` : "Used as written." };
 }
 
@@ -144,11 +153,12 @@ function fingerprint(kind: string, anchors: ImportAnchor[], text = ""): string {
   return [kind, ...bits, text.trim()].join("|");
 }
 
-function asDraw(kind: DrawKind, anchors: ImportAnchor[], extra: { color?: string; text?: string; locked?: boolean; id?: string }): LedgerDraw | null {
+function asDraw(kind: DrawKind, anchors: ImportAnchor[], extra: { color?: string; text?: string; locked?: boolean; id?: string; width?: number }): LedgerDraw | null {
   const first = anchors[0];
   if (!first) return null;
   const second = anchors[1];
   if (TWO_POINT.has(kind) && !second) return null;
+  const width = Number(extra.width);
   return {
     id: String(extra.id || cryptoId()).slice(0, 40),
     kind,
@@ -157,6 +167,7 @@ function asDraw(kind: DrawKind, anchors: ImportAnchor[], extra: { color?: string
     ...(second ? { t1: second.t, p1: second.p } : {}),
     ...(extra.text ? { text: extra.text.slice(0, 80) } : {}),
     color: extra.color && COLOR.test(extra.color) ? extra.color : "#4c8dff",
+    ...(Number.isFinite(width) ? { width: Math.max(1, Math.min(6, Math.round(width))) } : {}),
     locked: extra.locked === true,
     hidden: false,
   };
@@ -177,6 +188,7 @@ function reviewObject(input: {
   id?: string;
   visible?: boolean;
   assignBare?: string;
+  width?: number;
 }): ReviewedObject {
   const mapped = DRAW_KINDS.has(input.kind as DrawKind) ? (input.kind as DrawKind) : TV_KIND[input.kind];
   const symbolRow = input.symbol ? parseSymbolToken(input.symbol) : null;
@@ -245,6 +257,7 @@ export function previewKoshFile(raw: unknown, assignBare = ""): ImportPreview {
       color: typeof obj.color === "string" ? obj.color : undefined,
       text: typeof obj.text === "string" ? obj.text : undefined,
       locked: obj.locked === true,
+      width: Number.isFinite(Number(obj.width)) ? Number(obj.width) : undefined,
       id: typeof obj.id === "string" ? obj.id : undefined,
       visible: obj.visible !== false,
       assignBare,
@@ -270,6 +283,7 @@ export function previewTradingViewState(raw: unknown, assignBare = ""): ImportPr
       color: typeof state.linecolor === "string" ? state.linecolor : typeof state.color === "string" ? state.color : undefined,
       text: typeof state.text === "string" ? state.text : undefined,
       locked: state.frozen === true,
+      width: Number.isFinite(Number(state.linewidth)) ? Number(state.linewidth) : undefined,
       id: typeof row.id === "string" ? row.id : undefined,
       visible: state.visible !== false,
       assignBare,

@@ -21,7 +21,7 @@ import { atr, bollinger, ema, macd, rsi, sma } from "@/lib/kosh/ohlc";
 import { sliceLookback } from "@/lib/kosh/ohlc";
 import type { OhlcBar } from "@/lib/kosh/types";
 import { FIB_RATIOS, fibPrice, hitDraw, rayEnd, type HitPart } from "@/lib/kosh/ledger-draw";
-import type { DrawKind, LedgerDraw, LedgerInd } from "@/lib/kosh/ledger-layout";
+import type { DrawDash, DrawKind, LedgerDraw, LedgerInd } from "@/lib/kosh/ledger-layout";
 import type { LedgerChartType, LedgerTool } from "@/lib/kosh/ledger-spec";
 import { ledgerChrome, type LedgerTheme } from "@/lib/kosh/ledger-chrome";
 import {
@@ -136,6 +136,7 @@ export function LedgerChart({
   onDrawings,
   onContext,
   theme,
+  pen,
 }: {
   bars: OhlcBar[];
   intra: boolean;
@@ -152,6 +153,7 @@ export function LedgerChart({
   onDrawings: (next: LedgerDraw[], phase: Phase) => void;
   onContext: (info: { x: number; y: number; price: number | null; time: number | null }) => void;
   theme: LedgerTheme;
+  pen: { color: string; width: number; dash: DrawDash };
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -168,7 +170,9 @@ export function LedgerChart({
   hiddenRef.current = drawingsHidden;
   intraRef.current = intra;
   const themeRef = useRef(theme);
+  const penRef = useRef(pen);
   themeRef.current = theme;
+  penRef.current = pen;
   const chrome = ledgerChrome(theme);
   const [alive, setAlive] = useState(false);
   const [frame, setFrame] = useState(0);
@@ -512,7 +516,7 @@ export function LedgerChart({
     if (drag.mode === "create") {
       drag.now = hitPoint.data;
       drag.px = Math.hypot(hitPoint.x - (project(drag.start.t, drag.start.p)?.x || hitPoint.x), hitPoint.y - (project(drag.start.t, drag.start.p)?.y || hitPoint.y));
-      if (drag.kind !== "text") setDraft(draftFrom(drag.kind, drag.start, drag.now));
+      if (drag.kind !== "text") setDraft(draftFrom(drag.kind, drag.start, drag.now, penRef.current));
       return;
     }
     const nextDraw = shiftDraw(drag.origin, drag.part, drag.start, hitPoint.data);
@@ -545,7 +549,7 @@ export function LedgerChart({
       setDraft(null);
       return;
     }
-    const row = { ...draftFrom(drag.kind, drag.start, now), id: crypto.randomUUID() };
+    const row = { ...draftFrom(drag.kind, drag.start, now, penRef.current), id: crypto.randomUUID() };
     onDrawings([...drawingsRef.current.filter((item) => item.id !== "draft"), row], "commit");
     onSelect(row.id);
     setDraft(null);
@@ -558,7 +562,18 @@ export function LedgerChart({
   const readout = hover || (bars.length ? { ...bars[bars.length - 1], t: bars[bars.length - 1].t } : null);
 
   return (
-    <div className="lt-chart" data-ledger-chart data-bars={bars.length} data-chart-bg={chrome.background} style={{ background: chrome.background }}>
+    <div
+      className="lt-chart"
+      data-ledger-chart
+      data-bars={bars.length}
+      data-chart-bg={chrome.background}
+      style={{ background: chrome.background }}
+      onContextMenuCapture={(e) => {
+        e.preventDefault();
+        const hitPoint = eventPoint(e);
+        onContext({ x: e.clientX, y: e.clientY, price: hitPoint?.data.p ?? null, time: hitPoint?.data.t ?? null });
+      }}
+    >
       <div ref={hostRef} className="lt-chart-host" />
       <svg
         ref={svgRef}
@@ -570,11 +585,6 @@ export function LedgerChart({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          const hitPoint = eventPoint(e);
-          onContext({ x: e.clientX, y: e.clientY, price: hitPoint?.data.p ?? null, time: hitPoint?.data.t ?? null });
-        }}
       >
         {tool !== "cursor" && tool !== "crosshair" ? <rect x="0" y="0" width="100%" height="100%" fill="transparent" pointerEvents="all" /> : null}
         {painted.map((draw) => (
@@ -609,7 +619,9 @@ export function LedgerChart({
                     t0: textAt.t,
                     p0: textAt.p,
                     text: note,
-                    color: chrome.text,
+                    color: penRef.current.color,
+                    width: penRef.current.width,
+                    dash: penRef.current.dash,
                     locked: false,
                     hidden: false,
                   },
@@ -666,14 +678,21 @@ function px(n: number): string {
   return n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function draftFrom(kind: DrawKind, start: DataPoint, now: DataPoint): LedgerDraw {
+function draftFrom(
+  kind: DrawKind,
+  start: DataPoint,
+  now: DataPoint,
+  pen: { color: string; width: number; dash: DrawDash },
+): LedgerDraw {
   return {
     id: "draft",
     kind,
     t0: kind === "hline" ? start.t : start.t,
     p0: kind === "vline" ? start.p : kind === "hline" ? now.p : start.p,
     ...(kind === "hline" || kind === "vline" ? {} : { t1: now.t, p1: now.p }),
-    color: "#4c8dff",
+    color: pen.color,
+    width: pen.width,
+    dash: pen.dash,
     locked: false,
     hidden: false,
   };
@@ -702,7 +721,15 @@ function DrawShape({
   if (!a || width < 2) return null;
   const b = draw.t1 != null && draw.p1 != null ? project(draw.t1, draw.p1) : null;
   const events = activeTool === "cursor" ? "stroke" : "none";
-  const common = { stroke: draw.color, fill: "none", strokeWidth: selected ? 2 : 1.4, pointerEvents: events as "stroke" };
+  const widthPx = Math.min(6, Math.max(1, draw.width || 1.5));
+  const dash = draw.dash === "dashed" ? "7 4" : draw.dash === "dotted" ? "1.5 3.5" : undefined;
+  const common = {
+    stroke: draw.color,
+    fill: "none" as const,
+    strokeWidth: selected ? widthPx + 0.6 : widthPx,
+    strokeDasharray: dash,
+    pointerEvents: events as "stroke",
+  };
   if (draw.kind === "hline") {
     return (
       <g>
@@ -722,7 +749,7 @@ function DrawShape({
   if (draw.kind === "text") {
     return (
       <g pointerEvents={activeTool === "cursor" ? "all" : "none"}>
-        <text x={a.x + 4} y={a.y} fill={draw.color} fontSize="12">
+        <text x={a.x + 4} y={a.y} fill={draw.color} fontSize={11 + ((draw.width || 1) - 1) * 2}>
           {draw.text || "Note"}
         </text>
       </g>
@@ -754,7 +781,7 @@ function DrawShape({
           if (y == null) return null;
           return (
             <g key={ratio}>
-              <line x1={left} y1={y} x2={right} y2={y} stroke={draw.color} strokeWidth={1} pointerEvents={events} />
+              <line x1={left} y1={y} x2={right} y2={y} stroke={draw.color} strokeWidth={widthPx} strokeDasharray={dash} pointerEvents={events} />
               <text x={right + 4} y={y + 3} fill={draw.color} fontSize="10">
                 {ratio.toFixed(3)}
               </text>

@@ -93,7 +93,7 @@ html[data-theme="light"] {
 }
 
 .lt-top {
-  height: 46px;
+  height: 40px;
   padding: 0 10px;
   border-bottom: 1px solid var(--lt-border);
 }
@@ -218,7 +218,7 @@ html[data-theme="light"] {
 }
 
 .lt-toolbar {
-  height: 40px;
+  height: 36px;
   padding: 0 6px;
   border-bottom: 1px solid var(--lt-border);
   overflow: hidden;
@@ -247,7 +247,7 @@ html[data-theme="light"] {
 
 .lt-head,
 .lt-foot {
-  height: 32px;
+  height: 26px;
   padding: 0 10px;
   color: var(--lt-muted-2);
   font-variant-numeric: tabular-nums;
@@ -558,6 +558,44 @@ html[data-theme="light"] {
     overflow: hidden;
     font-size: 11px;
   }
+}
+
+.lt-style {
+  position: absolute;
+  z-index: 6;
+  left: 8px;
+  bottom: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 16px);
+  border: 1px solid var(--lt-border);
+  border-radius: 8px;
+  background: var(--lt-menu);
+  padding: 4px;
+  box-shadow: var(--lt-shadow);
+}
+
+.lt-style button {
+  height: 24px;
+  min-width: 24px;
+  border: 1px solid var(--lt-border);
+  border-radius: 4px;
+  background: transparent;
+  padding: 0 6px;
+  color: var(--lt-text);
+}
+
+.lt-swatch {
+  width: 18px;
+  min-width: 18px;
+  padding: 0;
+}
+
+.lt-style button[aria-pressed="true"] {
+  border-color: var(--lt-accent);
+  outline: 1px solid var(--lt-accent);
 }
 
 @media (prefers-reduced-motion: reduce) {

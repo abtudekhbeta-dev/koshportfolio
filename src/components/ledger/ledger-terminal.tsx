@@ -28,6 +28,7 @@ import {
   drawScope,
   loadLedgerLayout,
   saveLedgerLayout,
+  type DrawDash,
   type DrawKind,
   type IndKind,
   type LedgerDraw,
@@ -108,6 +109,8 @@ function toolIcon(id: LedgerTool) {
   return <span>/</span>;
 }
 
+const PENS = ["#4c8dff", "#e6b85c", "#0f8a52", "#c63737", "#9b8af5", "#3f3c37"];
+
 export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed" }) {
   const search = route.useSearch();
   const navigate = useNavigate();
@@ -117,7 +120,8 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
   const [tool, setTool] = useState<LedgerTool>("cursor");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menu, setMenu] = useState<"indicators" | "type" | "settings" | "alert" | null>(null);
-  const [context, setContext] = useState<{ x: number; y: number; price: number | null; time: number | null; symbol?: string; name?: string } | null>(null);
+  const [context, setContext] = useState<{ source: "chart" | "watch"; x: number; y: number; price: number | null; time: number | null; symbol?: string; name?: string } | null>(null);
+  const [pen, setPen] = useState<{ color: string; width: number; dash: DrawDash }>({ color: "#4c8dff", width: 2, dash: "solid" });
   const [notice, setNotice] = useState("");
   const [save, setSave] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   const [mobileWatch, setMobileWatch] = useState(false);
@@ -726,8 +730,9 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
                 selectedId={selectedId}
                 onSelect={setSelectedId}
                 onDrawings={onDrawings}
-                onContext={(info) => setContext(info)}
+                onContext={(info) => setContext({ ...info, source: "chart", symbol, name })}
                 theme={theme}
+                pen={pen}
               />
             ) : (
               <div className="lt-chart" data-ledger-chart data-bars="0" />
@@ -745,6 +750,54 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
               <div className="lt-status">No bars were returned for {symbol} at {spec.label}. Nothing was invented to fill the gap.</div>
             ) : null}
             {collapsed ? <div className="lt-banner">This response has a close and no separate open, high, or low. Switch to Line if a candle is misleading.</div> : null}
+            {selected ? (
+              <div className="lt-style" role="toolbar" aria-label="Drawing style">
+                {PENS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className="lt-swatch"
+                    style={{ background: color }}
+                    aria-label={`Colour ${color}`}
+                    aria-pressed={selected.color === color}
+                    onClick={() => {
+                      setPen((prev) => ({ ...prev, color }));
+                      commitDrawings(drawings.map((row) => (row.id === selected.id ? { ...row, color } : row)));
+                    }}
+                  />
+                ))}
+                {[1, 2, 3, 4].map((width) => (
+                  <button
+                    key={width}
+                    type="button"
+                    aria-label={`Width ${width}`}
+                    aria-pressed={(selected.width || 2) === width}
+                    onClick={() => {
+                      setPen((prev) => ({ ...prev, width }));
+                      commitDrawings(drawings.map((row) => (row.id === selected.id ? { ...row, width } : row)));
+                    }}
+                  >
+                    {width}
+                  </button>
+                ))}
+                {selected.kind !== "text"
+                  ? (["solid", "dashed", "dotted"] as DrawDash[]).map((dash) => (
+                      <button
+                        key={dash}
+                        type="button"
+                        aria-label={`${dash} line`}
+                        aria-pressed={(selected.dash || "solid") === dash}
+                        onClick={() => {
+                          setPen((prev) => ({ ...prev, dash }));
+                          commitDrawings(drawings.map((row) => (row.id === selected.id ? { ...row, dash } : row)));
+                        }}
+                      >
+                        {dash === "solid" ? "—" : dash === "dashed" ? "- -" : "···"}
+                      </button>
+                    ))
+                  : null}
+              </div>
+            ) : null}
           </div>
           <footer className="lt-foot">
             <span>
@@ -782,7 +835,7 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
           active={symbol}
           open={watchShown}
           onPick={pick}
-          onMenu={(info) => setContext({ x: info.x, y: info.y, price: info.price, time: null, symbol: info.symbol, name: info.name })}
+          onMenu={(info) => setContext({ source: "watch", x: info.x, y: info.y, price: info.price, time: null, symbol: info.symbol, name: info.name })}
         />
       </div>
       <nav className="lt-bottom" aria-label="Terminal">
@@ -800,60 +853,99 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
       {loaded.recovered ? <div className="lt-banner">A saved chart layout could not be read. This is the default Reliance daily chart.</div> : null}
       {notice ? <div className="lt-banner">{notice}</div> : null}
       {context ? (
-        <div className="lt-menu" style={{ left: Math.min(context.x, window.innerWidth - 240), top: Math.min(context.y, window.innerHeight - 220) }}>
-          <button type="button" onClick={() => { setViewNonce((n) => n + 1); setContext(null); }}>
-            Reset chart view
-          </button>
-          {context.price != null ? (
-            <button
-              type="button"
-              onClick={() => {
-                const row: LedgerDraw = {
-                  id: crypto.randomUUID(),
-                  kind: "hline" as DrawKind,
-                  t0: context.time || bars.at(-1)?.t || 0,
-                  p0: context.price as number,
-                  color: "#4c8dff",
-                  locked: false,
-                  hidden: false,
-                };
-                commitDrawings([...drawings, row]);
-                setSelectedId(row.id);
-                setContext(null);
-              }}
-            >
-              Add horizontal line at {context.price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+        <>
+          <button type="button" className="lt-menu-back" aria-label="Close menu" onClick={() => setContext(null)} />
+          <div
+            className="lt-menu"
+            role="menu"
+            data-context={context.source}
+            aria-label={context.source === "chart" ? "Chart menu" : "Watchlist menu"}
+            style={(() => {
+              const placed = placeMenu(
+                { left: context.x, right: context.x + 1, top: context.y, bottom: context.y + 1 },
+                { width: window.innerWidth, height: window.innerHeight },
+                { width: 240, height: context.source === "watch" ? 180 : 260 },
+              );
+              return { left: placed.left, top: placed.top };
+            })()}
+          >
+            {context.source === "chart" ? (
+              <button type="button" onClick={() => { setViewNonce((n) => n + 1); setContext(null); }}>
+                Reset chart view
+              </button>
+            ) : (
+              <button type="button" onClick={() => { pick(context.symbol || symbol, context.name); setContext(null); }}>
+                Open {context.symbol || symbol}
+              </button>
+            )}
+            {context.source === "chart" && context.price != null ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const row: LedgerDraw = {
+                    id: crypto.randomUUID(),
+                    kind: "hline" as DrawKind,
+                    t0: context.time || bars.at(-1)?.t || 0,
+                    p0: context.price as number,
+                    color: pen.color,
+                    width: pen.width,
+                    dash: pen.dash,
+                    locked: false,
+                    hidden: false,
+                  };
+                  commitDrawings([...drawings, row]);
+                  setSelectedId(row.id);
+                  setContext(null);
+                }}
+              >
+                Add horizontal line at {context.price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+              </button>
+            ) : null}
+            {context.price != null ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(String(context.price)).then(
+                    () => setNotice(""),
+                    () => setNotice("Could not copy that price."),
+                  );
+                  setContext(null);
+                }}
+              >
+                Copy price
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(context.symbol || symbol).then(
+                    () => setNotice(""),
+                    () => setNotice("Could not copy that symbol."),
+                  );
+                  setContext(null);
+                }}
+              >
+                Copy symbol
+              </button>
+            )}
+            {context.source === "chart" ? (
+              <button type="button" onClick={() => { setLayout((prev) => ({ ...prev, drawingsHidden: !prev.drawingsHidden })); setContext(null); }}>
+                {layout.drawingsHidden ? "Show drawings" : "Hide drawings"}
+              </button>
+            ) : null}
+            <button type="button" onClick={() => { toggleWatch(context.symbol || symbol); setContext(null); }}>
+              {isWatched(context.symbol || symbol, watch) ? "Remove from watchlist" : "Add to watchlist"}
             </button>
-          ) : null}
-          {context.price != null ? (
-            <button
-              type="button"
-              onClick={() => {
-                void navigator.clipboard.writeText(String(context.price)).then(
-                  () => setNotice(""),
-                  () => setNotice("Could not copy that price."),
-                );
-                setContext(null);
-              }}
-            >
-              Copy price
+            {canOpenStock(context.symbol || symbol) ? (
+              <Link to="/s/$symbol" params={{ symbol: bareSymbol(context.symbol || symbol) }} onClick={() => setContext(null)}>
+                Open research page
+              </Link>
+            ) : null}
+            <button type="button" onClick={() => setContext(null)}>
+              Close
             </button>
-          ) : null}
-          <button type="button" onClick={() => { setLayout((prev) => ({ ...prev, drawingsHidden: !prev.drawingsHidden })); setContext(null); }}>
-            {layout.drawingsHidden ? "Show drawings" : "Hide drawings"}
-          </button>
-          <button type="button" onClick={() => { toggleWatch(context.symbol || symbol); setContext(null); }}>
-            {isWatched(context.symbol || symbol, watch) ? "Remove from watchlist" : "Add to watchlist"}
-          </button>
-          {canOpenStock(context.symbol || symbol) ? (
-            <Link to="/s/$symbol" params={{ symbol: bareSymbol(context.symbol || symbol) }} onClick={() => setContext(null)}>
-              Open research page
-            </Link>
-          ) : null}
-          <button type="button" onClick={() => setContext(null)}>
-            Close
-          </button>
-        </div>
+          </div>
+        </>
       ) : null}
       <span className="lt-sr" data-hist={hist} hidden />
       <LedgerImportDialog

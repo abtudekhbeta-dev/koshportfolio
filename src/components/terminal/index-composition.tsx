@@ -161,11 +161,11 @@ export function IndexComposition({
                 {data.source ? ` · ${data.source}` : ""}
                 {linked < rows.length ? ` · ${rows.length - linked} without an NSE code` : ""}
               </p>
-              <div className="overflow-hidden rounded-md bg-[#101418]">
+              <div className="overflow-hidden rounded-md bg-surface shadow-[var(--shadow-border)]">
                 <IndexWeightMap stocks={stocks} equal={equal} logos={logos} onOpen={open} />
                 <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-2">
                   <HeatLegend metric="Change 1D, %" />
-                  <p className="text-[10px] text-white/45">{LOGO_ATTRIBUTION}</p>
+                  <p className="text-[10px] text-muted">{LOGO_ATTRIBUTION}</p>
                 </div>
               </div>
               <p className="mt-2 text-[11px] text-subtle">

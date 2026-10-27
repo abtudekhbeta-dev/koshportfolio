@@ -97,19 +97,20 @@ function ClassicShell({ children, wide, full }: { children: ReactNode; wide?: bo
       </div>
       ) : null}
       <header className={cn("z-30 border-b border-border bg-bg/85 backdrop-blur-md", full ? "shrink-0" : "sticky top-0")}>
-        <div className={cn("kosh-app-header mx-auto grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 sm:grid-cols-[1fr_minmax(0,36rem)_1fr] sm:gap-3 sm:px-4", full ? "max-w-none" : wide ? "max-w-[1400px]" : "max-w-6xl")}>
+        <div className={cn("kosh-app-header mx-auto grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 sm:grid-cols-[1fr_minmax(0,36rem)_1fr] sm:gap-3 sm:px-4", full ? "h-11 max-w-none" : "h-16", !full && (wide ? "max-w-[1400px]" : "max-w-6xl"))}>
           <div className="flex items-center gap-2">
             <BrandLink to="/" />
             <nav className="hidden items-center gap-1 md:flex">
               {MAIN.map((n) => {
-                if (n.to === "/markets") return <MarketsMenu key="markets" />;
+                if (n.to === "/markets") return <MarketsMenu key="markets" tone={full ? "compact" : "chip"} />;
                 const on = navOn(n.to, pathname);
                 return (
                   <Link
                     key={n.to}
                     to={n.to}
                     className={cn(
-                      "grid h-12 place-items-center rounded-sm bg-surface px-4 text-[16px] font-semibold shadow-[var(--shadow-border)] lg:px-5",
+                      "grid place-items-center rounded-sm bg-surface font-semibold shadow-[var(--shadow-border)]",
+                      full ? "h-8 px-3 text-[13px]" : "h-12 px-4 text-[16px] lg:px-5",
                       on ? "text-fg ring-1 ring-fg/25" : "text-fg/80 hover:text-fg",
                     )}
                   >
@@ -121,7 +122,7 @@ function ClassicShell({ children, wide, full }: { children: ReactNode; wide?: bo
           </div>
           <div className="flex justify-center px-1">
             <div className="w-full max-w-xl">
-              <SearchBar />
+              <SearchBar dense={full} />
             </div>
           </div>
           <div className="flex items-center justify-end gap-1 sm:gap-2">

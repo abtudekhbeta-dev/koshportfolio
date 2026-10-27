@@ -134,7 +134,7 @@ export function StockTreemap({
 export function HeatLegend({ metric }: { metric: string }) {
   const steps = [-2.5, -0.8, 0, 0.8, 2.5];
   return (
-    <div className="flex flex-wrap items-center gap-2 text-[10px] text-white/70" aria-hidden>
+    <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted" aria-hidden>
       <span>{metric}</span>
       {steps.map((step) => (
         <span key={step} className="inline-flex items-center gap-1">
