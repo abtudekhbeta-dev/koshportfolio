@@ -1,0 +1,231 @@
+/* Landing-only palette. Does not restyle the rest of Kosh. */
+
+.kosh-public {
+  --lp-cobalt: #6488f2;
+  --lp-royal: #315fe8;
+  --lp-electric: #8aa6f6;
+  --lp-navy: #111a2e;
+  --lp-deep: #17233c;
+  --lp-pale: #1a2744;
+  --lp-paper: #111a2e;
+  --k-bg: #111a2e;
+  --k-bg-elevated: #17233c;
+  --k-surface: #1b2944;
+  --k-surface-2: #243656;
+  --k-fg: #f7f9ff;
+  --k-muted: #a9b6ce;
+  --k-subtle: #7e90b0;
+  --k-border: #2c3e62;
+  --k-border-strong: #3d5278;
+  --k-accent: #6488f2;
+  --k-accent-fg: #111a2e;
+  --k-chart: #6488f2;
+  --k-up: #3dcf8e;
+  --k-down: #ef6e6e;
+  --k-warn: #c4b08a;
+  --k-ring: #6488f2;
+  --k-shadow-border: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --k-shadow-border-hover: 0 0 0 1px rgba(138, 166, 246, 0.45);
+  --k-chart-grid: rgba(255, 255, 255, 0.06);
+  background: var(--k-bg);
+  color: var(--k-fg);
+}
+
+html[data-theme="light"] .kosh-public {
+  --lp-cobalt: #315fe8;
+  --lp-royal: #244ccb;
+  --lp-electric: #6488f2;
+  --lp-navy: #17233c;
+  --lp-deep: #111a2e;
+  --lp-pale: #edf2ff;
+  --lp-paper: #f7f9ff;
+  --k-bg: #f7f9ff;
+  --k-bg-elevated: #edf2ff;
+  --k-surface: #ffffff;
+  --k-surface-2: #edf2ff;
+  --k-fg: #18233a;
+  --k-muted: #647084;
+  --k-subtle: #7c8ba3;
+  --k-border: #d5def2;
+  --k-border-strong: #b7c6ea;
+  --k-accent: #315fe8;
+  --k-accent-fg: #ffffff;
+  --k-chart: #315fe8;
+  --k-up: #1b8f5c;
+  --k-down: #d14545;
+  --k-warn: #9a7b3e;
+  --k-ring: #315fe8;
+  --k-shadow-border: 0 0 0 1px rgba(23, 35, 60, 0.08);
+  --k-shadow-border-hover: 0 0 0 1px rgba(49, 95, 232, 0.35);
+  --k-chart-grid: rgba(23, 35, 60, 0.06);
+}
+
+.lp-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  border-bottom: 1px solid var(--k-border);
+  background: color-mix(in srgb, var(--k-bg) 88%, transparent);
+  backdrop-filter: blur(16px);
+}
+
+.lp-hero {
+  position: relative;
+  background:
+    radial-gradient(ellipse 70% 80% at 100% -10%, color-mix(in srgb, var(--lp-cobalt) 28%, transparent), transparent 55%),
+    radial-gradient(ellipse 40% 50% at 0% 100%, color-mix(in srgb, var(--lp-electric) 16%, transparent), transparent 60%),
+    var(--k-bg);
+}
+
+.lp-display {
+  font-size: clamp(2.5rem, 1.2rem + 4vw, 4.75rem);
+  line-height: 0.96;
+  letter-spacing: -0.045em;
+  font-weight: 600;
+}
+
+.lp-title {
+  font-size: clamp(1.8rem, 1.1rem + 2vw, 3rem);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  font-weight: 600;
+}
+
+.lp-kicker {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--lp-cobalt);
+}
+
+.lp-mark {
+  color: var(--lp-cobalt);
+}
+
+.lp-frame {
+  background: var(--k-surface);
+  box-shadow: var(--k-shadow-border), 0 24px 60px color-mix(in srgb, var(--lp-deep) 18%, transparent);
+  border-radius: 1.25rem;
+}
+
+.lp-navy {
+  --k-bg: #17233c;
+  --k-fg: #f7f9ff;
+  --k-muted: #b7c3d9;
+  --k-subtle: #8ea0c0;
+  --k-surface: #1e2d4a;
+  --k-surface-2: #243656;
+  --k-border: rgba(255, 255, 255, 0.1);
+  --k-chart: #8aa6f6;
+  background: #17233c;
+  color: #f7f9ff;
+}
+
+html[data-theme="dark"] .lp-navy {
+  --k-bg: #0d1526;
+  --k-surface: #17233c;
+  background: #0d1526;
+}
+
+.lp-pale {
+  background: var(--lp-pale);
+}
+
+.lp-cta {
+  background: linear-gradient(128deg, var(--lp-cobalt), var(--lp-royal));
+  color: #ffffff;
+}
+
+.lp-btn {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  padding: 0 1.1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.lp-btn-solid {
+  background: var(--lp-cobalt);
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .lp-btn-solid {
+  background: var(--lp-electric);
+  color: #111a2e;
+}
+
+.lp-btn-line {
+  background: transparent;
+  color: var(--k-fg);
+  box-shadow: var(--k-shadow-border);
+}
+
+.lp-cta .lp-btn-solid {
+  background: #ffffff;
+  color: #17233c;
+}
+
+.lp-cta .lp-btn-line {
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+
+.lp-nav a,
+.lp-menu-panel a {
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+}
+
+.lp-chip {
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background: color-mix(in srgb, var(--lp-cobalt) 14%, var(--k-surface));
+  color: var(--lp-cobalt);
+}
+
+.lp-weight {
+  height: 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--k-fg) 8%, transparent);
+  overflow: hidden;
+}
+
+.lp-weight > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--lp-cobalt);
+}
+.lp-weight > span[data-w="25"] { width: 25%; }
+.lp-weight > span[data-w="15"] { width: 15%; }
+.lp-weight > span[data-w="10"] { width: 10%; }
+.lp-weight > span[data-w="5"] { width: 5%; }
+
+.lp-chip-on {
+  background: var(--k-fg);
+  color: var(--k-bg);
+}
+
+.lp-cta-note {
+  color: color-mix(in srgb, #ffffff 82%, transparent);
+}
+
+.lp-quad {
+  width: 100%;
+  height: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kosh-public * {
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}
