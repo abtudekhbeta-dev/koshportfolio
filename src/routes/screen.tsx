@@ -43,7 +43,7 @@ const EXTRA_COLS: { key: SortKey; label: string }[] = [
   { key: "dii", label: "DII" },
 ];
 
-export const Route = createFileRoute("/screen")({ ssr: false, component: ScreenPage });
+export const Route = createFileRoute("/screen")({ component: ScreenPage });
 
 function ScreenPage() {
   const q = useQuery({ queryKey: ["screener"], queryFn: apiScreener, staleTime: 10 * 60 * 1000 });

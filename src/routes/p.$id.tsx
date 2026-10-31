@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { UnresolvedHoldings } from "@/components/unresolved-holdings";
 import { useAppLayout } from "@/lib/layout-mode";
 
-export const Route = createFileRoute("/p/$id")({ ssr: false, component: PortfolioLayout });
+export const Route = createFileRoute("/p/$id")({ component: PortfolioLayout });
 
 const TABS = [
   { to: "/p/$id" as const, label: "Overview", exact: true },

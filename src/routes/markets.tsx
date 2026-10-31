@@ -12,7 +12,6 @@ const LedgerTerminal = lazy(() => import("@/components/ledger/ledger-terminal").
 export type MarketsSearch = { view?: "terminal" | "overview"; symbol?: string; name?: string };
 
 export const Route = createFileRoute("/markets")({
-  ssr: false,
   validateSearch: (s: Record<string, unknown>): MarketsSearch => {
     const symbol = typeof s.symbol === "string" ? s.symbol.trim().slice(0, 32) : "";
     const name = typeof s.name === "string" ? s.name.trim().slice(0, 80) : "";

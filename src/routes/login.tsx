@@ -10,7 +10,6 @@ import { HeroMix } from "@/components/landing/hero-mix";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/login")({
-  ssr: false,
   component: () => <AuthScreen initial="in" />,
   head: () => ({ meta: [{ title: "Sign in · Kosh" }] }),
 });

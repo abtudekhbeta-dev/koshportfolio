@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ICON_IDS, useKosh, type IconId } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/icons")({ ssr: false, component: IconsPage });
+export const Route = createFileRoute("/icons")({ component: IconsPage });
 
 const PREVIEWS: Record<IconId, string> = {
   "k-path": "/icon-options/preview-k-path.jpg",

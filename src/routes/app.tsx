@@ -19,7 +19,7 @@ import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import type { Holding, Portfolio, Quote } from "@/lib/kosh/types";
 
-export const Route = createFileRoute("/app")({ ssr: false, component: Home });
+export const Route = createFileRoute("/app")({ component: Home });
 
 const RECENT_MS = 14 * 24 * 60 * 60 * 1000;
 /** Muted blues for the allocation bar only. Not used as portfolio identity. */

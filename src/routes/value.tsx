@@ -8,7 +8,7 @@ import { listingExchange, listingId } from "@/lib/kosh/listing";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/value")({ ssr: false, component: ValuePage });
+export const Route = createFileRoute("/value")({ component: ValuePage });
 
 type SortKey = "score" | "discount" | "salesCagr3" | "profitCagr3" | "roe" | "mcapCr" | "pe";
 

@@ -7,7 +7,7 @@ import { formatIstDate } from "@/lib/kosh/dates";
 import { istToday, monthBounds, weekBounds, withinRange, type CalendarEvent, type ResultStatus } from "@/lib/kosh/results-calendar";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/results")({ ssr: false, component: ResultsPage });
+export const Route = createFileRoute("/results")({ component: ResultsPage });
 
 const STATUSES: { id: "all" | ResultStatus; label: string }[] = [
   { id: "all", label: "Any status" },

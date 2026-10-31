@@ -45,7 +45,7 @@ import { terminalSearch } from "@/lib/kosh/instrument-nav";
 import { cn } from "@/lib/utils";
 import type { ChartRange, DealEvent, OhlcPack } from "@/lib/kosh/types";
 
-export const Route = createFileRoute("/s/$symbol")({ ssr: false, component: StockPage });
+export const Route = createFileRoute("/s/$symbol")({ component: StockPage });
 
 function StockPage() {
   const { symbol } = Route.useParams();
@@ -75,6 +75,8 @@ function StockPage() {
         </p>
       ) : (
         <div className="kosh-page grid gap-3">
+          <h1 className="text-[28px] font-semibold tracking-tight">{universeName(symbol) || symbol}</h1>
+          <p className="text-sm text-muted">Loading prices…</p>
           <div className="h-16 animate-pulse rounded-lg bg-surface" />
           <div className="h-[420px] animate-pulse rounded-lg bg-surface" />
         </div>

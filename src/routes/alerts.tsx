@@ -6,7 +6,7 @@ import { listingExchange, listingId, listingLabel } from "@/lib/kosh/listing";
 import { useKosh, type AlertKind } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/alerts")({ ssr: false, component: AlertsPage });
+export const Route = createFileRoute("/alerts")({ component: AlertsPage });
 
 function AlertsPage() {
   const alerts = useKosh((s) => s.alerts);

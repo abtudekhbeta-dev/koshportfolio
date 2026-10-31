@@ -10,7 +10,7 @@ import { fmtPx } from "@/lib/kosh/engine";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/watch")({ ssr: false, component: WatchPage });
+export const Route = createFileRoute("/watch")({ component: WatchPage });
 
 function WatchPage() {
   const watchlists = useKosh((s) => s.watchlists);

@@ -15,7 +15,7 @@ import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import type { MixPath, NavPoint, Portfolio, RiskMetrics, WindowPair } from "@/lib/kosh/types";
 
-export const Route = createFileRoute("/compare")({ ssr: false, component: ComparePage });
+export const Route = createFileRoute("/compare")({ component: ComparePage });
 
 type LegType = "port" | "stock" | "bench";
 type Windows = { w1: WindowPair; m1: WindowPair; m3: WindowPair; m6: WindowPair; y1: WindowPair; ytd: WindowPair };
