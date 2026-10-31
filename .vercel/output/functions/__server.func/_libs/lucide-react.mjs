@@ -744,26 +744,6 @@ var Maximize2 = createLucideIcon("maximize-2", [
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
-var Menu = createLucideIcon("menu", [
-	["path", {
-		d: "M4 12h16",
-		key: "1lakjw"
-	}],
-	["path", {
-		d: "M4 18h16",
-		key: "19g7jn"
-	}],
-	["path", {
-		d: "M4 6h16",
-		key: "1o0s65"
-	}]
-]);
-/**
-* @license lucide-react v0.510.0 - ISC
-*
-* This source code is licensed under the ISC license.
-* See the LICENSE file in the root directory of this source tree.
-*/
 var MessageCircle = createLucideIcon("message-circle", [["path", {
 	d: "M7.9 20A9 9 0 1 0 4 16.1L2 22Z",
 	key: "vv11sd"
@@ -1318,4 +1298,4 @@ var Zap = createLucideIcon("zap", [["path", {
 	key: "1xq2db"
 }]]);
 //#endregion
-export { ChevronDown as $, Menu as A, Hexagon as B, MoveRight as C, Minus as D, Monitor as E, LayoutGrid as F, Eye as G, GripVertical as H, Layers as I, Download as J, EyeOff as K, Landmark as L, Mail as M, Magnet as N, Minimize2 as O, Lock as P, CircleHelp as Q, Info as R, Pause as S, Moon as T, FlaskConical as U, HeartPulse as V, Factory as W, Copy as X, Crosshair as Y, Columns2 as Z, RefreshCw as _, Type as a, ArrowUpRight as at, Plus as b, Sun as c, Spline as d, Check as et, ShoppingBag as f, RotateCcw as g, Route as h, Undo2 as i, Bell as it, Maximize2 as j, MessageCircle as k, Star as l, Search as m, X as n, ChartColumn as nt, TriangleAlert as o, ArrowRight as ot, Send as p, Ellipsis as q, UnfoldVertical as r, Car as rt, Trash2 as s, ArrowDownRight as st, Zap as t, ChartPie as tt, Square as u, Redo2 as v, MousePointer2 as w, Play as x, Radio as y, House as z };
+export { Check as $, Maximize2 as A, HeartPulse as B, MoveRight as C, Minus as D, Monitor as E, Layers as F, EyeOff as G, FlaskConical as H, Landmark as I, Crosshair as J, Ellipsis as K, Info as L, Magnet as M, Lock as N, Minimize2 as O, LayoutGrid as P, ChevronDown as Q, House as R, Pause as S, Moon as T, Factory as U, GripVertical as V, Eye as W, Columns2 as X, Copy as Y, CircleHelp as Z, RefreshCw as _, Type as a, ArrowRight as at, Plus as b, Sun as c, Spline as d, ChartPie as et, ShoppingBag as f, RotateCcw as g, Route as h, Undo2 as i, ArrowUpRight as it, Mail as j, MessageCircle as k, Star as l, Search as m, X as n, Car as nt, TriangleAlert as o, ArrowDownRight as ot, Send as p, Download as q, UnfoldVertical as r, Bell as rt, Trash2 as s, Zap as t, ChartColumn as tt, Square as u, Redo2 as v, MousePointer2 as w, Play as x, Radio as y, Hexagon as z };

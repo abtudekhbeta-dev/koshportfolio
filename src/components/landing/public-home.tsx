@@ -1,17 +1,15 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { Menu, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { AuthSlot } from "@/components/auth-slot";
-import { BrandLink } from "@/components/mark";
 import { SearchBar } from "@/components/search-bar";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { LayoutSwitch } from "@/components/layout-switch";
 import { SkipToMain } from "@/components/landing/site-chrome";
 import { apiHistory, apiTape } from "@/lib/kosh/api";
 import { fmtPct, fmtTapePx } from "@/lib/kosh/engine";
 import { isIstSession } from "@/lib/kosh/market-hours";
 import { tapeFreshness } from "@/lib/kosh/market-data";
+import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import "./public-home.css";
 
@@ -31,6 +29,59 @@ const FACTORS = [
   { label: "Balance sheet", weight: 10, note: "Debt/equity and interest cover, when the card has them." },
   { label: "Cash conversion", weight: 5, note: "CFO versus profit. Dropped when the card has no cash figure." },
 ];
+
+function LandingMark() {
+  return (
+    <Link to="/" className="inline-flex items-center gap-2 font-semibold tracking-tight text-fg" aria-label="Kosh home">
+      <svg viewBox="0 0 32 32" className="size-8" aria-hidden>
+        <rect width="32" height="32" rx="8" fill="var(--lp-mark-tile)" />
+        <path d="M9 7h3.15v8.15L19.7 7H23l-8.15 9.25L23.2 25h-3.45l-7.6-8.7V25H9V7z" fill="var(--lp-mark-ink)" />
+        <path d="M7 24.5c4.2-3.2 7.8-2.1 12.4-6.4 2.6-2.4 5.2-5.8 7.1-8.6" fill="none" stroke="var(--lp-cobalt)" strokeWidth="1.35" strokeLinecap="round" />
+      </svg>
+      Kosh
+    </Link>
+  );
+}
+
+function LandingTheme() {
+  const theme = useKosh((s) => s.theme);
+  const setTheme = useKosh((s) => s.setTheme);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return <div className="size-11" aria-hidden />;
+  const next = theme === "dark" ? "light" : "dark";
+  return (
+    <button
+      type="button"
+      className="grid size-11 place-items-center rounded-md text-muted hover:text-fg"
+      aria-label={next === "light" ? "Switch to light mode" : "Switch to dark mode"}
+      onClick={() => setTheme(next)}
+    >
+      {theme === "dark" ? (
+        <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+function MenuIcon({ open }: { open: boolean }) {
+  return open ? (
+    <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  );
+}
 
 function Spark({ closes }: { closes: number[] }) {
   if (closes.length < 2) return null;
@@ -156,7 +207,7 @@ export function PublicHome() {
       <SkipToMain />
       <header className="lp-bar">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
-          <BrandLink to="/" />
+          <LandingMark />
           <nav className="lp-nav hidden items-center gap-1 lg:flex" aria-label="Platform">
             {NAV.map((item) => (
               <Link
@@ -173,7 +224,7 @@ export function PublicHome() {
             <SearchBar dense placeholder="Search a name…" />
           </div>
           <div className="ml-auto flex items-center gap-1 lg:ml-0">
-            <ThemeToggle />
+            <LandingTheme />
             <div className="hidden md:block">
               <LayoutSwitch />
             </div>
@@ -185,7 +236,7 @@ export function PublicHome() {
               aria-label={menu ? "Close menu" : "Open menu"}
               onClick={() => setMenu((v) => !v)}
             >
-              {menu ? <X className="size-5" /> : <Menu className="size-5" />}
+              <MenuIcon open={menu} />
             </button>
           </div>
         </div>
@@ -495,7 +546,7 @@ export function PublicHome() {
       <footer className="border-t border-border">
         <div className="mx-auto grid max-w-6xl gap-8 px-4 py-12 sm:grid-cols-3">
           <div>
-            <BrandLink to="/" />
+            <LandingMark />
             <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted">Indian markets, company research, and the portfolio you actually hold. Not investment advice.</p>
           </div>
           <div className="grid gap-2 text-sm text-muted">

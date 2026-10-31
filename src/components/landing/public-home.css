@@ -8,6 +8,8 @@
   --lp-deep: #17233c;
   --lp-pale: #1a2744;
   --lp-paper: #111a2e;
+  --lp-mark-tile: #17233c;
+  --lp-mark-ink: #f7f9ff;
   --k-bg: #111a2e;
   --k-bg-elevated: #17233c;
   --k-surface: #1b2944;
@@ -39,6 +41,8 @@ html[data-theme="light"] .kosh-public {
   --lp-deep: #111a2e;
   --lp-pale: #edf2ff;
   --lp-paper: #f7f9ff;
+  --lp-mark-tile: #17233c;
+  --lp-mark-ink: #f7f9ff;
   --k-bg: #f7f9ff;
   --k-bg-elevated: #edf2ff;
   --k-surface: #ffffff;

@@ -142,6 +142,69 @@ function authPopupPlugin(): Plugin {
   };
 }
 
+/** Client bootstrap modules. These must stay in the entry chunk: they import the router, which dynamic-imports routes. */
+function isEntryBridge(id: string): boolean {
+  return (
+    id.includes("default-entry/client") ||
+    id.endsWith("/StartClient.js") ||
+    id.endsWith("/hydrateStart.js") ||
+    id.includes("tanstack-router-entry")
+  );
+}
+
+/**
+ * Chunk name for app modules, or null to leave the module in the entry.
+ * Route files stay in their own chunks. Shared UI must not stay in the entry,
+ * or lazy routes import the entry while it is still waiting on them.
+ */
+function appChunkName(id: string): string | null {
+  const clean = id.split("?")[0] ?? id;
+  if (isEntryBridge(clean)) return null;
+  if (clean.includes("/src/routeTree.gen")) return null;
+  if (clean.endsWith("/src/router.tsx")) return null;
+  const routesAt = clean.indexOf("/src/routes/");
+  if (routesAt !== -1) {
+    const rel = clean.slice(routesAt + "/src/routes/".length).replace(/\.[a-z]+$/i, "");
+    return `route-${rel.replace(/[^a-zA-Z0-9]+/g, "-")}`;
+  }
+  if (clean.includes("/src/")) return "shared";
+  if (clean.includes("rolldown/runtime") || clean.includes("preload-helper")) return "runtime";
+  return null;
+}
+
+function clientChunkPlugin(): Plugin {
+  return {
+    name: "kosh:client-chunks",
+    apply: "build",
+    configEnvironment(name) {
+      if (name !== "client") return;
+      return {
+        build: {
+          rolldownOptions: {
+            output: {
+              codeSplitting: {
+                groups: [
+                  {
+                    name: "vendor",
+                    test: (id: string) => id.includes("node_modules") && !isEntryBridge(id),
+                    priority: 30,
+                    includeDependenciesRecursively: false,
+                  },
+                  {
+                    name: (id: string) => appChunkName(id),
+                    priority: 20,
+                    includeDependenciesRecursively: false,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      };
+    },
+  };
+}
+
 // `0.0.0.0:8080` is the live-preview contract — don't change host/port.
 // The dev server starts once `src/router.tsx` and `src/routes/` exist — see
 // AGENTS.md § "First scaffold".
@@ -157,8 +220,14 @@ export default defineConfig(({ command, isPreview }) => ({
     strictPort: true,
   },
   resolve: { tsconfigPaths: true },
+  // Lazy route chunks must not import the client entry. Rolldown otherwise
+  // keeps shared modules inside the entry, the entry dynamically imports the
+  // route, and browsers reject the cycle as
+  // "Failed to fetch dynamically imported module".
+  // Client only: the SSR bundle is re-packed by Nitro and must stay default.
   plugins: [
     pgliteBootstrapPlugin(),
+    clientChunkPlugin(),
     // Before tanstackStart so /auth/popup never falls through to the SPA.
     authPopupPlugin(),
     // Dev-only /__app-env, read by scripts/check-auth-invariant.mjs.
