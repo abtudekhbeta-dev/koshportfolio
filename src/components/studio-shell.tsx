@@ -78,6 +78,15 @@ export function StudioShell({ children, full }: { children: ReactNode; wide?: bo
             <A to="/screen" on={pathname.startsWith("/screen")}>
               Screener
             </A>
+            <A to="/value" on={pathname.startsWith("/value")}>
+              Value
+            </A>
+            <A to="/results" on={pathname.startsWith("/results")}>
+              Results
+            </A>
+            <A to="/journal" on={pathname.startsWith("/journal")}>
+              Journal
+            </A>
             <A to="/compare" on={pathname.startsWith("/compare")}>
               Compare
             </A>
@@ -239,7 +248,7 @@ function A({
   on,
   children,
 }: {
-  to: "/markets" | "/watch" | "/screen" | "/compare" | "/app" | "/p/$id" | "/p/$id/path" | "/p/$id/improve";
+  to: "/markets" | "/watch" | "/screen" | "/compare" | "/app" | "/p/$id" | "/p/$id/path" | "/p/$id/improve" | "/value" | "/results" | "/journal";
   params?: { id: string };
   search?: { view: "terminal" | "overview" };
   on?: boolean;
@@ -253,6 +262,9 @@ function A({
   if (to === "/watch") return <Link to="/watch" className={className}>{children}</Link>;
   if (to === "/screen") return <Link to="/screen" className={className}>{children}</Link>;
   if (to === "/compare") return <Link to="/compare" className={className}>{children}</Link>;
+  if (to === "/value") return <Link to="/value" className={className}>{children}</Link>;
+  if (to === "/results") return <Link to="/results" className={className}>{children}</Link>;
+  if (to === "/journal") return <Link to="/journal" className={className}>{children}</Link>;
   return <Link to="/app" className={className}>{children}</Link>;
 }
 

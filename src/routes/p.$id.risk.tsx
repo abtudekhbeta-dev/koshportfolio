@@ -1,9 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useBookCtx } from "@/components/book-context";
 import { MetricCard } from "@/components/metric";
 import { StockLink } from "@/components/stock-link";
+import { apiScreener } from "@/lib/kosh/api";
 import { dash, fmtPct } from "@/lib/kosh/engine";
+import { portfolioExposure } from "@/lib/kosh/exposure";
+import { listingLabel } from "@/lib/kosh/listing";
 import { sameBusinessPiles } from "@/lib/kosh/peers";
 import { cn } from "@/lib/utils";
 import type { CorrPack } from "@/lib/kosh/types";
@@ -14,6 +18,32 @@ function Risk() {
   const { query, portfolio } = useBookCtx();
   const book = query.data!;
   const { risk, cagr, corr, rows, value } = book;
+  const screen = useQuery({ queryKey: ["screener"], queryFn: apiScreener, staleTime: 10 * 60 * 1000 });
+  const exposure = useMemo(() => {
+    const cards = new Map((screen.data?.rows || []).map((row) => [row.symbol.toUpperCase(), row]));
+    return portfolioExposure(
+      rows
+        .filter((row) => row.kind !== "commodity")
+        .map((row) => {
+          const card = cards.get(listingLabel(row.symbol));
+          return {
+            symbol: row.symbol,
+            name: row.name,
+            weight: row.weight,
+            sector: row.sector || card?.sector || "Unclassified",
+            cap: row.cap || "Unclassified",
+            pe: card?.pe ?? null,
+            pb: card?.pb ?? null,
+            roe: card?.roe ?? null,
+            roce: card?.roce ?? null,
+            de: card?.de ?? null,
+            salesCagr3: card?.salesCagr3 ?? null,
+            profitCagr3: card?.profitCagr3 ?? null,
+            ret1y: row.periods?.y1 ?? card?.ret1y ?? null,
+          };
+        }),
+    );
+  }, [rows, screen.data]);
   const piles = useMemo(
     () => sameBusinessPiles(rows.filter((r) => r.kind !== "commodity"), corr),
     [rows, corr],
@@ -45,6 +75,33 @@ function Risk() {
           <MetricCard key={it.id} id={it.id} value={it.v} />
         ))}
       </div>
+
+      <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
+        <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">What the book is exposed to</h2>
+        <p className="mt-1 max-w-2xl text-[13px] text-muted">
+          Each figure is the holding weight times that company’s number, using only names that have the number. Portfolio P/E is 1 divided by the weighted earnings yield — not an average of P/E ratios. {exposure.notes[0]}
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Mini label="Portfolio P/E" value={exposure.portfolioPe == null ? "—" : exposure.portfolioPe.toFixed(1)} note={`${Math.round(exposure.peCoverage * 100)}% of weight`} />
+          <Mini label="Earnings yield" value={exposure.earningsYield == null ? "—" : `${exposure.earningsYield.toFixed(1)}%`} note={`${Math.round(exposure.negativeEarningsWeight * 100)}% negative earnings`} />
+          <Mini label="P/B" value={exposure.pb == null ? "—" : exposure.pb.toFixed(2)} note={`${Math.round(exposure.pbCoverage * 100)}% covered`} />
+          <Mini label="ROE" value={exposure.roe == null ? "—" : `${exposure.roe.toFixed(1)}%`} note={exposure.roce == null ? "ROCE missing" : `ROCE ${exposure.roce.toFixed(1)}%`} />
+          <Mini label="Sales CAGR 3Y" value={exposure.salesCagr == null ? "—" : `${exposure.salesCagr.toFixed(1)}%`} note={`${Math.round(exposure.growthWeight * 100)}% growing ≥12%`} />
+          <Mini label="Profit CAGR 3Y" value={exposure.profitCagr == null ? "—" : `${exposure.profitCagr.toFixed(1)}%`} note={`${Math.round(exposure.qualityWeight * 100)}% ROE≥15 and D/E≤1`} />
+          <Mini label="1Y momentum" value={exposure.momentum == null ? "—" : `${exposure.momentum.toFixed(1)}%`} note="Weighted holding return" />
+          <Mini label="Missing financials" value={`${Math.round(exposure.missingWeight * 100)}%`} note="No trailing P/E on the card" />
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <Bars title="Sector" rows={exposure.sectors} />
+          <Bars title="Market cap" rows={exposure.caps} />
+        </div>
+        <p className="mt-3 text-[13px] text-muted">
+          Largest holding {exposure.largest ? `${exposure.largest.name} ${(exposure.largest.weight * 100).toFixed(1)}%` : "—"}. Top 5 {(exposure.top5 * 100).toFixed(0)}%. Top 10 {(exposure.top10 * 100).toFixed(0)}%.
+          Sector concentration (sum of squared weights) {exposure.sectorHhi == null ? "—" : exposure.sectorHhi.toFixed(2)}.
+          Price under 15× {Math.round(exposure.cheapWeight * 100)}% of weight. Above 35× {Math.round(exposure.richWeight * 100)}%.
+        </p>
+        <p className="mt-1 text-[12px] text-subtle">{exposure.notes[1]} Volatility, beta and drawdown above use aligned daily returns. They are not restated here as factor betas.</p>
+      </section>
 
       {piles.length ? (
         <section className="rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
@@ -233,6 +290,37 @@ function CorrMatrix({ pack }: { pack: CorrPack }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function Mini({ label, value, note }: { label: string; value: string; note: string }) {
+  return (
+    <div>
+      <div className="text-[11px] tracking-[0.08em] text-subtle uppercase">{label}</div>
+      <div className="mt-1 font-mono text-[18px]">{value}</div>
+      <div className="text-[11px] text-subtle">{note}</div>
+    </div>
+  );
+}
+
+function Bars({ title, rows }: { title: string; rows: { label: string; weight: number }[] }) {
+  return (
+    <div>
+      <h3 className="text-[12px] font-semibold tracking-[0.06em] text-subtle uppercase">{title}</h3>
+      <ul className="mt-2 grid gap-1.5">
+        {rows.slice(0, 8).map((row) => (
+          <li key={row.label}>
+            <div className="flex justify-between text-[12px]">
+              <span>{row.label}</span>
+              <span className="font-mono">{(row.weight * 100).toFixed(1)}%</span>
+            </div>
+            <div className="mt-1 h-1.5 rounded-sm bg-bg">
+              <div className="h-full rounded-sm bg-chart" style={{ width: `${Math.min(100, row.weight * 100)}%` }} />
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

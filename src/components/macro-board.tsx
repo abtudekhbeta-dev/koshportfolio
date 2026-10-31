@@ -56,18 +56,24 @@ export function MarketTempCard({ rows, focus }: { rows: ScreenRow[]; focus: stri
   );
 }
 
-const FILTERS: { id: "all" | "results" | "macro" | "stock"; label: string }[] = [
+const FILTERS: { id: "all" | "results" | "stock"; label: string }[] = [
   { id: "all", label: "All" },
   { id: "results", label: "Results" },
-  { id: "macro", label: "Macro" },
-  { id: "stock", label: "Stock events" },
+  { id: "stock", label: "Other filings" },
 ];
 
 function toneOf(kind: ResultEvent["kind"]) {
   if (kind === "results") return "bg-chart/15 text-chart";
-  if (kind === "macro") return "bg-warn/20 text-warn";
   return "bg-surface-2 text-muted";
 }
+
+const STATUS: Record<string, string> = {
+  "scheduled-confirmed": "Scheduled",
+  reported: "Reported",
+  postponed: "Postponed",
+  cancelled: "Cancelled",
+  "date-unavailable": "No date",
+};
 
 export function EventCalendar({ compact, symbols }: { compact?: boolean; symbols?: string[] }) {
   const q = useQuery({ queryKey: ["macro"], queryFn: apiMacro, staleTime: 20 * 60 * 1000 });
@@ -78,7 +84,7 @@ export function EventCalendar({ compact, symbols }: { compact?: boolean; symbols
     const want = wantKey ? wantKey.split(",") : null;
     const filtered = list.filter((r) => {
       if (filter !== "all" && r.kind !== filter) return false;
-      if (!want || r.kind === "macro") return true;
+      if (!want) return true;
       return want.includes(String(r.symbol || "").toUpperCase().replace(/\.(NS|BO)$/i, ""));
     });
     return [...filtered].sort((a, b) => compareIstDate(a.date, b.date));
@@ -90,7 +96,12 @@ export function EventCalendar({ compact, symbols }: { compact?: boolean; symbols
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Calendar</h2>
-          <p className="mt-1 text-[12px] text-subtle">Results, board events, and recurring macro dates.</p>
+          <p className="mt-1 text-[12px] text-subtle">
+            NSE results and board filings.{" "}
+            <Link to="/results" className="text-chart hover:underline">
+              Open the results calendar
+            </Link>
+          </p>
         </div>
         <div className="flex flex-wrap gap-1">
           {FILTERS.map((f) => (
@@ -108,6 +119,12 @@ export function EventCalendar({ compact, symbols }: { compact?: boolean; symbols
           ))}
         </div>
       </div>
+      {q.data?.calendar?.stale || q.data?.calendar?.limitation ? (
+        <p className="mt-2 text-[12px] text-subtle">
+          {q.data.calendar.stale ? "Last refresh is stale. " : ""}
+          {q.data.calendar.limitation || q.data.calendar.failures?.join(" ")}
+        </p>
+      ) : null}
       {q.isPending && !shown.length ? (
         <p className="mt-3 text-sm text-muted">Loading the calendar…</p>
       ) : shown.length ? (
@@ -117,13 +134,8 @@ export function EventCalendar({ compact, symbols }: { compact?: boolean; symbols
             const label = (
               <>
                 <span className={cn("mr-2 rounded-sm px-1.5 py-0.5 text-[10px] font-medium uppercase", toneOf(kind))}>
-                  {kind === "results" ? "Results" : kind === "macro" ? "Macro" : "Stock"}
+                  {r.status ? STATUS[r.status] || r.status : kind === "results" ? "Results" : "Filing"}
                 </span>
-                {r.expected ? (
-                  <span className="mr-2 rounded-sm bg-warn/20 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em] text-warn uppercase">
-                    Expected
-                  </span>
-                ) : null}
                 {r.name}
                 <span className="text-[11px] text-subtle"> · {r.purpose}</span>
               </>

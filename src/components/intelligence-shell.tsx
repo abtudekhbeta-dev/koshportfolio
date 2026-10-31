@@ -63,6 +63,18 @@ export function IntelligenceShell({ children, full }: { children: ReactNode; wid
           <RailLink to="/screen" on={navOn("/screen", pathname)}>
             Screener
           </RailLink>
+          <RailLink to="/value" on={navOn("/value", pathname)}>
+            Value
+          </RailLink>
+          <RailLink to="/results" on={navOn("/results", pathname)}>
+            Results
+          </RailLink>
+          <RailLink to="/journal" on={navOn("/journal", pathname)}>
+            Journal
+          </RailLink>
+          <RailLink to="/alerts" on={navOn("/alerts", pathname)}>
+            Alerts
+          </RailLink>
           <RailLink to="/compare" on={navOn("/compare", pathname)}>
             Compare
           </RailLink>
@@ -144,7 +156,7 @@ function RailLink({
   on,
   children,
 }: {
-  to: "/markets" | "/watch" | "/screen" | "/compare" | "/app" | "/p/$id";
+  to: "/markets" | "/watch" | "/screen" | "/compare" | "/app" | "/p/$id" | "/value" | "/results" | "/journal" | "/alerts";
   params?: { id: string };
   search?: { view: "terminal" | "overview" };
   on?: boolean;
@@ -168,6 +180,10 @@ function RailLink({
   if (to === "/watch") return <Link to="/watch" className={className}>{children}</Link>;
   if (to === "/screen") return <Link to="/screen" className={className}>{children}</Link>;
   if (to === "/compare") return <Link to="/compare" className={className}>{children}</Link>;
+  if (to === "/value") return <Link to="/value" className={className}>{children}</Link>;
+  if (to === "/results") return <Link to="/results" className={className}>{children}</Link>;
+  if (to === "/journal") return <Link to="/journal" className={className}>{children}</Link>;
+  if (to === "/alerts") return <Link to="/alerts" className={className}>{children}</Link>;
   return (
     <Link to="/app" className={className}>
       {children}
@@ -216,8 +232,11 @@ function AlertMenu() {
               </Link>
             ))
           ) : (
-            <p className="px-2 py-2 text-[12px] leading-relaxed text-muted">No alerts yet. Set a price, move, or 52-week alert on a stock.</p>
+            <p className="px-2 py-2 text-[12px] leading-relaxed text-muted">No alerts yet. Set a price, move, or 52-week alert on a stock. They run only while Kosh is open.</p>
           )}
+          <Link to="/alerts" className="mt-1 block px-2 py-1.5 text-[12px] text-chart" onClick={() => setOpen(false)}>
+            Manage alerts
+          </Link>
         </div>
       ) : null}
     </div>

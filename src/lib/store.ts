@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { listingId } from "@/lib/kosh/listing";
+import type { AlertKind, AlertRule } from "@/lib/kosh/alerts";
+import { listingExchange, listingId } from "@/lib/kosh/listing";
+import type { JournalTrade } from "@/lib/kosh/journal-stats";
+import { journalKey } from "@/lib/kosh/journal-stats";
 import type { Holding, Portfolio, JournalEntry, TradeLine, Fundamentals, ImportRecord } from "@/lib/kosh/types";
 import { applyHoldingPatch, fillHoldings, mergeHoldings, mergeTradeLines, sanitizeHoldings, sanitizeTrades, upsertHoldings, type FillOpts } from "@/lib/kosh/parse";
 import { samplePortfolio, SAMPLE_TRADES } from "@/lib/kosh/sample";
@@ -56,8 +59,7 @@ export type DrawShape = {
   label?: string;
 };
 
-export type AlertKind = "price" | "pct" | "rsi" | "volume" | "high52" | "low52";
-export type AlertRule = { id: string; symbol: string; name: string; price: number; dir: "above" | "below"; kind?: AlertKind };
+export type { AlertKind, AlertRule } from "@/lib/kosh/alerts";
 export type Recent = { symbol: string; name: string };
 
 export type CandleStyle = "candle" | "bar" | "line" | "area";
@@ -256,6 +258,7 @@ type KoshState = {
   recents: Recent[];
   alerts: AlertRule[];
   journal: JournalEntry[];
+  journalTrades: JournalTrade[];
   drawings: Record<string, DrawShape[]>;
   customScreens: ScreenFilter[];
   skillReads: Record<string, SkillRead>;
@@ -309,6 +312,7 @@ type KoshState = {
     chartPrefs: Partial<ChartPrefs>;
     alerts: AlertRule[];
     journal: JournalEntry[];
+    journalTrades?: JournalTrade[];
     bookNotes: Record<string, BookNoteSnap>;
     deepFunds: Record<string, DeepFundSnap>;
     symbolAliases?: Record<string, string>;
@@ -327,9 +331,13 @@ type KoshState = {
   setDeskPane: (index: number, patch: Partial<DeskPane>) => void;
   pushRecent: (r: Recent) => void;
   addAlert: (a: Omit<AlertRule, "id">) => void;
+  patchAlert: (id: string, patch: Partial<AlertRule>) => void;
   removeAlert: (id: string) => void;
   addJournal: (e: Omit<JournalEntry, "id" | "at"> & { at?: number }) => void;
   removeJournal: (id: string) => void;
+  saveJournalTrade: (t: Omit<JournalTrade, "id" | "updatedAt" | "importKey"> & { id?: string }) => void;
+  removeJournalTrade: (id: string) => void;
+  importJournalTrades: (rows: JournalTrade[]) => number;
   setDrawings: (symbol: string, shapes: DrawShape[]) => void;
   saveCustomScreen: (f: ScreenFilter) => void;
   removeCustomScreen: (name: string) => void;
@@ -375,6 +383,7 @@ export const useKosh = create<KoshState>()(
       recents: [],
       alerts: [],
       journal: [],
+      journalTrades: [],
       drawings: {},
       customScreens: [],
       skillReads: {},
@@ -610,6 +619,7 @@ export const useKosh = create<KoshState>()(
           },
           alerts: doc.alerts || get().alerts,
           journal: doc.journal || get().journal,
+          journalTrades: doc.journalTrades?.length ? doc.journalTrades : get().journalTrades,
           bookNotes: doc.bookNotes || get().bookNotes,
           deepFunds: (doc.deepFunds || get().deepFunds) as KoshState["deepFunds"],
           cloudDrops: doc.drops || get().cloudDrops || emptyDrops(),
@@ -730,7 +740,23 @@ export const useKosh = create<KoshState>()(
       },
       addAlert: (a) =>
         set({
-          alerts: [{ ...a, id: uid(), symbol: listingId(a.symbol), kind: a.kind || "price" }, ...get().alerts].slice(0, 500),
+          alerts: [
+            {
+              ...a,
+              id: uid(),
+              symbol: listingId(a.symbol),
+              exchange: a.exchange || listingExchange(a.symbol),
+              kind: a.kind || "price",
+              status: a.status || "active",
+              createdAt: a.createdAt || Date.now(),
+              history: a.history || [],
+            },
+            ...get().alerts,
+          ].slice(0, 500),
+        }),
+      patchAlert: (id, patch) =>
+        set({
+          alerts: (get().alerts || []).map((row) => (row.id === id ? { ...row, ...patch, id: row.id, symbol: row.symbol } : row)),
         }),
       removeAlert: (id) =>
         set({
@@ -756,6 +782,36 @@ export const useKosh = create<KoshState>()(
           journal: (get().journal || []).filter((x) => x.id !== id),
           cloudDrops: withNoteDrop(get().cloudDrops, id, Date.now()),
         }),
+      saveJournalTrade: (t) => {
+        const symbol = listingId(t.symbol);
+        const exchange = t.exchange || (listingExchange(symbol) === "BSE" ? "BSE" : "NSE");
+        const next: JournalTrade = {
+          ...t,
+          id: t.id || uid(),
+          symbol,
+          exchange,
+          name: t.name || symbol,
+          strategy: String(t.strategy || "").slice(0, 80),
+          notes: String(t.notes || "").slice(0, 500),
+          chartRef: String(t.chartRef || "").slice(0, 200),
+          tags: (t.tags || []).slice(0, 8),
+          behaviour: (t.behaviour || []).slice(0, 8),
+          fees: Number(t.fees) || 0,
+          taxes: Number(t.taxes) || 0,
+          slippage: Number(t.slippage) || 0,
+          importKey: journalKey({ ...t, symbol, exchange }),
+          updatedAt: Date.now(),
+        };
+        const rows = get().journalTrades || [];
+        set({ journalTrades: [next, ...rows.filter((row) => row.id !== next.id)].slice(0, 2000) });
+      },
+      removeJournalTrade: (id) => set({ journalTrades: (get().journalTrades || []).filter((row) => row.id !== id) }),
+      importJournalTrades: (rows) => {
+        const have = new Set((get().journalTrades || []).map((row) => row.importKey || journalKey(row)));
+        const fresh = rows.filter((row) => row.importKey && !have.has(row.importKey));
+        if (fresh.length) set({ journalTrades: [...fresh, ...(get().journalTrades || [])].slice(0, 2000) });
+        return fresh.length;
+      },
       setDrawings: (symbol, shapes) =>
         set({ drawings: { ...get().drawings, [drawKey(symbol)]: shapes.slice(0, 80) } }),
       saveCustomScreen: (f) =>
@@ -902,6 +958,7 @@ export const useKosh = create<KoshState>()(
           recents: p.recents || [],
           alerts: p.alerts || [],
           journal: p.journal || [],
+          journalTrades: p.journalTrades || [],
           drawings: migrateDrawings(p.drawings),
           customScreens: p.customScreens || [],
           skillReads: p.skillReads || {},

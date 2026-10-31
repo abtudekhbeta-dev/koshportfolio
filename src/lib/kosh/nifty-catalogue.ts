@@ -5,12 +5,14 @@
  * Thematic names follow the NSE sector board in rrg-sectors.ts
  * (Energy, Commodities, Infrastructure, Consumption, CPSE, and the
  * MNC, PSE, Services, Manufacturing, and Infra Logistics indices).
- * Not added, because this feed has no verified symbol for them:
- * Capital Goods, Cement, Chemicals, Defence, Power, NBFC, Insurance.
+ * Not added, because this feed has no verified quote for them:
+ * Capital Goods, Power, NBFC, Insurance.
+ * Chemicals, Cement, India Defence and Capital Markets were priced on Yahoo
+ * on 2026-10-31 and are included. Capital Markets is not Capital Goods.
  * Left out on purpose: NV20.NS is the Kotak Nifty 50 Value 20 ETF, and
  * ^NSEDIV is dividend points with a zero session change.
  */
-export const NIFTY_CATALOGUE_VERSION = "2026-10-14";
+export const NIFTY_CATALOGUE_VERSION = "2026-10-31";
 
 export type IndexFamily = "Broad market" | "Sectoral" | "Thematic" | "Mid / small cap" | "Strategy" | "Bonds" | "Volatility";
 
@@ -50,6 +52,8 @@ export const NIFTY_CATALOGUE: CatalogueIndex[] = [
   { symbol: "^CNXMETAL", name: "Nifty Metal", family: "Sectoral", key: true },
   { symbol: "^CNXCMDT", name: "Nifty Commodities", family: "Thematic" },
   { symbol: "^CNXREALTY", name: "Nifty Realty", family: "Sectoral", key: true },
+  { symbol: "NIFTY_CHEMICALS.NS", name: "Nifty Chemicals", family: "Sectoral", key: true },
+  { symbol: "NIFTY_CEMENT.NS", name: "Nifty Cement", family: "Sectoral", key: true },
   { symbol: "^CNXINFRA", name: "Nifty Infra", family: "Thematic" },
   { symbol: "NIFTY_INFRALOG.NS", name: "Nifty Infra Logistics", family: "Thematic" },
   { symbol: "^CNXMEDIA", name: "Nifty Media", family: "Sectoral", key: true },
@@ -58,6 +62,8 @@ export const NIFTY_CATALOGUE: CatalogueIndex[] = [
   { symbol: "^CNXPSE", name: "Nifty PSE", family: "Thematic" },
   { symbol: "NIFTY_CPSE.NS", name: "Nifty CPSE", family: "Thematic" },
   { symbol: "NIFTY_INDIA_MFG.NS", name: "Nifty India Manufacturing", family: "Thematic" },
+  { symbol: "NIFTY_IND_DEFENCE.NS", name: "Nifty India Defence", family: "Thematic" },
+  { symbol: "NIFTY_CAPITAL_MKT.NS", name: "Nifty Capital Markets", family: "Thematic" },
 
   { symbol: "^NSEMDCP50", name: "Nifty Midcap 50", family: "Mid / small cap" },
   { symbol: "NIFTY_MIDCAP_100.NS", name: "Nifty Midcap 100", family: "Mid / small cap" },

@@ -1,5 +1,6 @@
 /** What leaves the browser for a signed-in account, and how two devices merge. */
 
+import type { JournalTrade } from "./journal-stats.ts";
 import type { JournalEntry, PathPriceFact, Portfolio, TradeLine, Fundamentals, Holding } from "./types.ts";
 import type { ScreenFilter } from "./screens.ts";
 import { sanitizePortfolio } from "./sanitize.ts";
@@ -15,6 +16,7 @@ export const SYNC_POLICY = {
   desk: "CLOUD_SYNC",
   alerts: "CLOUD_SYNC",
   journal: "CLOUD_SYNC",
+  journalTrades: "CLOUD_SYNC",
   bookNotes: "CLOUD_SYNC",
   deepFunds: "CLOUD_SYNC",
   symbolAliases: "CLOUD_SYNC",
@@ -26,7 +28,22 @@ export const SYNC_POLICY = {
 } as const satisfies Record<string, SyncPolicy>;
 
 export type CloudWatch = { id: string; name: string; symbols: string[] };
-export type CloudAlert = { id: string; symbol: string; name: string; price: number; dir: "above" | "below"; kind?: string };
+export type CloudAlert = {
+  id: string;
+  symbol: string;
+  name: string;
+  price: number;
+  dir: "above" | "below";
+  kind?: string;
+  exchange?: string;
+  timeframe?: string;
+  createdAt?: number;
+  expiresAt?: number | null;
+  status?: string;
+  triggeredAt?: number | null;
+  history?: { at: number; note: string }[];
+  lastAbove?: boolean | null;
+};
 export type CloudNote = { text: string; at: number; nRead: number; nTotal: number };
 export type CloudDesk = {
   layout: 1 | 2 | 4;
@@ -62,6 +79,7 @@ export type CloudDoc = {
   desk: CloudDesk | null;
   alerts: CloudAlert[];
   journal: JournalEntry[];
+  journalTrades?: JournalTrade[];
   bookNotes: Record<string, CloudNote>;
   deepFunds: Record<string, { fund: Fundamentals; at: number; sources: string[] }>;
   symbolAliases: Record<string, string>;
@@ -71,7 +89,7 @@ export type CloudDoc = {
   /** Client idempotency key for the last accepted save. A retry with the same key and body is not a new revision. */
   mutationId?: string;
   /** Counts that could not be stored. Empty means nothing was dropped. */
-  omitted?: { watchlists?: number; screens?: number; alerts?: number; journal?: number };
+  omitted?: { watchlists?: number; screens?: number; alerts?: number; journal?: number; journalTrades?: number };
   /** Deletes that must win over a stale copy of the same record. */
   drops?: CloudDrops;
 };
@@ -86,6 +104,7 @@ export function emptyCloud(): CloudDoc {
     desk: null,
     alerts: [],
     journal: [],
+    journalTrades: [],
     bookNotes: {},
     deepFunds: {},
     symbolAliases: {},
@@ -108,6 +127,7 @@ export function sanitizeForCloud(input: {
   desk?: CloudDesk | null;
   alerts?: CloudAlert[];
   journal?: JournalEntry[];
+  journalTrades?: JournalTrade[];
   bookNotes?: Record<string, CloudNote>;
   deepFunds?: CloudDoc["deepFunds"];
   symbolAliases?: Record<string, string>;
@@ -127,11 +147,13 @@ export function sanitizeForCloud(input: {
   const screens = capped(input.customScreens || [], 200);
   const alerts = capped(input.alerts || [], 500);
   const journal = capped(input.journal || [], 2000);
+  const trades = capped(input.journalTrades || [], 2000);
   const omitted = {
     watchlists: lists.omitted,
     screens: screens.omitted,
     alerts: alerts.omitted,
     journal: journal.omitted,
+    journalTrades: trades.omitted,
   };
   const dropped = Object.values(omitted).some((n) => n > 0);
   return {
@@ -153,6 +175,7 @@ export function sanitizeForCloud(input: {
     desk: input.desk || null,
     alerts: alerts.rows,
     journal: journal.rows,
+    journalTrades: trades.rows,
     bookNotes: input.bookNotes || {},
     deepFunds: funds,
     symbolAliases: input.symbolAliases || {},
@@ -388,6 +411,12 @@ export function mergeCloud(local: CloudDoc, remote: CloudDoc): { doc: CloudDoc; 
   const journal = (localFresh ? remote.journal || [] : local.journal?.length ? local.journal : remote.journal || []).filter(
     (j) => j && !deadNotes.has(j.id),
   );
+  const byTrade = new Map<string, JournalTrade>();
+  for (const row of [...(remote.journalTrades || []), ...(local.journalTrades || [])]) {
+    if (!row?.id) continue;
+    const prev = byTrade.get(row.id);
+    if (!prev || (row.updatedAt || 0) >= (prev.updatedAt || 0)) byTrade.set(row.id, row);
+  }
   for (const [id, p] of [...byId]) {
     const gone = drops.portfolios.find((d) => d.id === id);
     if (gone && !((p.updatedAt || 0) > gone.at)) {
@@ -407,6 +436,7 @@ export function mergeCloud(local: CloudDoc, remote: CloudDoc): { doc: CloudDoc; 
     desk: localFresh ? remote.desk || local.desk : local.desk || remote.desk,
     alerts,
     journal,
+    journalTrades: [...byTrade.values()].slice(0, 2000),
     bookNotes: { ...(remote.bookNotes || {}), ...(localFresh ? {} : local.bookNotes || {}) },
     deepFunds: funds,
     symbolAliases: localFresh

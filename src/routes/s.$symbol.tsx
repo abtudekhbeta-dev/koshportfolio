@@ -9,6 +9,7 @@ import { CandleChart, fetchSpec } from "@/components/charts/candle-chart";
 import { NavChart } from "@/components/charts/nav-chart";
 import { FinancialSnapshot, OwnershipBlock } from "@/components/analysis-view";
 import { SnapshotCard, ValuationModels, CoverageLine, FieldCoverage } from "@/components/kosh-snapshot";
+import { HistValuationCard } from "@/components/hist-valuation";
 import { AddToPortfolio } from "@/components/add-to-portfolio";
 import { CompleteMissing } from "@/components/complete-missing";
 import { AttentionStrip } from "@/components/attention-strip";
@@ -341,6 +342,7 @@ function StockBody({
         jobs={fundData ? [{ symbol: bare, missing: missingFieldLabels(fundData) }] : []}
       />
       <ValuationModels pack={models} fund={fundData} />
+      <HistValuationCard price={px} bars={bars.map((b) => ({ t: b.t, c: b.adj && b.adj > 0 ? b.adj : b.c }))} fund={fundData} />
 
       <nav className="flex flex-wrap gap-1" role="tablist" aria-label="Stock sections">
         {(
@@ -623,7 +625,7 @@ function StockBody({
 
       <section className={cn("rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]", tab !== "chart" && "hidden")}>
         <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Alert</h2>
-        <p className="mt-1 text-[13px] text-muted">Stored in this browser. Price, day move, RSI, volume, or 52-week.</p>
+        <p className="mt-1 text-[13px] text-muted">Checked only while Kosh is open. Not a server-side alert.</p>
         <form
           className="mt-3 flex flex-wrap items-center gap-2"
           onSubmit={(e) => {
@@ -647,6 +649,7 @@ function StockBody({
             <option value="pct">Day %</option>
             <option value="rsi">RSI</option>
             <option value="volume">Volume ×</option>
+            <option value="ma">MA cross</option>
             <option value="high52">52w high</option>
             <option value="low52">52w low</option>
           </select>
@@ -669,7 +672,9 @@ function StockBody({
                       ? "3"
                       : alertKind === "rsi"
                         ? "70"
-                        : "1.5"
+                        : alertKind === "ma"
+                          ? "50"
+                          : "1.5"
                 }
                 value={alertPx}
                 onChange={(e) => setAlertPx(e.target.value)}

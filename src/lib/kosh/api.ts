@@ -304,6 +304,10 @@ export async function apiMacro() {
   return json<MacroPack>("/api/macro");
 }
 
+export async function apiResults() {
+  return json<import("./results-calendar").ResultsPack>("/api/results");
+}
+
 export type NoteResult =
   | {
       ok: true;

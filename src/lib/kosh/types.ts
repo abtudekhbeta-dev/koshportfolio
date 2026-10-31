@@ -730,6 +730,13 @@ export type ResultEvent = {
   kind: "results" | "stock" | "macro";
   /** Official date is not on file — the day is a calendar convention or a typical window. */
   expected?: boolean;
+  exchange?: "NSE" | "BSE";
+  status?: "scheduled-confirmed" | "reported" | "postponed" | "cancelled" | "date-unavailable";
+  meetingDate?: string | null;
+  filedAt?: string | null;
+  source?: string;
+  sourceUrl?: string | null;
+  quarter?: string | null;
 };
 
 export type DealEvent = {
@@ -745,6 +752,13 @@ export type MacroPack = {
   results: ResultEvent[];
   deals: DealEvent[];
   asOf: string;
+  /** Present when the results pipeline reported source health. */
+  calendar?: {
+    refreshedAt: string | null;
+    stale: boolean;
+    limitation: string | null;
+    failures: string[];
+  };
   /** Cash-flow freshness. Absent on older responses. */
   flow?: {
     status: "fresh" | "updating" | "delayed" | "unavailable";

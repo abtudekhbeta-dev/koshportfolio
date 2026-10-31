@@ -57,13 +57,13 @@ describe("nifty catalogue", () => {
   it("keeps only feed-priced indices and does not relabel FinServ as Financial Services", () => {
     const symbols = NIFTY_CATALOGUE.map((row) => row.symbol);
     assert.equal(new Set(symbols).size, symbols.length);
-    assert.equal(NIFTY_CATALOGUE.length, 66);
-    assert.equal(keySectorals().length, 15);
+    assert.equal(NIFTY_CATALOGUE.length, 70);
+    assert.equal(keySectorals().length, 17);
     assert.ok(keySectorals().every((row) => row.family === "Sectoral"));
     assert.equal(NIFTY_CATALOGUE.find((row) => row.symbol === "^BSESN")?.family, "Broad market");
     assert.equal(NIFTY_CATALOGUE.find((row) => row.symbol === "^CNXENERGY")?.family, "Thematic");
     assert.equal(NIFTY_CATALOGUE.find((row) => row.symbol === "^CNXIT")?.family, "Sectoral");
-    assert.equal(NIFTY_CATALOGUE.filter((row) => row.family === "Thematic").length, 10);
+    assert.equal(NIFTY_CATALOGUE.filter((row) => row.family === "Thematic").length, 12);
     assert.ok(NIFTY_CATALOGUE.every((row) => row.symbol.startsWith("^") || row.symbol.endsWith(".NS")));
     assert.equal(NIFTY_CATALOGUE.find((row) => row.symbol === "^CNXFIN")?.name, "Nifty FinServ 25/50");
     assert.equal(NIFTY_CATALOGUE.find((row) => row.symbol === "NIFTY_FIN_SERVICE.NS")?.name, "Nifty Financial Services");

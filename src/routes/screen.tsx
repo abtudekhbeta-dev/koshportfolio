@@ -141,7 +141,10 @@ function ScreenPage() {
         <p className="mt-1 max-w-2xl text-sm text-muted">
           Every NSE equity we can list. A blank cell is missing, not a pass — and never a guess.
           One completion pass reads filings, calculates what it can, then asks for a source on what is still blank.
-          The screen is applied again to the filled numbers.
+          The screen is applied again to the filled numbers.{" "}
+          <Link to="/value" className="text-chart hover:underline">Undervalued Growth</Link>
+          {" · "}
+          <Link to="/results" className="text-chart hover:underline">Results calendar</Link>
         </p>
         <div className="mt-3">
           <CompleteMissing

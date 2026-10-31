@@ -10,17 +10,21 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as CompareRouteImport } from './routes/compare'
 import { Route as IconsRouteImport } from './routes/icons'
+import { Route as JournalRouteImport } from './routes/journal'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MarketsRouteImport } from './routes/markets'
 import { Route as PicksRouteImport } from './routes/picks'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as ResultsRouteImport } from './routes/results'
 import { Route as ScreenRouteImport } from './routes/screen'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TradeRouteImport } from './routes/trade'
+import { Route as ValueRouteImport } from './routes/value'
 import { Route as WatchRouteImport } from './routes/watch'
 import { Route as ApiCloseRouteImport } from './routes/api/close'
 import { Route as ApiEnrichRouteImport } from './routes/api/enrich'
@@ -36,6 +40,7 @@ import { Route as ApiNewsRouteImport } from './routes/api/news'
 import { Route as ApiNoteRouteImport } from './routes/api/note'
 import { Route as ApiOhlcRouteImport } from './routes/api/ohlc'
 import { Route as ApiQuoteRouteImport } from './routes/api/quote'
+import { Route as ApiResultsRouteImport } from './routes/api/results'
 import { Route as ApiRrgRouteImport } from './routes/api/rrg'
 import { Route as ApiScreenBuildRouteImport } from './routes/api/screen-build'
 import { Route as ApiScreenerRouteImport } from './routes/api/screener'
@@ -64,6 +69,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AlertsRoute = AlertsRouteImport.update({
+  id: '/alerts',
+  path: '/alerts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/app',
   path: '/app',
@@ -77,6 +87,11 @@ const CompareRoute = CompareRouteImport.update({
 const IconsRoute = IconsRouteImport.update({
   id: '/icons',
   path: '/icons',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JournalRoute = JournalRouteImport.update({
+  id: '/journal',
+  path: '/journal',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -99,6 +114,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResultsRoute = ResultsRouteImport.update({
+  id: '/results',
+  path: '/results',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ScreenRoute = ScreenRouteImport.update({
   id: '/screen',
   path: '/screen',
@@ -117,6 +137,11 @@ const TermsRoute = TermsRouteImport.update({
 const TradeRoute = TradeRouteImport.update({
   id: '/trade',
   path: '/trade',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ValueRoute = ValueRouteImport.update({
+  id: '/value',
+  path: '/value',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WatchRoute = WatchRouteImport.update({
@@ -192,6 +217,11 @@ const ApiOhlcRoute = ApiOhlcRouteImport.update({
 const ApiQuoteRoute = ApiQuoteRouteImport.update({
   id: '/api/quote',
   path: '/api/quote',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiResultsRoute = ApiResultsRouteImport.update({
+  id: '/api/results',
+  path: '/api/results',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiRrgRoute = ApiRrgRouteImport.update({
@@ -307,17 +337,21 @@ const PIdSectorsRoute = PIdSectorsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/alerts': typeof AlertsRoute
   '/app': typeof AppRoute
   '/compare': typeof CompareRoute
   '/icons': typeof IconsRoute
+  '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRouteWithChildren
   '/picks': typeof PicksRoute
   '/privacy': typeof PrivacyRoute
+  '/results': typeof ResultsRoute
   '/screen': typeof ScreenRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
   '/trade': typeof TradeRoute
+  '/value': typeof ValueRoute
   '/watch': typeof WatchRoute
   '/api/close': typeof ApiCloseRoute
   '/api/enrich': typeof ApiEnrichRoute
@@ -333,6 +367,7 @@ export interface FileRoutesByFullPath {
   '/api/note': typeof ApiNoteRoute
   '/api/ohlc': typeof ApiOhlcRoute
   '/api/quote': typeof ApiQuoteRoute
+  '/api/results': typeof ApiResultsRoute
   '/api/rrg': typeof ApiRrgRoute
   '/api/screen-build': typeof ApiScreenBuildRoute
   '/api/screener': typeof ApiScreenerRoute
@@ -358,17 +393,21 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/alerts': typeof AlertsRoute
   '/app': typeof AppRoute
   '/compare': typeof CompareRoute
   '/icons': typeof IconsRoute
+  '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRouteWithChildren
   '/picks': typeof PicksRoute
   '/privacy': typeof PrivacyRoute
+  '/results': typeof ResultsRoute
   '/screen': typeof ScreenRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
   '/trade': typeof TradeRoute
+  '/value': typeof ValueRoute
   '/watch': typeof WatchRoute
   '/api/close': typeof ApiCloseRoute
   '/api/enrich': typeof ApiEnrichRoute
@@ -384,6 +423,7 @@ export interface FileRoutesByTo {
   '/api/note': typeof ApiNoteRoute
   '/api/ohlc': typeof ApiOhlcRoute
   '/api/quote': typeof ApiQuoteRoute
+  '/api/results': typeof ApiResultsRoute
   '/api/rrg': typeof ApiRrgRoute
   '/api/screen-build': typeof ApiScreenBuildRoute
   '/api/screener': typeof ApiScreenerRoute
@@ -409,17 +449,21 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/alerts': typeof AlertsRoute
   '/app': typeof AppRoute
   '/compare': typeof CompareRoute
   '/icons': typeof IconsRoute
+  '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRouteWithChildren
   '/picks': typeof PicksRoute
   '/privacy': typeof PrivacyRoute
+  '/results': typeof ResultsRoute
   '/screen': typeof ScreenRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
   '/trade': typeof TradeRoute
+  '/value': typeof ValueRoute
   '/watch': typeof WatchRoute
   '/api/close': typeof ApiCloseRoute
   '/api/enrich': typeof ApiEnrichRoute
@@ -435,6 +479,7 @@ export interface FileRoutesById {
   '/api/note': typeof ApiNoteRoute
   '/api/ohlc': typeof ApiOhlcRoute
   '/api/quote': typeof ApiQuoteRoute
+  '/api/results': typeof ApiResultsRoute
   '/api/rrg': typeof ApiRrgRoute
   '/api/screen-build': typeof ApiScreenBuildRoute
   '/api/screener': typeof ApiScreenerRoute
@@ -462,17 +507,21 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/alerts'
     | '/app'
     | '/compare'
     | '/icons'
+    | '/journal'
     | '/login'
     | '/markets'
     | '/picks'
     | '/privacy'
+    | '/results'
     | '/screen'
     | '/signup'
     | '/terms'
     | '/trade'
+    | '/value'
     | '/watch'
     | '/api/close'
     | '/api/enrich'
@@ -488,6 +537,7 @@ export interface FileRouteTypes {
     | '/api/note'
     | '/api/ohlc'
     | '/api/quote'
+    | '/api/results'
     | '/api/rrg'
     | '/api/screen-build'
     | '/api/screener'
@@ -513,17 +563,21 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/alerts'
     | '/app'
     | '/compare'
     | '/icons'
+    | '/journal'
     | '/login'
     | '/markets'
     | '/picks'
     | '/privacy'
+    | '/results'
     | '/screen'
     | '/signup'
     | '/terms'
     | '/trade'
+    | '/value'
     | '/watch'
     | '/api/close'
     | '/api/enrich'
@@ -539,6 +593,7 @@ export interface FileRouteTypes {
     | '/api/note'
     | '/api/ohlc'
     | '/api/quote'
+    | '/api/results'
     | '/api/rrg'
     | '/api/screen-build'
     | '/api/screener'
@@ -563,17 +618,21 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/alerts'
     | '/app'
     | '/compare'
     | '/icons'
+    | '/journal'
     | '/login'
     | '/markets'
     | '/picks'
     | '/privacy'
+    | '/results'
     | '/screen'
     | '/signup'
     | '/terms'
     | '/trade'
+    | '/value'
     | '/watch'
     | '/api/close'
     | '/api/enrich'
@@ -589,6 +648,7 @@ export interface FileRouteTypes {
     | '/api/note'
     | '/api/ohlc'
     | '/api/quote'
+    | '/api/results'
     | '/api/rrg'
     | '/api/screen-build'
     | '/api/screener'
@@ -615,17 +675,21 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AlertsRoute: typeof AlertsRoute
   AppRoute: typeof AppRoute
   CompareRoute: typeof CompareRoute
   IconsRoute: typeof IconsRoute
+  JournalRoute: typeof JournalRoute
   LoginRoute: typeof LoginRoute
   MarketsRoute: typeof MarketsRouteWithChildren
   PicksRoute: typeof PicksRoute
   PrivacyRoute: typeof PrivacyRoute
+  ResultsRoute: typeof ResultsRoute
   ScreenRoute: typeof ScreenRoute
   SignupRoute: typeof SignupRoute
   TermsRoute: typeof TermsRoute
   TradeRoute: typeof TradeRoute
+  ValueRoute: typeof ValueRoute
   WatchRoute: typeof WatchRoute
   ApiCloseRoute: typeof ApiCloseRoute
   ApiEnrichRoute: typeof ApiEnrichRoute
@@ -641,6 +705,7 @@ export interface RootRouteChildren {
   ApiNoteRoute: typeof ApiNoteRoute
   ApiOhlcRoute: typeof ApiOhlcRoute
   ApiQuoteRoute: typeof ApiQuoteRoute
+  ApiResultsRoute: typeof ApiResultsRoute
   ApiRrgRoute: typeof ApiRrgRoute
   ApiScreenBuildRoute: typeof ApiScreenBuildRoute
   ApiScreenerRoute: typeof ApiScreenerRoute
@@ -664,6 +729,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/alerts': {
+      id: '/alerts'
+      path: '/alerts'
+      fullPath: '/alerts'
+      preLoaderRoute: typeof AlertsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app': {
       id: '/app'
       path: '/app'
@@ -683,6 +755,13 @@ declare module '@tanstack/react-router' {
       path: '/icons'
       fullPath: '/icons'
       preLoaderRoute: typeof IconsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/journal': {
+      id: '/journal'
+      path: '/journal'
+      fullPath: '/journal'
+      preLoaderRoute: typeof JournalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -713,6 +792,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/results': {
+      id: '/results'
+      path: '/results'
+      fullPath: '/results'
+      preLoaderRoute: typeof ResultsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/screen': {
       id: '/screen'
       path: '/screen'
@@ -739,6 +825,13 @@ declare module '@tanstack/react-router' {
       path: '/trade'
       fullPath: '/trade'
       preLoaderRoute: typeof TradeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/value': {
+      id: '/value'
+      path: '/value'
+      fullPath: '/value'
+      preLoaderRoute: typeof ValueRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/watch': {
@@ -844,6 +937,13 @@ declare module '@tanstack/react-router' {
       path: '/api/quote'
       fullPath: '/api/quote'
       preLoaderRoute: typeof ApiQuoteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/results': {
+      id: '/api/results'
+      path: '/api/results'
+      fullPath: '/api/results'
+      preLoaderRoute: typeof ApiResultsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/rrg': {
@@ -1042,17 +1142,21 @@ const PIdRouteWithChildren = PIdRoute._addFileChildren(PIdRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AlertsRoute: AlertsRoute,
   AppRoute: AppRoute,
   CompareRoute: CompareRoute,
   IconsRoute: IconsRoute,
+  JournalRoute: JournalRoute,
   LoginRoute: LoginRoute,
   MarketsRoute: MarketsRouteWithChildren,
   PicksRoute: PicksRoute,
   PrivacyRoute: PrivacyRoute,
+  ResultsRoute: ResultsRoute,
   ScreenRoute: ScreenRoute,
   SignupRoute: SignupRoute,
   TermsRoute: TermsRoute,
   TradeRoute: TradeRoute,
+  ValueRoute: ValueRoute,
   WatchRoute: WatchRoute,
   ApiCloseRoute: ApiCloseRoute,
   ApiEnrichRoute: ApiEnrichRoute,
@@ -1068,6 +1172,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiNoteRoute: ApiNoteRoute,
   ApiOhlcRoute: ApiOhlcRoute,
   ApiQuoteRoute: ApiQuoteRoute,
+  ApiResultsRoute: ApiResultsRoute,
   ApiRrgRoute: ApiRrgRoute,
   ApiScreenBuildRoute: ApiScreenBuildRoute,
   ApiScreenerRoute: ApiScreenerRoute,

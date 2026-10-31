@@ -1,7 +1,8 @@
 /** Cash-market FII/DII from the flow archive, plus NSE events. Server-only. */
 
 import type { DealEvent, FiidiiRow, MacroPack, ResultEvent } from "./types";
-import { SCREEN_UNIVERSE, universeName } from "./universe";
+import { loadResultsCalendar } from "./results-calendar.server";
+import { universeName } from "./universe";
 import { parseIstDate } from "./dates";
 import { loadFlowPack } from "./market-flows.server";
 
@@ -51,109 +52,31 @@ async function fetchFiidii(): Promise<{ rows: FiidiiRow[]; flow: MacroPack["flow
   }
 }
 
-function eventKind(purpose: string): "results" | "stock" {
-  if (/financial result|earnings|result/i.test(purpose)) return "results";
-  return "stock";
-}
-
-function pad(n: number) {
-  return n < 10 ? "0" + n : String(n);
-}
-
-function iso(d: Date) {
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-}
-
-function lastThursday(year: number, month0: number) {
-  const d = new Date(Date.UTC(year, month0 + 1, 0));
-  const day = d.getUTCDay();
-  const diff = (day + 7 - 4) % 7;
-  d.setUTCDate(d.getUTCDate() - diff);
-  return d;
-}
-
-function firstFriday(year: number, month0: number) {
-  const d = new Date(Date.UTC(year, month0, 1));
-  const add = (5 - d.getUTCDay() + 7) % 7;
-  d.setUTCDate(1 + add);
-  return d;
-}
-
-function macroEvents(): ResultEvent[] {
-  const now = new Date();
-  const y = now.getUTCFullYear();
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const out: ResultEvent[] = [];
-  for (let m = 0; m < 12; m++) {
-    const yr = m + now.getUTCMonth() > 11 ? y + 1 : y;
-    const mo = (now.getUTCMonth() + m) % 12;
-    const exp = lastThursday(yr, mo);
-    if (exp >= start) {
-      out.push({
-        symbol: "^NSEI",
-        name: "Nifty F&O",
-        date: iso(exp),
-        purpose: "Monthly F&O expiry (last Thursday)",
-        kind: "macro",
-      });
-    }
-    const nfp = firstFriday(yr, mo);
-    if (nfp >= start) {
-      out.push({
-        symbol: "^NSEI",
-        name: "US payrolls",
-        date: iso(nfp),
-        purpose: "US non-farm payrolls (first Friday)",
-        kind: "macro",
-        expected: true,
-      });
-    }
-  }
-  const budget = new Date(Date.UTC(y + (now.getUTCMonth() > 1 ? 1 : 0), 1, 1));
-  if (budget >= start) {
-    out.push({
-      symbol: "^NSEI",
-      name: "Union Budget",
-      date: iso(budget),
-      purpose: "Union Budget (typical 1 Feb window)",
-      kind: "macro",
-      expected: true,
-    });
-  }
-  return out.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 18);
-}
-
-async function fetchResults(): Promise<ResultEvent[]> {
-  const uni = new Set(SCREEN_UNIVERSE.map((x) => x.symbol.toUpperCase()));
-  const board: ResultEvent[] = [];
-  try {
-    const raw = await getJson("https://www.nseindia.com/api/event-calendar?index=equities", {
-      Referer: "https://www.nseindia.com/",
-    });
-    const list = Array.isArray(raw) ? raw : [];
-    for (const item of list) {
-      if (!item || typeof item !== "object") continue;
-      const o = item as Record<string, unknown>;
-      const symbol = String(o.symbol || "").toUpperCase();
-      const purpose = String(o.purpose || "");
-      if (!symbol || !purpose) continue;
-      const kind = eventKind(purpose);
-      if (kind !== "results" && !uni.has(symbol)) continue;
-      const date = parseIstDate(String(o.date || ""));
-      if (!date) continue;
-      board.push({
-        symbol,
-        name: universeName(symbol) || String(o.company || symbol),
-        date,
-        purpose,
-        kind,
-      });
-      if (board.length >= 48) break;
-    }
-  } catch {
-    /* empty */
-  }
-  return [...board, ...macroEvents()];
+async function fetchResults(): Promise<{ events: ResultEvent[]; calendar: MacroPack["calendar"] }> {
+  const pack = await loadResultsCalendar();
+  const events: ResultEvent[] = pack.events.slice(0, 80).map((row) => ({
+    symbol: row.symbol,
+    name: row.name,
+    date: row.date,
+    purpose: row.purpose,
+    kind: row.kind,
+    exchange: row.exchange,
+    status: row.status,
+    meetingDate: row.meetingDate,
+    filedAt: row.filedAt,
+    source: row.source,
+    sourceUrl: row.sourceUrl,
+    quarter: row.quarter,
+  }));
+  return {
+    events,
+    calendar: {
+      refreshedAt: pack.health.refreshedAt,
+      stale: pack.health.stale,
+      limitation: pack.health.limitation,
+      failures: pack.health.sources.filter((row) => !row.ok).map((row) => `${row.name}: ${row.error || "failed"}`),
+    },
+  };
 }
 
 let nseCookies = "";
@@ -258,16 +181,17 @@ async function fetchDeals(): Promise<DealEvent[]> {
 }
 
 export async function fetchMacro(): Promise<MacroPack> {
-  const hit = cache.get("v5");
+  const hit = cache.get("v6");
   if (hit && Date.now() - hit.at < TTL) return hit.data;
   const [flows, results, deals] = await Promise.all([fetchFiidii(), fetchResults(), fetchDeals()]);
   const data: MacroPack = {
     fiidii: flows.rows,
     flow: flows.flow,
-    results,
+    results: results.events,
     deals,
     asOf: new Date().toISOString(),
+    calendar: results.calendar,
   };
-  cache.set("v5", { at: Date.now(), data });
+  cache.set("v6", { at: Date.now(), data });
   return data;
 }
