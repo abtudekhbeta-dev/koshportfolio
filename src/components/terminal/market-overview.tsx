@@ -9,7 +9,7 @@ import { MixNudge } from "@/components/mix-nudge";
 import { NewsBoard } from "@/components/news-board";
 import { PulseDesk } from "@/components/note-desk";
 import { MarketFlowsGlance } from "@/components/terminal/market-flows";
-import { apiNews, apiQuotes, apiScreener, apiTape } from "@/lib/kosh/api";
+import { apiFastPrints, apiNews, apiScreener, apiTape } from "@/lib/kosh/api";
 import { sectorIndex } from "@/lib/kosh/benchmarks";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { instrumentKind, terminalSearch } from "@/lib/kosh/instrument-nav";
@@ -90,7 +90,7 @@ export function MarketOverview() {
   );
   const quotes = useQuery({
     queryKey: ["live-tape", liveSyms.join(",")],
-    queryFn: () => apiQuotes(liveSyms),
+    queryFn: () => apiFastPrints(liveSyms),
     enabled: liveSyms.length > 0,
     staleTime: liveSession ? 1_500 : 30_000,
     refetchInterval: () => (isIstSession() ? 3_000 : 60_000),

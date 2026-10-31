@@ -72,7 +72,13 @@ function ClassicShell({ children, wide, full }: { children: ReactNode; wide?: bo
     enabled: !full,
   });
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const fresh = tapeFreshness(tape.data, isIstSession());
+  const fresh = tape.data?.some((row) => row.price > 0)
+    ? tapeFreshness(tape.data, isIstSession())
+    : {
+        state: "off" as const,
+        label: tape.isError ? "UNAVAILABLE" : "LOADING",
+        title: tape.isError ? "The tape did not return a price." : "Fetching the last session.",
+      };
 
   return (
     <div className={cn(full ? "flex h-dvh min-h-0 flex-col overflow-hidden" : "min-h-dvh overflow-x-clip")}>

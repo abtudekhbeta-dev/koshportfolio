@@ -39,6 +39,15 @@ export async function apiQuotes(symbols: string[]) {
   return d.quotes || [];
 }
 
+/** Last price and percent for a board. Not a full chart quote — no 52-week levels. */
+export async function apiFastPrints(symbols: string[]) {
+  if (!symbols.length) return [] as Quote[];
+  const d = await json<{ quotes: Quote[] }>(
+    "/api/quote?fast=1&symbols=" + encodeURIComponent(symbols.join(",")),
+  );
+  return d.quotes || [];
+}
+
 export async function apiHistories(symbols: string[], range = "max") {
   if (!symbols.length) return [] as HistoryPack[];
   const d = await json<{ rows: HistoryPack[]; range: string; asOf: string }>("/api/histories", {

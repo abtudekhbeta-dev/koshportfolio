@@ -17,9 +17,20 @@ import { delayMinutesFromMeta } from "./market-data.ts";
 import { istDay } from "./engine.ts";
 import { yahooCandidates } from "./listing.ts";
 import { sessionBars } from "./ohlc.ts";
+import { NIFTY_CATALOGUE } from "./nifty-catalogue.ts";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+let indexNames: Map<string, string> | null = null;
+function indexNameOf(symbol: string): string {
+  if (!indexNames) indexNames = new Map(NIFTY_CATALOGUE.map((row) => [row.symbol.toUpperCase(), row.name]));
+  return indexNames.get(symbol.toUpperCase()) || symbol;
+}
+function isCatalogueIndex(symbol: string): boolean {
+  if (!indexNames) indexNames = new Map(NIFTY_CATALOGUE.map((row) => [row.symbol.toUpperCase(), row.name]));
+  return indexNames.has(symbol.toUpperCase());
+}
 
 type ChartBar = { t: number; c: number; raw: number; o?: number; h?: number; l?: number; v?: number };
 type ChartPack = Omit<HistoryPack, "bars"> & { bars: ChartBar[]; marketCap?: number; delayMin?: number | null; marketTime?: number | null };
@@ -541,53 +552,68 @@ export async function fetchHistories(symbols: string[], range = "max"): Promise<
   });
 }
 
-export async function fetchTape(): Promise<TapeRow[]> {
-  const spots = await fetchMcxSpots();
-  const rows = await poolMap(TAPE, 6, async (i) => {
-    try {
-      const metal = metalKey(i.symbol);
-      if (metal) {
-        const spec = METALS[metal];
-        const spot = spots[metal];
-        if (spot && spot.display > 0) {
-          return {
-            ...i,
-            label: spec.name.toUpperCase(),
-            price: spot.display,
-            changePct: spot.changePct,
-            unit: spec.displayLabel,
-            retrievedAt: Date.now(),
-          };
-        }
-        const d = await resolveMetal(metal, "5d");
-        if (d && d.price > 0) {
-          return {
-            ...i,
-            label: spec.name.toUpperCase(),
-            price: d.price * spec.displayG,
-            changePct: d.changePct,
-            unit: spec.displayLabel,
-            retrievedAt: Date.now(),
-            marketTime: d.marketTime ?? null,
-            delayMin: d.delayMin ?? null,
-          };
-        }
-        return { ...i, price: 0, changePct: 0, unit: spec.displayLabel, retrievedAt: Date.now() };
-      }
-      const d = await fetchChart(i.symbol, "5d");
-      return {
-        ...i,
-        price: d.price,
-        changePct: d.changePct,
-        marketTime: d.marketTime ?? null,
-        retrievedAt: Date.now(),
-        delayMin: d.delayMin ?? null,
-      };
-    } catch {
-      return { ...i, price: 0, changePct: 0 };
-    }
+/** A hung gold/silver page must not add more than a brief grace after the index prints are ready. */
+const METAL_GRACE_MS = 250;
+
+function firstOf<T>(p: Promise<T>, ms: number): Promise<T | undefined> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), ms);
+    p.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(undefined);
+      },
+    );
   });
-  return rows;
+}
+
+async function indexTapeRow(i: (typeof TAPE)[number]): Promise<TapeRow> {
+  try {
+    const d = await fetchChart(i.symbol, "5d");
+    return {
+      ...i,
+      price: d.price,
+      changePct: d.changePct,
+      marketTime: d.marketTime ?? null,
+      retrievedAt: Date.now(),
+      delayMin: d.delayMin ?? null,
+    };
+  } catch {
+    return { ...i, price: 0, changePct: 0, retrievedAt: Date.now() };
+  }
+}
+
+function metalTapeRow(i: (typeof TAPE)[number], spots: { GOLD: McxSpot | null; SILVER: McxSpot | null }): TapeRow {
+  const metal = metalKey(i.symbol);
+  const spec = metal ? METALS[metal] : null;
+  const spot = metal ? spots[metal] : null;
+  if (spec && spot && spot.display > 0) {
+    return {
+      ...i,
+      label: spec.name.toUpperCase(),
+      price: spot.display,
+      changePct: spot.changePct,
+      unit: spec.displayLabel,
+      retrievedAt: Date.now(),
+    };
+  }
+  return { ...i, price: 0, changePct: 0, unit: spec?.displayLabel, retrievedAt: Date.now() };
+}
+
+export async function fetchTape(): Promise<TapeRow[]> {
+  const indexes = TAPE.filter((i) => !metalKey(i.symbol));
+  const metals = TAPE.filter((i) => metalKey(i.symbol));
+  const spotsP = fetchMcxSpots();
+  const indexRows = await poolMap(indexes, 6, indexTapeRow);
+  // Spots ran during the index fetch. Take them if they landed; do not hold Nifty for a hung scrape.
+  const spots = (await firstOf(spotsP, METAL_GRACE_MS)) || { GOLD: mcxCache.GOLD, SILVER: mcxCache.SILVER };
+  const metalRows = metals.map((i) => metalTapeRow(i, spots));
+  const byId = new Map([...indexRows, ...metalRows].map((row) => [row.id, row]));
+  return TAPE.map((i) => byId.get(i.id) || { ...i, price: 0, changePct: 0, retrievedAt: Date.now() });
 }
 
 export async function searchSymbols(q: string) {
@@ -1004,5 +1030,99 @@ export async function fetchQuoteSnaps(symbols: string[]): Promise<QuoteSnap[]> {
   }
 
   return uniq.map((s) => by.get(s)).filter((x): x is QuoteSnap => Boolean(x));
+}
+
+type SparkPrint = {
+  symbol?: string;
+  fulldayPrice?: number;
+  fulldayChangePercent?: number;
+  timestamp?: number[];
+};
+
+/** One Yahoo spark call for exact tickers (indices keep their ^ / .NS symbol). */
+async function sparkExact(symbols: string[]): Promise<Map<string, Quote>> {
+  const out = new Map<string, Quote>();
+  if (!symbols.length) return out;
+  const url =
+    "https://query1.finance.yahoo.com/v8/finance/spark?symbols=" +
+    symbols.map((s) => encodeURIComponent(s)).join(",") +
+    "&range=5d&interval=1d";
+  try {
+    const data = (await yahoo(url)) as Record<string, SparkPrint>;
+    const now = Date.now();
+    for (const sym of symbols) {
+      const row = data?.[sym];
+      const price = Number(row?.fulldayPrice || 0);
+      if (!row || !(price > 0)) continue;
+      let changePct = Number(row.fulldayChangePercent || 0);
+      if (!Number.isFinite(changePct)) changePct = 0;
+      const ts = Array.isArray(row.timestamp) ? row.timestamp[row.timestamp.length - 1] : 0;
+      out.set(sym.toUpperCase(), {
+        input: sym,
+        symbol: sym,
+        name: indexNameOf(sym),
+        price,
+        previousClose: changePct > -100 ? price / (1 + changePct / 100) : price,
+        changePct,
+        high52: 0,
+        low52: 0,
+        retrievedAt: now,
+        marketTime: ts > 0 ? ts * 1000 : null,
+        delayMin: null,
+      });
+    }
+  } catch {
+    /* caller falls back to the chart quote */
+  }
+  return out;
+}
+
+/**
+ * Last price and session percent for a board.
+ * Index and equity prints come from one batched spark. A miss, or a metal, still uses the chart quote.
+ * 52-week levels are not filled here.
+ */
+export async function fetchFastPrints(symbols: string[]): Promise<Quote[]> {
+  const uniq = [...new Set(symbols.map((s) => s.trim()).filter(Boolean))].slice(0, 80);
+  const indexSyms = uniq.filter((s) => isCatalogueIndex(s));
+  const rest = uniq.filter((s) => !isCatalogueIndex(s));
+  const equitySyms = rest.filter((s) => !metalKey(s));
+  const indexChunks: string[][] = [];
+  for (let i = 0; i < indexSyms.length; i += 25) indexChunks.push(indexSyms.slice(i, i + 25));
+  const equityBare = [...new Set(equitySyms.map((s) => s.replace(/\.(NS|BO)$/i, "").toUpperCase()))];
+  const equityChunks: string[][] = [];
+  for (let i = 0; i < equityBare.length; i += 18) equityChunks.push(equityBare.slice(i, i + 18));
+  const [indexMaps, equityMaps] = await Promise.all([
+    poolMap(indexChunks, 3, sparkExact),
+    poolMap(equityChunks, 4, (chunk) => sparkChunk(chunk.map((s) => `${s}.NS`))),
+  ]);
+  const indexBy = new Map<string, Quote>();
+  for (const map of indexMaps) for (const [k, v] of map) indexBy.set(k, v);
+  const equityBy = new Map<string, QuoteSnap>();
+  for (const map of equityMaps) for (const [k, v] of map) equityBy.set(k, v);
+  const now = Date.now();
+  return poolMap(uniq, 6, async (raw) => {
+    const index = indexBy.get(raw.toUpperCase());
+    if (index && index.price > 0) return { ...index, input: raw };
+    const bare = raw.replace(/\.(NS|BO)$/i, "").toUpperCase();
+    const snap = !metalKey(raw) ? equityBy.get(bare) : undefined;
+    if (snap && snap.price > 0) {
+      return {
+        input: raw,
+        symbol: snap.symbol,
+        name: snap.name,
+        price: snap.price,
+        previousClose: snap.changePct > -100 ? snap.price / (1 + snap.changePct / 100) : snap.price,
+        changePct: snap.changePct,
+        high52: snap.high52,
+        low52: snap.low52,
+        mcapCr: snap.mcapCr,
+        retrievedAt: now,
+        marketTime: null,
+        delayMin: null,
+      };
+    }
+    return resolveQuote(raw);
+  });
 }
 

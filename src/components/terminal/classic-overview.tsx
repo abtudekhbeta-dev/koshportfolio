@@ -11,7 +11,7 @@ import { NewsBoard } from "@/components/news-board";
 import { PulseDesk } from "@/components/note-desk";
 import { IndexHeat } from "@/components/terminal/index-heat";
 import { MarketFlowsGlance } from "@/components/terminal/market-flows";
-import { apiNews, apiQuotes, apiScreener, apiTape } from "@/lib/kosh/api";
+import { apiFastPrints, apiNews, apiScreener, apiTape } from "@/lib/kosh/api";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { instrumentKind, terminalSearch } from "@/lib/kosh/instrument-nav";
 import { overlayQuotes, pickLiveSymbols } from "@/lib/kosh/live-overlay";
@@ -92,7 +92,7 @@ export function ClassicOverview() {
   });
   const indexQuotes = useQuery({
     queryKey: ["nifty-catalogue"],
-    queryFn: () => apiQuotes(NIFTY_CATALOGUE.map((s) => s.symbol)),
+    queryFn: () => apiFastPrints(NIFTY_CATALOGUE.map((s) => s.symbol)),
     staleTime: liveSession ? 2_500 : 30_000,
     refetchInterval: () => (isIstSession() ? 5_000 : 60_000),
   });
@@ -132,7 +132,7 @@ export function ClassicOverview() {
   );
   const quotes = useQuery({
     queryKey: ["live-tape", liveSyms.join(",")],
-    queryFn: () => apiQuotes(liveSyms),
+    queryFn: () => apiFastPrints(liveSyms),
     enabled: liveSyms.length > 0,
     staleTime: liveSession ? 1_500 : 30_000,
     refetchInterval: () => (isIstSession() ? 3_000 : 60_000),
@@ -166,7 +166,13 @@ export function ClassicOverview() {
   });
 
   const counts = boardCounts(priced);
-  const fresh = tapeFreshness(tape.data, isIstSession());
+  const fresh = tape.data?.some((row) => row.price > 0)
+    ? tapeFreshness(tape.data, isIstSession())
+    : {
+        state: "off" as const,
+        label: tape.isError ? "UNAVAILABLE" : "LOADING",
+        title: tape.isError ? "The tape did not return a price." : "Fetching the last session.",
+      };
   const tapeBest = freshestPrint(tape.data);
   const tapeStamp = istStamp(tapeBest?.marketTime || tapeBest?.retrievedAt || null);
   const SUMMARY = [
@@ -252,7 +258,7 @@ export function ClassicOverview() {
         <p className="text-right text-[11px] text-subtle" title={fresh.title}>
           {fresh.state === "last" ? "Last session" : fresh.label}
           {tapeStamp ? ` · ${tapeStamp}` : ""}
-          {quotes.isFetching ? " · Refreshing quotes" : ""}
+          {quotes.data?.length && quotes.isFetching ? " · Refreshing quotes" : ""}
         </p>
       </header>
 
@@ -286,7 +292,7 @@ export function ClassicOverview() {
             {breadthRows.length ? (
               <BreadthBar green={advancing} n={breadthRows.length} unchanged={unchanged} />
             ) : (
-              <p className="text-[12px] text-muted">{screen.isError ? "Breadth unavailable." : "Waiting on the screen."}</p>
+              <p className="text-[12px] text-muted">{screen.isError ? "Breadth unavailable." : "Loading breadth…"}</p>
             )}
           </div>
         </div>
