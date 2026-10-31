@@ -12,6 +12,7 @@ import { taxClock } from "@/lib/kosh/portfolio-stats";
 import { sortEntities } from "@/lib/kosh/kosh-table";
 import { METALS, type MetalId } from "@/lib/kosh/commodities";
 import { apiSearch } from "@/lib/kosh/api";
+import { listingExchange, listingId, listingLabel } from "@/lib/kosh/listing";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import type { Holding } from "@/lib/kosh/types";
@@ -326,7 +327,7 @@ function AddRow({ onAdd }: { onAdd: (h: Holding) => void }) {
     const n = Number(qty);
     if (!(n > 0)) return;
     if (mode === "stock") {
-      const s = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/i, "");
+      const s = listingId(symbol.trim());
       if (!s) return;
       onAdd({ symbol: s, name: s, qty: n, avg: Number(avg) || null, date: date || null, boughtAt: date ? date + "T00:00:00.000Z" : null });
     } else {
@@ -379,11 +380,11 @@ function AddRow({ onAdd }: { onAdd: (h: Holding) => void }) {
                       type="button"
                       className="block w-full px-2 py-1.5 text-left hover:bg-surface-2"
                       onClick={() => {
-                        setSymbol(h.symbol.replace(/\.(NS|BO)$/i, ""));
+                        setSymbol(listingId(h.symbol));
                         setHits([]);
                       }}
                     >
-                      {h.symbol.replace(/\.(NS|BO)$/i, "")} · {h.name}
+                      {listingLabel(h.symbol)}{listingExchange(h.symbol) === "BSE" ? " · BSE" : ""} · {h.name}
                     </button>
                   </li>
                 ))}

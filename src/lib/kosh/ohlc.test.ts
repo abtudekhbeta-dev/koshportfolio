@@ -11,6 +11,7 @@ import {
   isNr7,
   supertrend,
   resample,
+  sessionBars,
   sliceLookback,
   nameSwings,
   swings,
@@ -107,5 +108,15 @@ describe("ohlc", () => {
     assert.ok(ytd[0].t <= jan1Ist + 86400);
     assert.ok(ytd.at(-1)?.c === bars.at(-1)?.c);
     assert.ok(ytd.every((b) => b.t >= jan1Ist - 86400));
+  });
+
+  it("folds hourly prints into one IST session", () => {
+    const open = 1_784_259_900;
+    const bars = [bar(open, 100), bar(open + 3600, 110), bar(open + 86400, 120)];
+    const days = sessionBars(bars, "1d");
+    assert.equal(days.length, 2);
+    assert.equal(days[0].o, 100);
+    assert.equal(days[0].c, 110);
+    assert.equal(days[1].c, 120);
   });
 });

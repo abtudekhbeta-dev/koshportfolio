@@ -400,13 +400,15 @@ function num(v: unknown) {
 }
 
 export function cleanSym(s: string) {
-  return String(s)
-    .trim()
-    .toUpperCase()
+  const raw = String(s).trim().toUpperCase();
+  const bse = /^(BSE:|BSEEQ-)/.test(raw) || /\.BO$/.test(raw);
+  const body = raw
     .replace(/^(NSE:|BSE:|IND:|NSEEQ-|BSEEQ-)/, "")
     .replace(/\.(NS|BO)$/i, "")
     .replace(SERIES_SFX, "")
     .replace(/\s+/g, "");
+  if (!body) return "";
+  return bse ? `${body}.BO` : body;
 }
 
 function normalizeName(s: string) {
@@ -522,6 +524,7 @@ export function guessTicker(raw: string, name?: string, isin?: string): string {
     if (mapped) return mapped;
   }
   const cleaned = cleanSym(raw);
+  if (/\.BO$/.test(cleaned) && /^[A-Z][A-Z0-9&_-]{0,20}\.BO$/.test(cleaned)) return cleaned;
   if (isIsin(cleaned)) {
     const mapped = tickerFromIsin(cleaned) || lookupName(name || "") || lookupName(raw);
     if (mapped && !isIsin(mapped)) return mapped;

@@ -120,10 +120,10 @@ export function parseSymbolToken(raw: string): SymbolRow {
   if (exchange === "BSE") {
     return {
       raw: text,
-      symbol: body,
+      symbol: `${body}.BO`,
       exchange,
-      status: "needs-review",
-      reason: "BSE listing was not treated as the NSE ticker. Confirm the instrument before adding it.",
+      status: "resolved",
+      reason: "Stored as the BSE listing, separate from the NSE ticker.",
     };
   }
   return { raw: text, symbol: body, exchange: exchange || "NSE", status: "resolved", reason: exchange ? `Taken from the ${exchange} prefix.` : "Used as written." };

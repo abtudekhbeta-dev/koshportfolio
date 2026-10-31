@@ -5,7 +5,8 @@ import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { isIstSession } from "@/lib/kosh/market-hours";
 import { quoteMap } from "@/lib/kosh/market-data";
 import { universeName } from "@/lib/kosh/universe";
-import { bareSymbol, useKosh } from "@/lib/store";
+import { listingExchange, listingId, listingLabel } from "@/lib/kosh/listing";
+import { useKosh } from "@/lib/store";
 import { CompanyLogo } from "@/components/company-logo";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -42,7 +43,7 @@ export function LedgerWatch({
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState<"none" | "last" | "pct">("none");
   const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<{ symbol: string; name: string }[]>([]);
+  const [hits, setHits] = useState<{ symbol: string; name: string; exch: string }[]>([]);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const bookFallback = ports.find((port) => port.holdings.length);
   const source: Source =
@@ -53,14 +54,14 @@ export function LedgerWatch({
   const symbols = useMemo(() => {
     const raw =
       source.kind === "book"
-        ? (book?.holdings || []).map((holding) => bareSymbol(holding.symbol))
+        ? (book?.holdings || []).map((holding) => listingId(holding.symbol))
         : source.id === activeId
           ? watch
           : lists.find((list) => list.id === source.id)?.symbols || [];
     const out: string[] = [];
     for (const symbol of raw) {
-      const bare = bareSymbol(symbol);
-      if (bare && !out.includes(bare)) out.push(bare);
+      const id = listingId(symbol);
+      if (id && !out.includes(id)) out.push(id);
     }
     return out;
   }, [source, book, watch, lists, activeId]);
@@ -102,7 +103,7 @@ export function LedgerWatch({
     }
     try {
       const found = await apiSearch(value.trim());
-      setHits(found.slice(0, 6).map((row) => ({ symbol: bareSymbol(row.symbol), name: row.name })));
+      setHits(found.slice(0, 6).map((row) => ({ symbol: row.symbol, name: row.name, exch: row.exch })));
     } catch {
       setHits([]);
     }
@@ -160,7 +161,8 @@ export function LedgerWatch({
                   setFilter("");
                 }}
               >
-                <b>{hit.symbol}</b>
+                <b>{listingLabel(hit.symbol)}</b>
+                <span className="lt-muted">{hit.exch || listingExchange(hit.symbol)}</span>
                 <span className="lt-muted">{hit.name}</span>
               </button>
             ))}
@@ -205,7 +207,8 @@ export function LedgerWatch({
             >
             <span className="lt-sym">
               <CompanyLogo symbol={row.symbol} name={row.name} size={18} />
-              <em>{row.symbol}</em>
+              <em>{listingLabel(row.symbol)}</em>
+              {listingExchange(row.symbol) === "BSE" ? <span className="lt-muted">BSE</span> : null}
             </span>
             <span>{row.price == null ? "—" : fmtPx(row.price)}</span>
             <span className={row.move == null || row.move === 0 ? "lt-muted" : row.move > 0 ? "lt-up" : "lt-down"}>{moveText(row.move)}</span>

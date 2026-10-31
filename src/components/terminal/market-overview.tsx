@@ -18,6 +18,7 @@ import { isIstSession } from "@/lib/kosh/market-hours";
 import { applyScreen, sectorPulse } from "@/lib/kosh/screens";
 import { cycleSort, sortEntities, sortGlyph, type SortDir } from "@/lib/kosh/kosh-table";
 import { useKosh } from "@/lib/store";
+import { listingId } from "@/lib/kosh/listing";
 import { cn } from "@/lib/utils";
 
 type HoldKey = "name" | "last" | "chg" | "chgPct";
@@ -80,9 +81,9 @@ export function MarketOverview() {
   const downSeed = applyScreen(rows, "down").slice(0, 12);
   const sectors = sectorPulse(rows);
   const portSyms = [
-    ...new Set(ports.flatMap((p) => p.holdings.map((h) => h.symbol.toUpperCase().replace(/\.(NS|BO)$/i, "")))),
+    ...new Set(ports.flatMap((p) => p.holdings.map((h) => listingId(h.symbol)))),
   ];
-  const watchSyms = watch.map((s) => s.toUpperCase().replace(/\.(NS|BO)$/i, ""));
+  const watchSyms = watch.map((s) => listingId(s));
   const liveSyms = useMemo(
     () => pickLiveSymbols(portSyms, watchSyms, upSeed.map((r) => r.symbol), downSeed.map((r) => r.symbol), 36),
     [portSyms.join(","), watchSyms.join(","), upSeed.map((r) => r.symbol).join(","), downSeed.map((r) => r.symbol).join(",")],
@@ -99,7 +100,7 @@ export function MarketOverview() {
   const qBy = useMemo(() => {
     const m = new Map<string, { price: number; previousClose: number; changePct: number; name?: string }>();
     for (const q of quotes.data || []) {
-      const k = q.symbol.toUpperCase().replace(/\.(NS|BO)$/i, "");
+      const k = listingId(q.input || q.symbol);
       m.set(k, q);
     }
     return m;
@@ -109,7 +110,7 @@ export function MarketOverview() {
     const map = new Map<string, { symbol: string; name: string; qty: number }>();
     for (const p of chosen) {
       for (const h of p.holdings) {
-        const k = h.symbol.toUpperCase().replace(/\.(NS|BO)$/i, "");
+        const k = listingId(h.symbol);
         if (!k) continue;
         const cur = map.get(k) || { symbol: k, name: h.name || k, qty: 0 };
         cur.qty += h.qty || 0;
@@ -135,7 +136,7 @@ export function MarketOverview() {
   const watchSort = activeList ? overviewWatchSorts[activeList.id] : undefined;
   const embeddedWatch = useMemo(() => {
     const list = (activeList?.symbols || []).map((s) => {
-      const k = s.toUpperCase().replace(/\.(NS|BO)$/i, "");
+      const k = listingId(s);
       const q = qBy.get(k);
       const screenRow = liveRows.find((x) => x.symbol === k);
       const last = q && q.price > 0 ? q.price : screenRow && screenRow.price > 0 ? screenRow.price : null;

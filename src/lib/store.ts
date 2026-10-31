@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { listingId } from "@/lib/kosh/listing";
 import type { Holding, Portfolio, JournalEntry, TradeLine, Fundamentals, ImportRecord } from "@/lib/kosh/types";
 import { applyHoldingPatch, fillHoldings, mergeHoldings, mergeTradeLines, sanitizeHoldings, sanitizeTrades, upsertHoldings, type FillOpts } from "@/lib/kosh/parse";
 import { samplePortfolio, SAMPLE_TRADES } from "@/lib/kosh/sample";
@@ -194,7 +195,7 @@ function clampPaneIndex(n: number): 0 | 1 | 2 | 3 {
 }
 
 function sanitizePane(raw: Partial<DeskPane> | undefined, fallback: DeskPane): DeskPane {
-  const symbol = bareSymbol(raw?.symbol || "") || fallback.symbol;
+  const symbol = listingId(raw?.symbol || "") || fallback.symbol;
   const interval = raw?.interval && TERM_IDS.has(raw.interval) ? raw.interval : fallback.interval;
   return { symbol, name: String(raw?.name || fallback.name).slice(0, 80), interval };
 }
@@ -218,12 +219,12 @@ export function sanitizeDesk(raw?: Partial<DeskState> | null): DeskState {
 }
 
 export function isWatched(symbol: string, list: string[]) {
-  const n = bareSymbol(symbol);
-  return list.some((x) => bareSymbol(x) === n);
+  const n = listingId(symbol);
+  return list.some((x) => listingId(x) === n);
 }
 
 function defaultWatchlists(symbols: string[] = []): WatchList[] {
-  const main = symbols.map(bareSymbol).filter(Boolean);
+  const main = symbols.map((symbol) => listingId(symbol)).filter(Boolean);
   return [
     { id: "main", name: "Main", symbols: main },
     { id: "trade", name: "Trade", symbols: [] },
@@ -644,16 +645,16 @@ export const useKosh = create<KoshState>()(
         })();
       },
       toggleWatch: (symbol) => {
-        const n = bareSymbol(symbol);
+        const n = listingId(symbol);
         const id = get().activeWatchId;
         const lists = get().watchlists.length ? get().watchlists : defaultWatchlists(get().watch);
         const next = lists.map((l) => {
           if (l.id !== id) return l;
-          const cur = l.symbols.map(bareSymbol);
+          const cur = l.symbols.map((item) => listingId(item));
           return { ...l, symbols: cur.includes(n) ? cur.filter((x) => x !== n) : [n, ...cur].slice(0, 500) };
         });
         const active = next.find((l) => l.id === id) || next[0];
-        const removing = (lists.find((l) => l.id === id)?.symbols || []).map(bareSymbol).includes(n);
+        const removing = (lists.find((l) => l.id === id)?.symbols || []).map((item) => listingId(item)).includes(n);
         set({
           watchlists: next,
           watch: active?.symbols || [],
@@ -700,7 +701,7 @@ export const useKosh = create<KoshState>()(
       setDesk: (d) => set({ desk: sanitizeDesk(d) }),
       patchDesk: (p) => set({ desk: sanitizeDesk({ ...get().desk, ...p, panes: p.panes || get().desk.panes }) }),
       setDeskSymbol: (symbol, name) => {
-        const n = bareSymbol(symbol);
+        const n = listingId(symbol);
         if (!n) return;
         const desk = get().desk;
         const i = desk.activePane;
@@ -723,13 +724,13 @@ export const useKosh = create<KoshState>()(
         set({ desk: sanitizeDesk(next) });
       },
       pushRecent: (r) => {
-        const n = bareSymbol(r.symbol);
-        const rest = get().recents.filter((x) => bareSymbol(x.symbol) !== n);
+        const n = listingId(r.symbol);
+        const rest = get().recents.filter((x) => listingId(x.symbol) !== n);
         set({ recents: [{ symbol: n, name: r.name }, ...rest].slice(0, 12) });
       },
       addAlert: (a) =>
         set({
-          alerts: [{ ...a, id: uid(), symbol: bareSymbol(a.symbol), kind: a.kind || "price" }, ...get().alerts].slice(0, 500),
+          alerts: [{ ...a, id: uid(), symbol: listingId(a.symbol), kind: a.kind || "price" }, ...get().alerts].slice(0, 500),
         }),
       removeAlert: (id) =>
         set({
@@ -741,7 +742,7 @@ export const useKosh = create<KoshState>()(
           journal: [
             {
               id: uid(),
-              symbol: bareSymbol(e.symbol),
+              symbol: listingId(e.symbol),
               note: String(e.note || "").slice(0, 400),
               setup: String(e.setup || "").slice(0, 80),
               price: Number(e.price) || 0,

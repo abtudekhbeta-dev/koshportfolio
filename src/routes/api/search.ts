@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { mergeSearchQuotes } from "@/lib/kosh/listing";
 import { searchSymbols } from "@/lib/kosh/yahoo.server";
 import { searchNse } from "@/lib/kosh/universe";
 import { searchMaster } from "@/lib/kosh/master.server";
@@ -15,15 +16,8 @@ export const Route = createFileRoute("/api/search")({
           name: x.name,
           exch: "NSE",
         }));
-        const seen = new Set(local.map((x) => x.symbol.toUpperCase()));
         const remote = await searchSymbols(q.trim());
-        const rest = remote.filter((x) => {
-          const bare = x.symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
-          if (seen.has(bare) || seen.has(x.symbol.toUpperCase())) return false;
-          seen.add(bare);
-          return true;
-        });
-        return Response.json({ quotes: [...local, ...rest].slice(0, 16) });
+        return Response.json({ quotes: mergeSearchQuotes(local, remote, 16) });
       },
     },
   },

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { previewAdd } from "@/lib/kosh/engine";
 import { sectorOf } from "@/lib/kosh/sectors";
 import { apiHistories } from "@/lib/kosh/api";
+import { listingId } from "@/lib/kosh/listing";
 import { resolveBench } from "@/lib/kosh/benchmarks";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -43,7 +44,7 @@ export function AddToPortfolio({
   const [pid, setPid] = useState(ports[0]?.id || "");
   const [slice, setSlice] = useState<(typeof SLICES)[number]>(0.05);
   const port = ports.find((p) => p.id === pid) || ports[0];
-  const already = port?.holdings.find((h) => h.symbol.replace(/\.(NS|BO)$/i, "") === symbol.replace(/\.(NS|BO)$/i, ""));
+  const already = port?.holdings.find((h) => listingId(h.symbol) === listingId(symbol));
   const sectorNames = (port?.holdings || []).filter((h) => (h.sector || sectorOf(h.symbol)) === sector);
 
   const hx = useQuery({

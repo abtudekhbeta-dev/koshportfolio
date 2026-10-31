@@ -10,6 +10,7 @@ import { classifyIncoming, parseHoldingsFiles, parseVoice, type FillOpts, type T
 import { enrichHoldings } from "@/lib/kosh/enrich";
 import { downloadHoldingsExcel } from "@/lib/kosh/export";
 import { displayName, isIsin } from "@/lib/kosh/names";
+import { listingId } from "@/lib/kosh/listing";
 import { apiCloseOn, apiQuotes, apiSearch } from "@/lib/kosh/api";
 import { deriveMetal, formatGrams, METALS, type MetalId } from "@/lib/kosh/commodities";
 import { requestIngestReview } from "@/lib/kosh/ingest-client";
@@ -588,7 +589,7 @@ function ManualPane({ onCommit }: { onCommit: (h: Holding[]) => void }) {
                   type="button"
                   className="flex w-full items-center justify-between px-3 py-2 text-left text-[13px] hover:bg-surface-2"
                   onClick={() => {
-                    setSymbol(h.symbol.replace(/\.(NS|BO)$/i, ""));
+                    setSymbol(listingId(h.symbol));
                     setHits([]);
                   }}
                 >

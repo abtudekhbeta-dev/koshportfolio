@@ -22,6 +22,7 @@ import { isIstSession } from "@/lib/kosh/market-hours";
 import { classifyFreshness, quoteMap } from "@/lib/kosh/market-data";
 import { resample } from "@/lib/kosh/ohlc";
 import { terminalSearch } from "@/lib/kosh/instrument-nav";
+import { listingExchange, listingId, listingLabel } from "@/lib/kosh/listing";
 import { cleanBars, ohlcCollapsed } from "@/lib/kosh/ledger-bars";
 import {
   addIndicator,
@@ -46,7 +47,7 @@ import {
   type LedgerRangeId,
   type LedgerTool,
 } from "@/lib/kosh/ledger-spec";
-import { bareSymbol, isWatched, useKosh } from "@/lib/store";
+import { isWatched, useKosh } from "@/lib/store";
 import { canOpenStock } from "@/components/stock-link";
 import { LayoutSwitch } from "@/components/layout-switch";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -127,7 +128,8 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
   const [mobileWatch, setMobileWatch] = useState(false);
   const [narrow, setNarrow] = useState(false);
   const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<{ symbol: string; name: string }[]>([]);
+  const [hits, setHits] = useState<{ symbol: string; name: string; exch: string }[]>([]);
+  const [objectsOn, setObjectsOn] = useState(false);
   const [alertPrice, setAlertPrice] = useState("");
   const [alertDir, setAlertDir] = useState<"above" | "below">("above");
   const [importOpen, setImportOpen] = useState(false);
@@ -143,7 +145,7 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
   const [hist, setHist] = useState(0);
   layoutRef.current = layout;
 
-  const symbol = bareSymbol(search.symbol || layout.symbol || "RELIANCE");
+  const symbol = listingId(search.symbol || layout.symbol || "RELIANCE");
   const spec = intervalSpec(layout.interval);
   const scope = drawScope(symbol, spec.id);
   const drawings = layout.drawings[scope] || [];
@@ -215,7 +217,7 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
     : { state: "off" as const, label: ohlc.data ? "QUOTE PENDING" : "NO QUOTE", title: "The header uses the quote request. Candles are a separate historical response and are not filled from this number." };
   const name = ohlc.data?.name || search.name || layout.name || symbol;
   const collapsed = ohlcCollapsed(bars);
-  const mine = alerts.filter((alert) => bareSymbol(alert.symbol) === symbol && (alert.kind == null || alert.kind === "price"));
+  const mine = alerts.filter((alert) => listingId(alert.symbol) === symbol && (alert.kind == null || alert.kind === "price"));
   const watchShown = narrow ? mobileWatch : layout.watchOpen;
 
   function writeDrawings(next: LedgerDraw[]) {
@@ -276,13 +278,14 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
   }
 
   function pick(next: string, nextName?: string) {
-    const bare = bareSymbol(next);
-    if (!bare) return;
-    setLayout((prev) => ({ ...prev, symbol: bare, name: nextName || prev.name }));
-    void navigate({ to: "/markets", search: terminalSearch(bare, nextName || bare) });
+    const id = listingId(next);
+    if (!id) return;
+    setLayout((prev) => ({ ...prev, symbol: id, name: nextName || prev.name }));
+    void navigate({ to: "/markets", search: terminalSearch(id, nextName || listingLabel(id)) });
     setQuery("");
     setHits([]);
     setContext(null);
+    searchRef.current?.blur();
   }
 
   useEffect(() => {
@@ -291,6 +294,10 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
         if (e.key === "Escape") {
           setImportOpen(false);
           setMenu(null);
+          if (e.target === searchRef.current) {
+            setQuery("");
+            setHits([]);
+          }
           (e.target as HTMLElement).blur();
         }
         return;
@@ -308,11 +315,18 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
         return;
       }
       if (e.key === "Escape") {
+        if (query || hits.length) {
+          setQuery("");
+          setHits([]);
+          searchRef.current?.blur();
+          return;
+        }
         setTool("cursor");
         setMenu(null);
         setImportOpen(false);
         setContext(null);
         setSelectedId(null);
+        setObjectsOn(false);
         return;
       }
       if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
@@ -323,6 +337,15 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
       }
       if (e.key === "/") {
         e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      if (!meta && !e.altKey && !e.repeat && /^[a-z]$/i.test(e.key)) {
+        if (importOpen || menu || context) return;
+        e.preventDefault();
+        const next = e.key.toUpperCase();
+        setQuery(next);
+        void onSearch(next);
         searchRef.current?.focus();
         return;
       }
@@ -355,7 +378,7 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
     }
     try {
       const rows = await apiSearch(value.trim());
-      setHits(rows.slice(0, 8).map((row) => ({ symbol: bareSymbol(row.symbol), name: row.name })));
+      setHits(rows.slice(0, 8).map((row) => ({ symbol: row.symbol, name: row.name, exch: row.exch })));
     } catch {
       setHits([]);
       setNotice("Symbol search failed.");
@@ -417,7 +440,7 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
         <span className="lt-muted lt-ledger-label">Ledger</span>
         <div className="lt-price">
           <strong>{name}</strong>
-          <span className="lt-muted">{ohlc.data?.exchange || "NSE"}</span>
+          <span className="lt-muted">{ohlc.data?.exchange || listingExchange(symbol)}</span>
           <strong data-ledger-price>{price == null ? "—" : price.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
           {ohlc.data?.currency && ohlc.data.currency !== "INR" ? <span className="lt-muted">{ohlc.data.currency}</span> : null}
           <span className={move == null || move === 0 ? "lt-muted" : move > 0 ? "lt-up" : "lt-down"}>{fmtMove(move)}</span>
@@ -441,7 +464,8 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
             <div className="lt-hits">
               {hits.map((hit) => (
                 <button key={hit.symbol} type="button" onClick={() => pick(hit.symbol, hit.name)}>
-                  <b>{hit.symbol}</b>
+                  <b>{listingLabel(hit.symbol)}</b>
+                  <span className="lt-muted">{hit.exch || listingExchange(hit.symbol)}</span>
                   <span className="lt-muted">{hit.name}</span>
                 </button>
               ))}
@@ -646,7 +670,7 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
         ) : (
           <p className="lt-muted">{spec.label} loads {intradayWindow(spec)}. Pan and zoom inside that window.</p>
         )}
-        <p className="lt-muted">/ search · F fullscreen · Esc leaves a tool · Delete removes the selected drawing · Ctrl or Cmd Z undo · Ctrl or Cmd Shift Z, or Ctrl or Cmd Y, redo.</p>
+        <p className="lt-muted">Letters open symbol search. Esc closes it. / also focuses search. F fullscreen. Delete removes the selected drawing. Ctrl or Cmd Z undo. Ctrl or Cmd Shift Z, or Ctrl or Cmd Y, redo.</p>
         <button type="button" onClick={() => setLayout((prev) => ({ ...prev, drawingsHidden: !prev.drawingsHidden }))}>
           {layout.drawingsHidden ? "Show drawings" : "Hide drawings"}
         </button>
@@ -665,8 +689,8 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
       </AnchoredMenu>
       <div className="lt-head">
         <b>
-          {symbol} · {spec.label}
-          {ohlc.data?.exchange ? ` · ${ohlc.data.exchange}` : ""}
+          {listingLabel(symbol)} · {spec.label}
+          {` · ${ohlc.data?.exchange || listingExchange(symbol)}`}
         </b>
         <span>
           {bars.length ? `O ${fmtMove(bars[bars.length - 1].o).replace("+", "")} H ${fmtMove(bars[bars.length - 1].h).replace("+", "")} L ${fmtMove(bars[bars.length - 1].l).replace("+", "")} C ${fmtMove(bars[bars.length - 1].c).replace("+", "")}` : "No bar loaded"}
@@ -712,6 +736,11 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
               {layout.drawingsHidden ? <EyeOff size={15} /> : <Eye size={15} />}
             </button>
           </Tip>
+          <Tip text="Drawing objects">
+            <button type="button" className="lt-tool" aria-label="Drawing objects" aria-pressed={objectsOn} onClick={() => setObjectsOn((open) => !open)}>
+              <span style={{ fontSize: 10, fontWeight: 650 }}>Obj</span>
+            </button>
+          </Tip>
         </aside>
         <section className="lt-stage">
           <div style={{ position: "relative", minHeight: 0, flex: 1, display: "flex", flexDirection: "column" }}>
@@ -731,6 +760,7 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
                 onSelect={setSelectedId}
                 onDrawings={onDrawings}
                 onContext={(info) => setContext({ ...info, source: "chart", symbol, name })}
+                onFinished={() => setTool("crosshair")}
                 theme={theme}
                 pen={pen}
               />
@@ -750,6 +780,38 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
               <div className="lt-status">No bars were returned for {symbol} at {spec.label}. Nothing was invented to fill the gap.</div>
             ) : null}
             {collapsed ? <div className="lt-banner">This response has a close and no separate open, high, or low. Switch to Line if a candle is misleading.</div> : null}
+            {objectsOn ? (
+              <div className="lt-hits" role="list" aria-label="Drawing objects" style={{ position: "absolute", left: 8, top: 8, zIndex: 4, maxHeight: 280, overflow: "auto", minWidth: 240 }}>
+                {drawings.length ? (
+                  drawings.map((draw) => (
+                    <div key={draw.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <button type="button" aria-pressed={draw.id === selectedId} onClick={() => setSelectedId(draw.id)}>
+                        <b>{draw.text || draw.kind}</b>
+                        <span className="lt-muted">{draw.hidden ? "hidden" : draw.locked ? "locked" : "on chart"}</span>
+                      </button>
+                      <button type="button" aria-label={`${draw.hidden ? "Show" : "Hide"} ${draw.kind}`} onClick={() => commitDrawings(drawings.map((row) => (row.id === draw.id ? { ...row, hidden: !row.hidden } : row)))}>
+                        {draw.hidden ? "Show" : "Hide"}
+                      </button>
+                      <button type="button" aria-label={`${draw.locked ? "Unlock" : "Lock"} ${draw.kind}`} onClick={() => commitDrawings(drawings.map((row) => (row.id === draw.id ? { ...row, locked: !row.locked } : row)))}>
+                        {draw.locked ? "Unlock" : "Lock"}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Delete ${draw.kind}`}
+                        onClick={() => {
+                          commitDrawings(drawings.filter((row) => row.id !== draw.id));
+                          if (selectedId === draw.id) setSelectedId(null);
+                        }}
+                      >
+                        Del
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="lt-note">No drawings on this symbol and timeframe.</p>
+                )}
+              </div>
+            ) : null}
             {selected ? (
               <div className="lt-style" role="toolbar" aria-label="Drawing style">
                 {PENS.map((color) => (
@@ -937,7 +999,7 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
               {isWatched(context.symbol || symbol, watch) ? "Remove from watchlist" : "Add to watchlist"}
             </button>
             {canOpenStock(context.symbol || symbol) ? (
-              <Link to="/s/$symbol" params={{ symbol: bareSymbol(context.symbol || symbol) }} onClick={() => setContext(null)}>
+              <Link to="/s/$symbol" params={{ symbol: listingId(context.symbol || symbol) }} onClick={() => setContext(null)}>
                 Open research page
               </Link>
             ) : null}

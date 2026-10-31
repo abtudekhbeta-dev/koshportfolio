@@ -299,6 +299,40 @@ export function isNr7(bars: OhlcBar[]): boolean {
   return ranges.every((r) => last <= r + 1e-9);
 }
 
+/** Fold sub-daily prints into IST sessions. Used when a daily request only returned intraday bars. */
+export function sessionBars(bars: OhlcBar[], interval: "1d" | "1wk" | "1mo"): OhlcBar[] {
+  if (bars.length < 2) return bars;
+  const ist = 19800;
+  const keyOf = (t: number) => {
+    const shifted = (t + ist) * 1000;
+    const day = Math.floor((t + ist) / 86400);
+    if (interval === "1d") return day;
+    if (interval === "1wk") return Math.floor((day + 3) / 7);
+    const date = new Date(shifted);
+    return date.getUTCFullYear() * 12 + date.getUTCMonth();
+  };
+  const out: OhlcBar[] = [];
+  let cur: OhlcBar | null = null;
+  let key = Number.NaN;
+  for (const bar of bars) {
+    if (!(bar.c > 0)) continue;
+    const next = keyOf(bar.t);
+    if (cur && next === key) {
+      cur.h = Math.max(cur.h, bar.h);
+      cur.l = Math.min(cur.l, bar.l);
+      cur.c = bar.c;
+      cur.v += bar.v || 0;
+      if (bar.adj != null && bar.adj > 0) cur.adj = bar.adj;
+    } else {
+      if (cur) out.push(cur);
+      cur = { t: bar.t, o: bar.o, h: bar.h, l: bar.l, c: bar.c, v: bar.v || 0, ...(bar.adj != null ? { adj: bar.adj } : {}) };
+      key = next;
+    }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
 export function resample(bars: OhlcBar[], bucketSec: number): OhlcBar[] {
   if (!bars.length || !(bucketSec > 0)) return bars;
   const out: OhlcBar[] = [];

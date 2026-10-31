@@ -1,6 +1,7 @@
 /** Thin wrapper over the existing quote/OHLC poll. No second provider. */
 
 import type { OhlcBar, Quote } from "./types.ts";
+import { listingId } from "./listing.ts";
 import { resample } from "./ohlc.ts";
 
 const IST = 19800;
@@ -254,14 +255,10 @@ export function quoteMap(quotes: Quote[] | undefined | null): Map<string, Quote>
   const map = new Map<string, Quote>();
   if (!quotes) return map;
   for (const q of quotes) {
-    const a = String(q.symbol || "")
-      .replace(/\.(NS|BO)$/i, "")
-      .toUpperCase();
-    const b = String(q.input || "")
-      .replace(/\.(NS|BO)$/i, "")
-      .toUpperCase();
-    if (a) map.set(a, q);
-    if (b) map.set(b, q);
+    const keys = [listingId(q.input || q.symbol), listingId(q.symbol || ""), String(q.input || "").trim().toUpperCase()];
+    for (const key of keys) {
+      if (key) map.set(key, q);
+    }
   }
   return map;
 }

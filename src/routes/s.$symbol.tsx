@@ -36,6 +36,8 @@ import { seedCompletion } from "@/lib/kosh/complete";
 import { buildValuationModels, earningsQualityRead } from "@/lib/kosh/valuation";
 import { buildCoverage, peDiscrepancy } from "@/lib/kosh/coverage";
 import { bareSymbol, isWatched, useKosh, type AlertKind } from "@/lib/store";
+import { listingExchange, listingId, listingLabel } from "@/lib/kosh/listing";
+import { terminalSearch } from "@/lib/kosh/instrument-nav";
 
 import { cn } from "@/lib/utils";
 import type { ChartRange, DealEvent, OhlcPack } from "@/lib/kosh/types";
@@ -146,7 +148,9 @@ function StockBody({
 
   const reads = useKosh((s) => s.skillReads);
   const listed = pack.firstTrade ? new Date(pack.firstTrade * 1000).toISOString().slice(0, 4) : "—";
-  const bare = symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
+  const id = listingId(symbol);
+  const exch = listingExchange(symbol, pack.exchange);
+  const bare = listingLabel(symbol);
   const setDeepFunds = useKosh((s) => s.setDeepFunds);
   const deepSnap = useKosh((s) => s.deepFunds[bare]);
   const [updating, setUpdating] = useState(false);
@@ -240,7 +244,7 @@ function StockBody({
   const priceAsOf = bars.at(-1)?.t ? new Date(bars[bars.length - 1].t * 1000).toISOString().slice(0, 10) : null;
   const finPeriod = fundData?.finPeriod || fundData?.sales?.at(-1)?.period || null;
   const shPeriod = fundData?.shPeriod || fundData?.shareholding?.at(-1)?.period || null;
-  const mine = alerts.filter((a) => a.symbol === bare);
+  const mine = alerts.filter((a) => listingId(a.symbol) === id);
   const cap = capFromMcap(fundData?.mcapCr ?? mineRow?.mcapCr, symbol);
   const card = businessView(symbol, {
     summary: fundData?.summary,
@@ -268,7 +272,7 @@ function StockBody({
             <div>
           <h1 className="mt-1 text-[28px] font-semibold tracking-tight">{name}</h1>
           <p className="mt-1 text-[12px] text-muted">
-            {bare} · {pack.exchange || "NSE"} · {cap} · listed {listed}
+            {bare} · {exch === "OTHER" ? pack.exchange || "—" : exch} · {cap} · listed {listed}
             {mineRow?.series ? ` · ${mineRow.series}` : ""}
             {mineRow?.gsm ? " · GSM" : ""}
             {site ? (
@@ -318,7 +322,7 @@ function StockBody({
                 <Link to="/compare">Compare</Link>
               </Button>
             ) : null}
-            <AddToPortfolio symbol={bare} name={name} px={px} bars={bars} sector={sector} />
+            <AddToPortfolio symbol={id} name={name} px={px} bars={bars} sector={sector} />
           </div>
         </div>
       </header>
@@ -481,13 +485,17 @@ function StockBody({
         />
         <p className="mt-2 text-[12px] text-muted">
           <a
-            href={`https://www.tradingview.com/chart/?symbol=NSE:${encodeURIComponent(bare)}`}
+            href={`https://www.tradingview.com/chart/?symbol=${exch === "BSE" ? "BSE" : "NSE"}:${encodeURIComponent(bare)}`}
             target="_blank"
             rel="noreferrer"
             className="text-chart hover:underline"
           >
             Open in TradingView
           </a>
+          <span className="mx-2 text-subtle">·</span>
+          <Link to="/markets" search={terminalSearch(id, name)} className="text-chart hover:underline">
+            Open in Terminal
+          </Link>
         </p>
       </section>
 
@@ -621,11 +629,11 @@ function StockBody({
             e.preventDefault();
             const p = Number(alertPx);
             if (alertKind === "high52" || alertKind === "low52") {
-              addAlert({ symbol: bare, name, price: alertKind === "high52" ? pack.high52 : pack.low52, dir: alertKind === "high52" ? "above" : "below", kind: alertKind });
+              addAlert({ symbol: id, name, price: alertKind === "high52" ? pack.high52 : pack.low52, dir: alertKind === "high52" ? "above" : "below", kind: alertKind });
               return;
             }
             if (!(p > 0)) return;
-            addAlert({ symbol: bare, name, price: p, dir: alertDir, kind: alertKind });
+            addAlert({ symbol: id, name, price: p, dir: alertDir, kind: alertKind });
             setAlertPx("");
           }}
         >

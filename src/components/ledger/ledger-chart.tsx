@@ -135,6 +135,7 @@ export function LedgerChart({
   onSelect,
   onDrawings,
   onContext,
+  onFinished,
   theme,
   pen,
 }: {
@@ -152,6 +153,7 @@ export function LedgerChart({
   onSelect: (id: string | null) => void;
   onDrawings: (next: LedgerDraw[], phase: Phase) => void;
   onContext: (info: { x: number; y: number; price: number | null; time: number | null }) => void;
+  onFinished?: () => void;
   theme: LedgerTheme;
   pen: { color: string; width: number; dash: DrawDash };
 }) {
@@ -474,7 +476,7 @@ export function LedgerChart({
     const hitPoint = eventPoint(e);
     if (!hitPoint) return;
     const current = toolRef.current;
-    if (current === "cursor") {
+    if (current === "cursor" || current === "crosshair") {
       if (hiddenRef.current) {
         onSelect(null);
         return;
@@ -501,7 +503,6 @@ export function LedgerChart({
       onDrawings(drawingsRef.current, "start");
       return;
     }
-    if (current === "crosshair") return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     dragRef.current = { mode: "create", kind: current, start: hitPoint.data, now: hitPoint.data, px: 0 };
@@ -553,6 +554,7 @@ export function LedgerChart({
     onDrawings([...drawingsRef.current.filter((item) => item.id !== "draft"), row], "commit");
     onSelect(row.id);
     setDraft(null);
+    onFinished?.();
   }
 
   const box = paneBox();
@@ -628,6 +630,7 @@ export function LedgerChart({
                 ],
                 "commit",
               );
+              onFinished?.();
             } else onDrawings(drawingsRef.current, "cancel");
             setTextAt(null);
           }}
@@ -720,7 +723,8 @@ function DrawShape({
   const a = project(draw.t0, draw.p0);
   if (!a || width < 2) return null;
   const b = draw.t1 != null && draw.p1 != null ? project(draw.t1, draw.p1) : null;
-  const events = activeTool === "cursor" ? "stroke" : "none";
+  const pickable = activeTool === "cursor" || activeTool === "crosshair";
+  const events = pickable ? "stroke" : "none";
   const widthPx = Math.min(6, Math.max(1, draw.width || 1.5));
   const dash = draw.dash === "dashed" ? "7 4" : draw.dash === "dotted" ? "1.5 3.5" : undefined;
   const common = {
@@ -748,7 +752,7 @@ function DrawShape({
   }
   if (draw.kind === "text") {
     return (
-      <g pointerEvents={activeTool === "cursor" ? "all" : "none"}>
+      <g pointerEvents={pickable ? "all" : "none"}>
         <text x={a.x + 4} y={a.y} fill={draw.color} fontSize={11 + ((draw.width || 1) - 1) * 2}>
           {draw.text || "Note"}
         </text>
@@ -761,7 +765,7 @@ function DrawShape({
     const y = Math.min(a.y, b.y);
     return (
       <g>
-        <rect x={x} y={y} width={Math.abs(b.x - a.x)} height={Math.abs(b.y - a.y)} {...common} fill={draw.color} fillOpacity={0.12} pointerEvents={activeTool === "cursor" ? "all" : "none"} />
+        <rect x={x} y={y} width={Math.abs(b.x - a.x)} height={Math.abs(b.y - a.y)} {...common} fill={draw.color} fillOpacity={0.12} pointerEvents={pickable ? "all" : "none"} />
         {selected ? (
           <>
             <Handle x={a.x} y={a.y} fill={surface} />

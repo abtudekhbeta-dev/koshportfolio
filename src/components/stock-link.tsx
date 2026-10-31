@@ -1,12 +1,11 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { isListedSymbol } from "@/lib/kosh/universe";
+import { listingId, listingLabel } from "@/lib/kosh/listing";
 import { cn } from "@/lib/utils";
 
 export function stockBare(symbol: string) {
-  return String(symbol || "")
-    .toUpperCase()
-    .replace(/\.(NS|BO)$/i, "");
+  return listingLabel(symbol);
 }
 
 export function canOpenStock(symbol: string) {
@@ -27,12 +26,13 @@ export function StockLink({
   children?: ReactNode;
 }) {
   const b = stockBare(symbol);
+  const id = listingId(symbol);
   const label = children ?? name ?? b;
   if (!canOpenStock(b)) {
     return <span className={className}>{label}</span>;
   }
   return (
-    <Link to="/s/$symbol" params={{ symbol: b }} className={cn("hover:text-chart", className)}>
+    <Link to="/s/$symbol" params={{ symbol: id }} className={cn("hover:text-chart", className)}>
       {label}
     </Link>
   );

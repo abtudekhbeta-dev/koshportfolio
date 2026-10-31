@@ -15,6 +15,8 @@ import {
 } from "./commodities.ts";
 import { delayMinutesFromMeta } from "./market-data.ts";
 import { istDay } from "./engine.ts";
+import { yahooCandidates } from "./listing.ts";
+import { sessionBars } from "./ohlc.ts";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -164,12 +166,7 @@ export function suffixTries(raw: string): string[] {
   const metal = metalKey(s);
   if (metal) return [METALS[metal].yfInr, METALS[metal].yfUsd];
   if (s.startsWith("^") || s.includes("=") || s.includes("_FIN_SERVICE")) return [s];
-  const out: string[] = [];
-  if (/\.(NS|BO)$/.test(s)) out.push(s);
-  for (const st of stemVariants(s)) {
-    out.push(st + ".NS", st + ".BO");
-  }
-  return [...new Set(out)];
+  return yahooCandidates(s, stemVariants(s));
 }
 
 function searchQueries(symbol: string): string[] {
@@ -628,6 +625,26 @@ export async function closeOnDay(symbol: string, day: string): Promise<{ day: st
 
 export { isCommodity };
 
+function subDaily(bars: OhlcBar[]): boolean {
+  if (bars.length < 3) return false;
+  const gaps: number[] = [];
+  for (let i = 1; i < Math.min(bars.length, 8); i++) gaps.push(bars[i].t - bars[i - 1].t);
+  gaps.sort((a, b) => a - b);
+  return gaps[Math.floor(gaps.length / 2)] < 20 * 3600;
+}
+
+/** Yahoo's long daily window for some BSE names returns one bar, while range=max is hourly. Fold those hours into sessions. */
+async function rescueBseSessions(yahooSymbol: string, input: string, interval: string): Promise<OhlcPack | null> {
+  if (!/\.BO$/i.test(yahooSymbol)) return null;
+  if (interval !== "1d" && interval !== "1wk" && interval !== "1mo") return null;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&includePrePost=false&events=div%7Csplit&range=max`;
+  const pack = parseOhlc(await yahoo(url), input);
+  if (!pack || pack.bars.length < 2 || !subDaily(pack.bars)) return null;
+  const bars = sessionBars(pack.bars, interval);
+  if (bars.length < 2) return null;
+  return { ...pack, bars, missing: false };
+}
+
 export async function fetchOhlc(symbol: string, range = "1y", interval = "1d"): Promise<OhlcPack> {
   const metal = metalKey(symbol);
   if (metal) {
@@ -668,15 +685,24 @@ export async function fetchOhlc(symbol: string, range = "1y", interval = "1d"): 
         oCache.set(key, { at: Date.now(), data: pack });
         return pack;
       }
+      if (pack && pack.bars.length < 2) {
+        const rescued = await rescueBseSessions(y, symbol, interval).catch(() => null);
+        if (rescued) {
+          oCache.set(key, { at: Date.now(), data: rescued });
+          return rescued;
+        }
+      }
     } catch {
       /* next */
     }
   }
+  const pinned = /\.BO$/i.test(symbol) ? "BO" : /\.NS$/i.test(symbol) ? "NS" : "";
   for (const q of searchQueries(symbol)) {
     const hits = await searchYahoo(q);
     for (const h of hits) {
       if (!h.symbol || tried.has(h.symbol)) continue;
       if (!/\.(NS|BO)$/i.test(h.symbol) && !String(h.symbol).startsWith("^")) continue;
+      if (pinned && !h.symbol.toUpperCase().endsWith("." + pinned)) continue;
       tried.add(h.symbol);
       try {
         const raw = await yahoo(chartUrl(h.symbol, range, interval));

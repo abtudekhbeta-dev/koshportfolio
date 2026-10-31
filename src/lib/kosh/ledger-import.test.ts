@@ -88,8 +88,9 @@ describe("drawing import", () => {
     assert.deepEqual(parsed?.symbols, ["NSE:RELIANCE", "NSE:GMRP&UI", "BSE:TCS"]);
     assert.equal(parseSymbolToken("NSE:RELIANCE").symbol, "RELIANCE");
     assert.equal(parseSymbolToken("NSE:GMRP&UI").status, "needs-review");
-    assert.equal(parseSymbolToken("BSE:TCS").status, "needs-review");
-    assert.match(parseSymbolToken("BSE:TCS").reason, /BSE/);
+    assert.equal(parseSymbolToken("BSE:TCS").status, "resolved");
+    assert.equal(parseSymbolToken("BSE:TCS").symbol, "TCS.BO");
+    assert.equal(parseSymbolToken("BSE:TCS").exchange, "BSE");
     assert.equal(parseSymbolToken("NSE:TCS").status, "resolved");
   });
 

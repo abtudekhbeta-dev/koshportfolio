@@ -1,5 +1,6 @@
 import { clampRange, intervalSpec, type LedgerChartType, type LedgerRangeId } from "./ledger-spec.ts";
 import { clampWatchWidth } from "./ledger-chrome.ts";
+import { listingId } from "./listing.ts";
 
 export const LEDGER_LAYOUT_KEY = "kosh-ledger-terminal-v1";
 
@@ -72,7 +73,7 @@ export function defaultLedgerLayout(): LedgerLayout {
 }
 
 export function drawScope(symbol: string, interval: string): string {
-  return `${symbol.replace(/\.(NS|BO)$/i, "").toUpperCase()}|${intervalSpec(interval).id}`;
+  return `${listingId(symbol)}|${intervalSpec(interval).id}`;
 }
 
 export function loadLedgerLayout(raw?: string | null): { layout: LedgerLayout; recovered: boolean } {
@@ -138,11 +139,8 @@ export function sanitizeLayout(input: unknown): { layout: LedgerLayout; recovere
 }
 
 function cleanSymbol(value: unknown): string {
-  const symbol = String(value || "")
-    .trim()
-    .replace(/\.(NS|BO)$/i, "")
-    .toUpperCase();
-  if (!/^[\^A-Z0-9._=-]{1,32}$/.test(symbol)) return "";
+  const symbol = listingId(String(value || ""));
+  if (!symbol || !/^[\^A-Z0-9._=-]{1,32}$/.test(symbol)) return "";
   return symbol;
 }
 

@@ -4,6 +4,7 @@ import type { ScreenRow } from "@/lib/kosh/types";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { cycleSort, sortEntities, sortGlyph, type SortDir } from "@/lib/kosh/kosh-table";
 import { universeName } from "@/lib/kosh/universe";
+import { listingExchange, listingId, listingLabel } from "@/lib/kosh/listing";
 import { cn } from "@/lib/utils";
 
 function flag(r: ScreenRow) {
@@ -33,10 +34,14 @@ export function WatchBoard({
   });
   const list = useMemo(() => {
     const raw = symbols.map((s) => {
-      const k = s.toUpperCase().replace(/\.(NS|BO)$/i, "");
-      const row = map.get(k);
+      const id = listingId(s);
+      const label = listingLabel(id);
+      const bse = listingExchange(id) === "BSE";
+      const row = bse ? undefined : map.get(label);
       return {
-        symbol: k,
+        symbol: id,
+        label,
+        exch: bse ? "BSE" : "NSE",
         row,
         last: row && row.price > 0 ? row.price : null,
         day: row && Number.isFinite(row.changePct) ? row.changePct : null,
@@ -77,18 +82,18 @@ export function WatchBoard({
           </tr>
         </thead>
         <tbody>
-          {list.map(({ symbol, row }) => {
+          {list.map(({ symbol, label, exch, row }) => {
             const flags = row ? flag(row) : [];
             return (
               <tr key={symbol}>
                 <td className="px-3 py-2">
                   <Link to="/s/$symbol" params={{ symbol }} className="hover:text-chart">
                     <div className="font-medium">{row?.name || universeName(symbol)}</div>
-                    <div className="text-[11px] text-subtle">{symbol}</div>
+                    <div className="text-[11px] text-subtle">{label} · {exch}</div>
                   </Link>
                 </td>
                 <td className="px-3 py-2 font-mono tabular">{row ? fmtPx(row.price) : loading ? "…" : "—"}</td>
-                <td className={cn("px-3 py-2 font-mono tabular", (row?.changePct ?? 0) >= 0 ? "text-up" : "text-down")}>
+                <td className={cn("px-3 py-2 font-mono tabular", row ? (row.changePct >= 0 ? "text-up" : "text-down") : "text-muted")}>
                   {row ? fmtPct(row.changePct) : "—"}
                 </td>
                 <td className="px-3 py-2 font-mono tabular">{row?.rsi != null ? row.rsi.toFixed(0) : "—"}</td>
@@ -118,13 +123,13 @@ export function WatchBoard({
       </table>
     </div>
     <div className="grid gap-2 md:hidden">
-      {list.map(({ symbol, row }) => {
+      {list.map(({ symbol, label, exch, row }) => {
         const flags = row ? flag(row) : [];
         return (
           <article key={symbol} className="rounded-lg bg-surface p-3 shadow-[var(--shadow-border)]">
             <Link to="/s/$symbol" params={{ symbol }} className="hover:text-chart">
               <div className="font-medium">{row?.name || universeName(symbol)}</div>
-              <div className="text-[11px] text-subtle">{symbol}</div>
+              <div className="text-[11px] text-subtle">{label} · {exch}</div>
             </Link>
             <div className="mt-2 grid grid-cols-3 gap-2 text-[12px]">
               <div>
@@ -133,7 +138,7 @@ export function WatchBoard({
               </div>
               <div>
                 <div className="text-[11px] text-subtle">Day</div>
-                <div className={cn("font-mono tabular", (row?.changePct ?? 0) >= 0 ? "text-up" : "text-down")}>
+                <div className={cn("font-mono tabular", row ? (row.changePct >= 0 ? "text-up" : "text-down") : "text-muted")}>
                   {row ? fmtPct(row.changePct) : "—"}
                 </div>
               </div>

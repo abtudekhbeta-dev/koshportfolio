@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { Search } from "lucide-react";
 import { apiSearch } from "@/lib/kosh/api";
 import { terminalSearch } from "@/lib/kosh/instrument-nav";
+import { listingExchange, listingId, listingLabel } from "@/lib/kosh/listing";
 import { NIFTY50, searchNse } from "@/lib/kosh/universe";
 import { useKosh } from "@/lib/store";
 import { CompanyLogo } from "@/components/company-logo";
+import { canOpenStock } from "@/components/stock-link";
 import { cn } from "@/lib/utils";
 
 const ACTIONS = [
@@ -31,7 +33,6 @@ export function SearchBar({
   const [hits, setHits] = useState<{ symbol: string; name: string; exch: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const nav = useNavigate();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const recents = useKosh((s) => s.recents);
   const watch = useKosh((s) => s.watch);
   const portfolios = useKosh((s) => s.portfolios);
@@ -69,34 +70,43 @@ export function SearchBar({
     }, 160);
   }, [q, open]);
 
-  function go(symbol: string, name?: string) {
-    const s = symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
-    pushRecent({ symbol: s, name: name || s });
+  const chartIntent = useRef(false);
+
+  function remember(symbol: string, name?: string) {
+    const id = listingId(symbol);
+    pushRecent({ symbol: id, name: name || listingLabel(id) });
     setOpen(false);
     setQ("");
-    if (pathname === "/markets" || pathname.startsWith("/markets/")) {
-      void nav({ to: "/markets", search: terminalSearch(s, name || s) });
+    return id;
+  }
+
+  function openStock(symbol: string, name?: string) {
+    if (chartIntent.current) {
+      chartIntent.current = false;
+      openChart(symbol, name);
       return;
     }
-    void nav({ to: "/s/$symbol", params: { symbol: s } });
+    const id = remember(symbol, name);
+    if (!canOpenStock(id)) {
+      void nav({ to: "/markets", search: terminalSearch(id, name || listingLabel(id)) });
+      return;
+    }
+    void nav({ to: "/s/$symbol", params: { symbol: id } });
+  }
+
+  function openChart(symbol: string, name?: string) {
+    const id = remember(symbol, name);
+    void nav({ to: "/markets", search: terminalSearch(id, name || listingLabel(id)) });
   }
 
   const needle = q.trim().toUpperCase();
-  const nseHits = needle ? searchNse(q, 10) : [];
   const nifty = !needle ? NIFTY50.slice(0, 8) : [];
-  const nseSyms = new Set(nseHits.map((x) => x.symbol.toUpperCase()));
-  const indianHits = hits.filter((h) => {
-    const bare = h.symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
-    if (nseSyms.has(bare)) return false;
-    return /\.(NS|BO)$/i.test(h.symbol) || /NSE|BSE|India/i.test(h.exch || "");
-  });
+  const shownHits = hits.length
+    ? hits.filter((h) => !/\.KL$/i.test(h.symbol))
+    : needle
+      ? searchNse(q, 8).map((x) => ({ symbol: x.symbol, name: x.name, exch: "NSE" }))
+      : [];
   const actions = ACTIONS.filter((a) => !needle || a.label.toUpperCase().includes(needle) || a.id.includes(needle.toLowerCase()));
-  const shownHits = indianHits.length
-    ? indianHits
-    : hits.filter((h) => {
-        const bare = h.symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
-        return !nseSyms.has(bare) && !/\.KL$/i.test(h.symbol);
-      });
   const portHits = portfolios
     .filter((p) => !needle || p.name.toUpperCase().includes(needle))
     .slice(0, needle ? 8 : 4);
@@ -131,35 +141,38 @@ export function SearchBar({
                 />
               </div>
               <Command.List className="max-h-[min(60vh,420px)] overflow-y-auto p-2">
-                {busy ? <div className="px-2 py-2 text-[12px] text-subtle">Looking up…</div> : null}
-                {nseHits.length ? (
-                  <Command.Group heading="NSE">
-                    {nseHits.map((x) => (
-                      <Row key={x.symbol} symbol={x.symbol} name={x.name} exch="NSE" onPick={go} />
+                {busy ? <div className="px-2 py-2 text-[12px] text-subtle">Looking up NSE and BSE…</div> : null}
+                {shownHits.length ? (
+                  <Command.Group heading={needle ? "Instruments" : "Results"}>
+                    {shownHits.map((h) => (
+                      <Row
+                        key={h.symbol + h.exch}
+                        symbol={h.symbol}
+                        name={h.name}
+                        exch={h.exch}
+                        onOpen={openStock}
+                        onChart={openChart}
+                        armChart={() => {
+                          chartIntent.current = true;
+                        }}
+                      />
                     ))}
                   </Command.Group>
                 ) : null}
                 {nifty.length ? (
                   <Command.Group heading="Nifty 50">
                     {nifty.map((x) => (
-                      <Row key={x.symbol} symbol={x.symbol} name={x.name} onPick={go} />
+                      <Row key={x.symbol} symbol={x.symbol} name={x.name} exch="NSE" onOpen={openStock} onChart={openChart} armChart={() => { chartIntent.current = true; }} />
                     ))}
                   </Command.Group>
                 ) : null}
-                {shownHits.length ? (
-                  <Command.Group heading="NSE & BSE">
-                    {shownHits.map((h) => (
-                      <Row key={"y" + h.symbol} symbol={h.symbol} name={h.name} exch={h.exch} onPick={go} />
-                    ))}
-                  </Command.Group>
-                ) : null}
-                {q.trim() && !shownHits.length && !nseHits.length && !busy ? (
+                {q.trim() && !shownHits.length && !busy ? (
                   <div className="px-2 py-3 text-[13px] text-muted">No hits. Try a ticker like RELIANCE, INFY, or a BSE code.</div>
                 ) : null}
                 {recents.length && !q.trim() ? (
                   <Command.Group heading="Recent">
                     {recents.map((r) => (
-                      <Row key={"r" + r.symbol} symbol={r.symbol} name={r.name} onPick={go} />
+                      <Row key={"r" + r.symbol} symbol={r.symbol} name={r.name} exch={listingExchange(r.symbol)} onOpen={openStock} onChart={openChart} armChart={() => { chartIntent.current = true; }} />
                     ))}
                   </Command.Group>
                 ) : null}
@@ -202,7 +215,7 @@ export function SearchBar({
                 {watch.length && !q.trim() ? (
                   <Command.Group heading="Watch">
                     {watch.slice(0, 8).map((s) => (
-                      <Row key={"w" + s} symbol={s} name={s} onPick={go} />
+                      <Row key={"w" + s} symbol={s} name={listingLabel(s)} exch={listingExchange(s)} onOpen={openStock} onChart={openChart} armChart={() => { chartIntent.current = true; }} />
                     ))}
                   </Command.Group>
                 ) : null}
@@ -219,31 +232,46 @@ function Row({
   symbol,
   name,
   exch,
-  onPick,
+  onOpen,
+  onChart,
+  armChart,
 }: {
   symbol: string;
   name: string;
   exch?: string;
-  onPick: (s: string, n?: string) => void;
+  onOpen: (s: string, n?: string) => void;
+  onChart: (s: string, n?: string) => void;
+  armChart: () => void;
 }) {
-  const s = symbol.replace(/\.(NS|BO)$/i, "");
+  const id = listingId(symbol, exch);
+  const label = listingLabel(id);
+  const badge = listingExchange(id, exch) === "OTHER" ? exch || "" : listingExchange(id, exch);
   return (
     <Command.Item
-      value={s + " " + name}
-      onSelect={() => onPick(s, name)}
+      value={id + " " + name + " " + badge}
+      onSelect={() => onOpen(id, name)}
       className={cn(
-        "flex cursor-pointer items-center justify-between rounded-sm px-2.5 py-2 text-[13px]",
+        "flex cursor-pointer items-center gap-2 rounded-sm px-2.5 py-2 text-[13px]",
         "data-[selected=true]:bg-surface",
       )}
     >
-      <span className="flex min-w-0 items-center gap-2">
-        <CompanyLogo symbol={s} name={name} size={18} />
-        <span className="font-medium">{s}</span>
-      </span>
-      <span className="ml-3 min-w-0 truncate text-muted">
-        {name}
-        {exch ? ` · ${exch}` : ""}
-      </span>
+      <CompanyLogo symbol={label} name={name} size={18} />
+      <span className="shrink-0 font-medium">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-muted">{name}</span>
+      {badge ? <span className="shrink-0 font-mono text-[10px] tracking-wide text-subtle">{badge}</span> : null}
+      <button
+        type="button"
+        aria-label={`Open ${label} chart`}
+        className="h-[18px] shrink-0 rounded-sm border border-border px-1.5 text-[11px] leading-none text-chart"
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          armChart();
+          onChart(id, name);
+        }}
+      >
+        Chart
+      </button>
     </Command.Item>
   );
 }
