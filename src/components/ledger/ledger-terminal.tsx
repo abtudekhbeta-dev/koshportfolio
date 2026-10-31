@@ -17,10 +17,12 @@ import {
   Undo2,
 } from "lucide-react";
 import { apiOhlc, apiQuotes, apiSearch } from "@/lib/kosh/api";
+import { BENCH } from "@/lib/kosh/benchmarks";
 import { fmtPct } from "@/lib/kosh/engine";
 import { isIstSession } from "@/lib/kosh/market-hours";
 import { classifyFreshness, quoteMap } from "@/lib/kosh/market-data";
 import { resample } from "@/lib/kosh/ohlc";
+import { adjustOhlcToBenchmark, applyHistoricalFx } from "@/lib/kosh/relative";
 import { terminalSearch } from "@/lib/kosh/instrument-nav";
 import { listingExchange, listingId, listingLabel } from "@/lib/kosh/listing";
 import { cleanBars, ohlcCollapsed } from "@/lib/kosh/ledger-bars";
@@ -120,7 +122,7 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
   const [viewNonce, setViewNonce] = useState(0);
   const [tool, setTool] = useState<LedgerTool>("cursor");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<"indicators" | "type" | "settings" | "alert" | null>(null);
+  const [menu, setMenu] = useState<"indicators" | "type" | "settings" | "alert" | "adjust" | null>(null);
   const [context, setContext] = useState<{ source: "chart" | "watch"; x: number; y: number; price: number | null; time: number | null; symbol?: string; name?: string } | null>(null);
   const [pen, setPen] = useState<{ color: string; width: number; dash: DrawDash }>({ color: "#4c8dff", width: 2, dash: "solid" });
   const [notice, setNotice] = useState("");
@@ -205,6 +207,66 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
     const cleaned = cleanBars(ohlc.data?.bars);
     return spec.resample > 0 ? resample(cleaned, spec.resample) : cleaned;
   }, [ohlc.data, spec.resample]);
+  const chartMode = useKosh((s) => s.chartPrefs.chartMode || "price");
+  const chartBench = useKosh((s) => s.chartPrefs.chartBench || "nifty");
+  const patchChartPrefs = useKosh((s) => s.patchChartPrefs);
+  const benchMeta = BENCH[chartBench] || BENCH.nifty;
+  const benchQ = useQuery({
+    queryKey: ["ledger-bench", benchMeta.symbol, spec.yahooRange, spec.yahoo],
+    queryFn: () => apiOhlc(benchMeta.symbol, spec.yahooRange, spec.yahoo),
+    enabled: chartMode === "bench" && !spec.intra,
+    staleTime: 60_000,
+  });
+  const fxQ = useQuery({
+    queryKey: ["ledger-fx", spec.intra ? "2y" : spec.yahooRange],
+    queryFn: () => apiOhlc("INR=X", spec.intra ? "2y" : spec.yahooRange, "1d"),
+    enabled: chartMode === "usd",
+    staleTime: 60_000,
+  });
+  const plot = useMemo(() => {
+    if (chartMode === "bench") {
+      if (spec.intra) {
+        return {
+          bars,
+          adjusted: false,
+          note: "Benchmark adjustment uses daily index closes, so it stays off on an intraday chart. The candles are still the rupee price.",
+        };
+      }
+      const adjusted = adjustOhlcToBenchmark(bars, benchQ.data?.bars || [], "day");
+      if (adjusted.bars.length < 2) {
+        return {
+          bars,
+          adjusted: false,
+          note: benchQ.isPending
+            ? `Loading ${benchMeta.name}…`
+            : `Not enough shared sessions with ${benchMeta.name}. The candles are still the rupee price.`,
+        };
+      }
+      return {
+        bars: adjusted.bars,
+        adjusted: true,
+        note: `Relative to ${benchMeta.name}. The first shared close is 100. This is not the rupee price.${adjusted.dropped ? ` ${adjusted.dropped} sessions had no index print and were left out.` : ""}`,
+      };
+    }
+    if (chartMode === "usd") {
+      const fx = applyHistoricalFx(bars, (fxQ.data?.bars || []).map((row) => ({ t: row.t, c: row.c })));
+      if (fx.bars.length < 2) {
+        return {
+          bars,
+          adjusted: false,
+          note: fxQ.isPending
+            ? "Loading USD/INR…"
+            : "USD/INR did not cover these sessions. The candles are still the rupee price.",
+        };
+      }
+      return {
+        bars: fx.bars,
+        adjusted: true,
+        note: `Each candle is the rupee price divided by the USD/INR rate on or before that IST session.${spec.intra ? " Intraday bars share that day’s rate." : ""}${fx.missing ? ` ${fx.missing} sessions had no earlier rate and were left out.` : ""}`,
+      };
+    }
+    return { bars, adjusted: false, note: ohlc.data?.seriesNote || "" };
+  }, [bars, benchMeta.name, benchQ.data, benchQ.isPending, chartMode, fxQ.data, fxQ.isPending, ohlc.data?.seriesNote, spec.intra]);
   const quote = quoteMap(quoteQuery.data).get(symbol);
   const packPrice = ohlc.data && ohlc.data.price > 0 ? ohlc.data.price : null;
   const lastClose = bars.length ? bars[bars.length - 1].c : null;
@@ -321,12 +383,19 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
           searchRef.current?.blur();
           return;
         }
-        setTool("cursor");
-        setMenu(null);
-        setImportOpen(false);
-        setContext(null);
+        if (menu || importOpen || context || objectsOn) {
+          setMenu(null);
+          setImportOpen(false);
+          setContext(null);
+          setObjectsOn(false);
+          return;
+        }
+        if (tool !== "cursor" && tool !== "crosshair") {
+          setTool("crosshair");
+          setSelectedId(null);
+          return;
+        }
         setSelectedId(null);
-        setObjectsOn(false);
         return;
       }
       if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
@@ -393,7 +462,7 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
   const saveLabel = save === "saving" ? "Saving" : save === "saved" ? "Saved" : save === "failed" ? "Save failed" : "Save";
   const addable = ADDABLE.filter((item) => item.label.toLowerCase().includes(indQuery.trim().toLowerCase()));
 
-  function openMenu(id: "indicators" | "type" | "settings" | "alert", button: HTMLButtonElement) {
+  function openMenu(id: "indicators" | "type" | "settings" | "alert" | "adjust", button: HTMLButtonElement) {
     if (menu === id) {
       setMenu(null);
       setMenuBox(null);
@@ -518,6 +587,11 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
               {layout.chartType === "candle" ? "Candles" : layout.chartType === "bar" ? "Bars" : layout.chartType === "line" ? "Line" : "Area"}
             </button>
           </Tip>
+          <Tip text="Price, benchmark, or USD">
+            <button type="button" aria-expanded={menu === "adjust"} aria-haspopup="menu" onClick={(e) => openMenu("adjust", e.currentTarget)}>
+              {chartMode === "usd" ? "USD" : chartMode === "bench" ? benchMeta.name : "Price"}
+            </button>
+          </Tip>
           <Tip text="Indicators">
             <button type="button" aria-expanded={menu === "indicators"} aria-haspopup="menu" onClick={(e) => openMenu("indicators", e.currentTarget)}>
               Indicators
@@ -565,6 +639,28 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
             {id === "candle" ? "Candlesticks" : id === "bar" ? "OHLC bars" : id === "line" ? "Line" : "Area"}
           </button>
         ))}
+      </AnchoredMenu>
+      <AnchoredMenu open={menu === "adjust"} anchor={menuBox} label="Price" onClose={() => setMenu(null)}>
+        <p className="lt-muted">Price is the rupee series. Benchmark and USD redraw the candles. They are not a second line, and they do not invent missing prints.</p>
+        <button type="button" aria-pressed={chartMode === "price"} onClick={() => { patchChartPrefs({ chartMode: "price" }); setMenu(null); }}>
+          Price
+        </button>
+        <button type="button" aria-pressed={chartMode === "bench"} onClick={() => patchChartPrefs({ chartMode: "bench" })}>
+          Benchmark-adjusted
+        </button>
+        {chartMode === "bench" ? (
+          <label>
+            Benchmark
+            <select aria-label="Benchmark" value={BENCH[chartBench] ? chartBench : "nifty"} onChange={(e) => patchChartPrefs({ chartBench: e.target.value })}>
+              {Object.entries(BENCH).map(([id, meta]) => (
+                <option key={id} value={id}>{meta.name}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <button type="button" aria-pressed={chartMode === "usd"} onClick={() => { patchChartPrefs({ chartMode: "usd" }); setMenu(null); }}>
+          USD-adjusted
+        </button>
       </AnchoredMenu>
       <AnchoredMenu open={menu === "indicators"} anchor={menuBox} label="Indicators" wide onClose={() => setMenu(null)}>
         <input aria-label="Filter indicators" placeholder="Search indicators" value={indQuery} onChange={(e) => setIndQuery(e.target.value)} />
@@ -693,7 +789,9 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
           {` · ${ohlc.data?.exchange || listingExchange(symbol)}`}
         </b>
         <span>
-          {bars.length ? `O ${fmtMove(bars[bars.length - 1].o).replace("+", "")} H ${fmtMove(bars[bars.length - 1].h).replace("+", "")} L ${fmtMove(bars[bars.length - 1].l).replace("+", "")} C ${fmtMove(bars[bars.length - 1].c).replace("+", "")}` : "No bar loaded"}
+          {plot.bars.length
+            ? `${plot.adjusted ? (chartMode === "usd" ? "USD " : "Index ") : ""}O ${fmtMove(plot.bars[plot.bars.length - 1].o).replace("+", "")} H ${fmtMove(plot.bars[plot.bars.length - 1].h).replace("+", "")} L ${fmtMove(plot.bars[plot.bars.length - 1].l).replace("+", "")} C ${fmtMove(plot.bars[plot.bars.length - 1].c).replace("+", "")}`
+            : "No bar loaded"}
         </span>
       </div>
       <div className="lt-body">
@@ -744,16 +842,16 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
         </aside>
         <section className="lt-stage">
           <div style={{ position: "relative", minHeight: 0, flex: 1, display: "flex", flexDirection: "column" }}>
-            {bars.length ? (
+            {plot.bars.length ? (
               <LedgerChart
-                bars={bars}
+                bars={plot.bars}
                 intra={spec.intra}
                 chartType={layout.chartType}
                 logScale={layout.logScale}
                 range={layout.range}
                 viewNonce={viewNonce}
                 indicators={layout.indicators}
-                drawings={drawings}
+                drawings={plot.adjusted ? [] : drawings}
                 drawingsHidden={layout.drawingsHidden}
                 tool={tool}
                 selectedId={selectedId}
@@ -779,15 +877,17 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
             {!ohlc.isPending && !ohlc.isError && !bars.length ? (
               <div className="lt-status">No bars were returned for {symbol} at {spec.label}. Nothing was invented to fill the gap.</div>
             ) : null}
+            {plot.note ? <div className="lt-banner">{plot.note}{plot.adjusted && drawings.length ? " Drawings stay on the rupee chart." : ""}</div> : null}
             {collapsed ? <div className="lt-banner">This response has a close and no separate open, high, or low. Switch to Line if a candle is misleading.</div> : null}
             {objectsOn ? (
-              <div className="lt-hits" role="list" aria-label="Drawing objects" style={{ position: "absolute", left: 8, top: 8, zIndex: 4, maxHeight: 280, overflow: "auto", minWidth: 240 }}>
+              <div className="lt-hits" role="list" aria-label="Drawing objects" style={{ position: "absolute", left: 8, top: 8, zIndex: 4, maxHeight: 280, overflow: "auto", minWidth: 260 }}>
+                <div className="lt-group">{spec.label}</div>
                 {drawings.length ? (
                   drawings.map((draw) => (
                     <div key={draw.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
                       <button type="button" aria-pressed={draw.id === selectedId} onClick={() => setSelectedId(draw.id)}>
-                        <b>{draw.text || draw.kind}</b>
-                        <span className="lt-muted">{draw.hidden ? "hidden" : draw.locked ? "locked" : "on chart"}</span>
+                        <b>{draw.kind === "hline" ? "Horizontal" : draw.kind === "vline" ? "Vertical" : draw.kind === "fib" ? "Fibonacci" : draw.kind === "rect" ? "Rectangle" : draw.kind === "measure" ? "Measure" : draw.kind === "text" ? "Text" : draw.kind === "ray" ? "Ray" : "Trend"}</b>
+                        <span className="lt-muted">{draw.text ? draw.text : draw.hidden ? "hidden" : draw.locked ? "locked" : "on chart"}</span>
                       </button>
                       <button type="button" aria-label={`${draw.hidden ? "Show" : "Hide"} ${draw.kind}`} onClick={() => commitDrawings(drawings.map((row) => (row.id === draw.id ? { ...row, hidden: !row.hidden } : row)))}>
                         {draw.hidden ? "Show" : "Hide"}
@@ -808,8 +908,19 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
                     </div>
                   ))
                 ) : (
-                  <p className="lt-note">No drawings on this symbol and timeframe.</p>
+                  <p className="lt-note">No drawings on {listingLabel(symbol)} · {spec.label}.</p>
                 )}
+                {Object.entries(layout.drawings)
+                  .filter(([key, list]) => key.startsWith(`${symbol}|`) && key !== scope && list.length)
+                  .map(([key, list]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setLayout((prev) => ({ ...prev, interval: key.split("|")[1] || prev.interval }))}
+                    >
+                      {key.split("|")[1]} · {list.length} saved
+                    </button>
+                  ))}
               </div>
             ) : null}
             {selected ? (
@@ -842,6 +953,20 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
                     {width}
                   </button>
                 ))}
+                {selected.kind === "text" ? (
+                  <input
+                    key={selected.id}
+                    aria-label="Annotation text"
+                    defaultValue={selected.text || ""}
+                    maxLength={80}
+                    onBlur={(e) => {
+                      const text = e.target.value.trim().slice(0, 80);
+                      if (text && text !== (selected.text || "")) {
+                        commitDrawings(drawings.map((row) => (row.id === selected.id ? { ...row, text } : row)));
+                      }
+                    }}
+                  />
+                ) : null}
                 {selected.kind !== "text"
                   ? (["solid", "dashed", "dotted"] as DrawDash[]).map((dash) => (
                       <button

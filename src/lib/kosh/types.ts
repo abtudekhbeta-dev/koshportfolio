@@ -74,6 +74,8 @@ export type OhlcPack = {
   bars: OhlcBar[];
   missing: boolean;
   mcapCr?: number | null;
+  /** Why this series is shorter or coarser than the request. Absent when the feed matched the request. */
+  seriesNote?: string;
 };
 
 export type TapeRow = {

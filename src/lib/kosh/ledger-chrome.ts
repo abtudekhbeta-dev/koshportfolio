@@ -20,8 +20,8 @@ export function ledgerChrome(theme: LedgerTheme): LedgerChrome {
       muted: "#5e5a54",
       grid: "rgba(40, 36, 28, 0.08)",
       border: "#e2ddd2",
-      up: "#0f8a52",
-      down: "#c63737",
+      up: "#1b8f5c",
+      down: "#d14545",
     };
   }
   return {
@@ -30,8 +30,8 @@ export function ledgerChrome(theme: LedgerTheme): LedgerChrome {
     muted: "#8793a5",
     grid: "rgba(109, 129, 155, 0.16)",
     border: "#28313e",
-    up: "#20b985",
-    down: "#f06470",
+    up: "#3dcf8e",
+    down: "#ef6e6e",
   };
 }
 

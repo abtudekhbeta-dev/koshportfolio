@@ -202,6 +202,7 @@ export function LedgerChart({
         background: { type: ColorType.Solid, color: paint.background },
         textColor: paint.text,
         fontSize: 11,
+        fontFamily: "IBM Plex Sans, Segoe UI, sans-serif",
         panes: { separatorColor: paint.border, enableResize: true },
       },
       grid: { vertLines: { color: paint.grid }, horzLines: { color: paint.grid } },
@@ -301,8 +302,8 @@ export function LedgerChart({
     priceRef.current = null;
     if (!points.length) return;
     const paint = ledgerChrome(theme);
-    const volUp = theme === "light" ? "rgba(15,138,82,0.55)" : "rgba(32,185,133,0.55)";
-    const volDown = theme === "light" ? "rgba(198,55,55,0.5)" : "rgba(240,100,112,0.55)";
+    const volUp = theme === "light" ? "rgba(27,143,92,0.55)" : "rgba(61,207,142,0.55)";
+    const volDown = theme === "light" ? "rgba(209,69,69,0.5)" : "rgba(239,110,110,0.55)";
     const scale = {
       mode: logScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
       borderColor: paint.border,
@@ -319,8 +320,8 @@ export function LedgerChart({
     } else if (chartType === "area") {
       const series = chart.addSeries(AreaSeries, {
         lineColor: paint.up,
-        topColor: theme === "light" ? "rgba(15,138,82,0.18)" : "rgba(32,185,133,0.28)",
-        bottomColor: theme === "light" ? "rgba(15,138,82,0.02)" : "rgba(32,185,133,0.02)",
+        topColor: theme === "light" ? "rgba(27,143,92,0.18)" : "rgba(61,207,142,0.28)",
+        bottomColor: theme === "light" ? "rgba(27,143,92,0.02)" : "rgba(61,207,142,0.02)",
         lineWidth: 2,
       });
       series.setData(points.map((p) => ({ time: p.time, value: p.bar.c })));

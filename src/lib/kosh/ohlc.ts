@@ -300,32 +300,69 @@ export function isNr7(bars: OhlcBar[]): boolean {
 }
 
 /** Fold sub-daily prints into IST sessions. Used when a daily request only returned intraday bars. */
+const IST_OFFSET = 19800;
+const SESSION_OPEN = 9 * 3600 + 15 * 60;
+const SESSION_CLOSE = 15 * 3600 + 30 * 60;
+
+function istDayClock(t: number): { day: number; sod: number } {
+  const shifted = t + IST_OFFSET;
+  const day = Math.floor(shifted / 86400);
+  return { day, sod: shifted - day * 86400 };
+}
+
+function positive(n: number | undefined): number | null {
+  return n != null && Number.isFinite(n) && n > 0 ? n : null;
+}
+
 export function sessionBars(bars: OhlcBar[], interval: "1d" | "1wk" | "1mo"): OhlcBar[] {
   if (bars.length < 2) return bars;
-  const ist = 19800;
+  const byTime = new Map<number, OhlcBar>();
+  for (const bar of bars) {
+    if (!Number.isFinite(bar.t) || !(bar.c > 0)) continue;
+    byTime.set(bar.t, bar);
+  }
+  const ordered = [...byTime.values()].sort((a, b) => a.t - b.t);
+  const inSession = ordered.filter((bar) => {
+    const { sod } = istDayClock(bar.t);
+    return sod >= SESSION_OPEN && sod <= SESSION_CLOSE;
+  });
+  const source = inSession.length >= 2 ? inSession : ordered;
   const keyOf = (t: number) => {
-    const shifted = (t + ist) * 1000;
-    const day = Math.floor((t + ist) / 86400);
+    const { day } = istDayClock(t);
     if (interval === "1d") return day;
     if (interval === "1wk") return Math.floor((day + 3) / 7);
-    const date = new Date(shifted);
+    const date = new Date((t + IST_OFFSET) * 1000);
     return date.getUTCFullYear() * 12 + date.getUTCMonth();
   };
   const out: OhlcBar[] = [];
   let cur: OhlcBar | null = null;
   let key = Number.NaN;
-  for (const bar of bars) {
-    if (!(bar.c > 0)) continue;
+  for (const bar of source) {
     const next = keyOf(bar.t);
+    const close = positive(bar.c);
+    if (close == null) continue;
+    const open = positive(bar.o) ?? close;
+    const high = Math.max(positive(bar.h) ?? close, open, close);
+    const low = Math.min(positive(bar.l) ?? close, open, close);
+    const volume = Number.isFinite(bar.v) && bar.v > 0 ? bar.v : 0;
     if (cur && next === key) {
-      cur.h = Math.max(cur.h, bar.h);
-      cur.l = Math.min(cur.l, bar.l);
-      cur.c = bar.c;
-      cur.v += bar.v || 0;
+      cur.h = Math.max(cur.h, high);
+      cur.l = Math.min(cur.l, low);
+      cur.c = close;
+      cur.v += volume;
+      if (!(cur.o > 0)) cur.o = open;
       if (bar.adj != null && bar.adj > 0) cur.adj = bar.adj;
     } else {
       if (cur) out.push(cur);
-      cur = { t: bar.t, o: bar.o, h: bar.h, l: bar.l, c: bar.c, v: bar.v || 0, ...(bar.adj != null ? { adj: bar.adj } : {}) };
+      cur = {
+        t: bar.t,
+        o: open,
+        h: high,
+        l: low,
+        c: close,
+        v: volume,
+        ...(bar.adj != null && bar.adj > 0 ? { adj: bar.adj } : {}),
+      };
       key = next;
     }
   }

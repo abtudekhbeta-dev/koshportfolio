@@ -497,6 +497,7 @@ function StockBody({
             Open in Terminal
           </Link>
         </p>
+        {pack.seriesNote ? <p className="mt-2 text-[12px] leading-relaxed text-muted">{pack.seriesNote}</p> : null}
       </section>
 
       <section className={cn(tab !== "chart" && "hidden")}>

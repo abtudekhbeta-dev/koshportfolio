@@ -642,7 +642,13 @@ async function rescueBseSessions(yahooSymbol: string, input: string, interval: s
   if (!pack || pack.bars.length < 2 || !subDaily(pack.bars)) return null;
   const bars = sessionBars(pack.bars, interval);
   if (bars.length < 2) return null;
-  return { ...pack, bars, missing: false };
+  const grain = interval === "1wk" ? "weeks" : interval === "1mo" ? "months" : "sessions";
+  return {
+    ...pack,
+    bars,
+    missing: false,
+    seriesNote: `Yahoo did not return a daily BSE history. ${bars.length} ${grain} were folded from hourly prints inside the IST session (09:15–15:30). This is not a complete listing history.`,
+  };
 }
 
 export async function fetchOhlc(symbol: string, range = "1y", interval = "1d"): Promise<OhlcPack> {

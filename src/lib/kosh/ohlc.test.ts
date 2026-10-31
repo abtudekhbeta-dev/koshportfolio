@@ -116,7 +116,33 @@ describe("ohlc", () => {
     const days = sessionBars(bars, "1d");
     assert.equal(days.length, 2);
     assert.equal(days[0].o, 100);
+    assert.equal(days[0].h, 111);
+    assert.equal(days[0].l, 99);
     assert.equal(days[0].c, 110);
+    assert.equal(days[0].v, 200);
     assert.equal(days[1].c, 120);
+  });
+
+  it("keeps the session window, ignores a bad low, and does not double a duplicate print", () => {
+    const open = 1_784_259_900;
+    const days = sessionBars(
+      [
+        { t: open - 75 * 60, o: 1, h: 1, l: 1, c: 1, v: 9 },
+        { t: open, o: 100, h: 105, l: 0, c: 102, v: 10 },
+        { t: open, o: 101, h: 106, l: 99, c: 104, v: 7 },
+        { t: open + 3600, o: 104, h: 108, l: 101, c: 107, v: -4 },
+      ],
+      "1d",
+    );
+    assert.equal(days.length, 1);
+    assert.equal(days[0].o, 101);
+    assert.equal(days[0].h, 108);
+    assert.equal(days[0].l, 99);
+    assert.equal(days[0].c, 107);
+    assert.equal(days[0].v, 7);
+    const friday = open;
+    const monday = open + 3 * 86400;
+    const weeks = sessionBars([bar(friday, 10), bar(monday, 12)], "1wk");
+    assert.equal(weeks.length, 2);
   });
 });

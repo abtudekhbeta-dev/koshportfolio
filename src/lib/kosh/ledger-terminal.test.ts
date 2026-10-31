@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import type { OhlcBar } from "./types.ts";
 import { cleanBars, indicatorLegend, istBusinessDay, ohlcCollapsed, sessionVwap } from "./ledger-bars.ts";
 import { distToSeg, fibPrice, hitDraw } from "./ledger-draw.ts";
-import { addIndicator, loadLedgerLayout, sanitizeLayout } from "./ledger-layout.ts";
+import { addIndicator, drawScope, loadLedgerLayout, sanitizeLayout } from "./ledger-layout.ts";
 import { clampRange, intervalSpec, rangesFor } from "./ledger-spec.ts";
 
 function bar(t: number, o: number, h: number, l: number, c: number, v = 0): OhlcBar {
@@ -89,6 +89,25 @@ describe("ledger drawings", () => {
     assert.equal(hitDraw(line, 80, 20, project, 200, 120), null);
     assert.ok(distToSeg(0, 0, 0, 0, 10, 0) < distToSeg(0, 5, 0, 0, 10, 0));
   });
+
+  it("hits every drawing type on its own geometry", () => {
+    const project = (t: number, p: number) => ({ x: t, y: 200 - p });
+    const base = { color: "#4c8dff", locked: false, hidden: false };
+    const kinds = [
+      { draw: { id: "trend", kind: "trend" as const, t0: 10, p0: 40, t1: 80, p1: 40, ...base }, x: 40, y: 160 },
+      { draw: { id: "ray", kind: "ray" as const, t0: 10, p0: 40, t1: 40, p1: 40, ...base }, x: 120, y: 160 },
+      { draw: { id: "hline", kind: "hline" as const, t0: 10, p0: 50, ...base }, x: 90, y: 150 },
+      { draw: { id: "vline", kind: "vline" as const, t0: 30, p0: 10, ...base }, x: 30, y: 40 },
+      { draw: { id: "rect", kind: "rect" as const, t0: 10, p0: 80, t1: 70, p1: 20, ...base }, x: 40, y: 140 },
+      { draw: { id: "fib", kind: "fib" as const, t0: 10, p0: 100, t1: 80, p1: 40, ...base }, x: 40, y: 200 - 70 },
+      { draw: { id: "measure", kind: "measure" as const, t0: 10, p0: 20, t1: 60, p1: 20, ...base }, x: 30, y: 180 },
+      { draw: { id: "text", kind: "text" as const, t0: 25, p0: 30, text: "note", ...base }, x: 25, y: 170 },
+    ];
+    for (const row of kinds) {
+      assert.ok(hitDraw(row.draw, row.x, row.y, project, 200, 200), row.draw.kind);
+      assert.equal(hitDraw({ ...row.draw, hidden: true }, row.x, row.y, project, 200, 200), null);
+    }
+  });
 });
 
 describe("ledger layout", () => {
@@ -110,6 +129,28 @@ describe("ledger layout", () => {
     assert.equal(clampRange("1m", "5Y"), "All");
     assert.equal(intervalSpec("3m").resample, 180);
     assert.match(intervalSpec("3m").note || "", /resampled/);
+  });
+
+  it("keeps NSE and BSE drawings apart across timeframes", () => {
+    assert.equal(drawScope("TCS.NS", "1D"), "TCS|1D");
+    assert.equal(drawScope("TCS.BO", "1W"), "TCS.BO|1W");
+    assert.notEqual(drawScope("TCS", "1D"), drawScope("TCS.BO", "1D"));
+    const saved = sanitizeLayout({
+      v: 1,
+      symbol: "TCS.BO",
+      interval: "1D",
+      logScale: false,
+      drawings: {
+        "TCS|1D": [{ id: "nse", kind: "hline", t0: 1, p0: 10, color: "#4c8dff", locked: false, hidden: false }],
+        "TCS.BO|1D": [{ id: "bse", kind: "trend", t0: 1, p0: 2, t1: 3, p1: 4, color: "#4c8dff", locked: false, hidden: false }],
+        "TCS.BO|1W": [{ id: "week", kind: "text", t0: 1, p0: 2, text: "note", color: "#4c8dff", locked: false, hidden: false }],
+      },
+    });
+    assert.equal(saved.layout.symbol, "TCS.BO");
+    assert.equal(saved.layout.logScale, false);
+    assert.equal(saved.layout.drawings["TCS|1D"]?.[0].id, "nse");
+    assert.equal(saved.layout.drawings["TCS.BO|1D"]?.[0].kind, "trend");
+    assert.equal(saved.layout.drawings["TCS.BO|1W"]?.[0].text, "note");
   });
 
   it("does not add a second copy of a single-instance indicator", () => {
