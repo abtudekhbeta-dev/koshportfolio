@@ -15,11 +15,11 @@ export type LedgerChrome = {
 export function ledgerChrome(theme: LedgerTheme): LedgerChrome {
   if (theme === "light") {
     return {
-      background: "#fffdf8",
-      text: "#3f3c37",
-      muted: "#5e5a54",
-      grid: "rgba(40, 36, 28, 0.08)",
-      border: "#e2ddd2",
+      background: "#ffffff",
+      text: "#17233c",
+      muted: "#647084",
+      grid: "rgba(23, 35, 60, 0.06)",
+      border: "#e3e8f2",
       up: "#1b8f5c",
       down: "#d14545",
     };

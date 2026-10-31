@@ -9,21 +9,8 @@ import type { Quote } from "@/lib/kosh/types";
 import { bareSymbol } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-function tone(v: number | null) {
-  if (v == null || !Number.isFinite(v)) return "bg-surface-2 text-muted";
-  if (v >= 1.5) return "bg-up/70 text-fg";
-  if (v >= 0.15) return "bg-up/25 text-fg";
-  if (v > -0.15) return "bg-surface-2 text-fg";
-  if (v > -1.5) return "bg-down/25 text-fg";
-  return "bg-down/70 text-fg";
-}
-
 function money(n: number) {
   return n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function signedMoney(n: number) {
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${money(Math.abs(n))}`;
 }
 
 function IndexTile({
@@ -40,26 +27,22 @@ function IndexTile({
   onComposition: (row: CatalogueIndex) => void;
 }) {
   const price = quote && quote.price > 0 ? quote.price : null;
-  const prev = quote && quote.previousClose > 0 ? quote.previousClose : null;
   const pct = price != null && quote && Number.isFinite(quote.changePct) ? quote.changePct : null;
-  // Yahoo's previous close and change percent sometimes disagree. The rupee change follows the percent the tile is coloured by.
-  const abs = price != null && pct != null && pct > -100 ? price - price / (1 + pct / 100) : price != null && prev != null ? price - prev : null;
-  const paint = row.family === "Volatility" ? "bg-surface-2 text-fg" : tone(pct);
   const status = price == null ? (failed ? "Unavailable" : "No quote") : null;
   return (
-    <div className={cn("relative h-full rounded-sm px-2 py-2", paint)}>
-      <button type="button" className="flex h-full w-full min-w-0 flex-col pr-5 text-left" aria-label={`Open ${row.name} in Terminal`} onClick={() => onChart(row.symbol, row.name)}>
-        <div className="line-clamp-2 text-[11px] font-medium leading-4" title={row.name}>
+    <div className="relative flex h-full min-h-[96px] flex-col rounded-lg border border-border bg-surface px-3 py-3">
+      <button type="button" className="flex h-full w-full min-w-0 flex-col pr-10 text-left" aria-label={`Open ${row.name} in Terminal`} onClick={() => onChart(row.symbol, row.name)}>
+        <div className="line-clamp-2 text-[12px] font-medium leading-4 text-fg" title={row.name}>
           {row.name}
         </div>
-        <div className="mt-auto pt-1 font-mono text-[14px] leading-none tabular">{status || money(price as number)}</div>
-        <div className="mt-1 font-mono text-[11px] leading-none tabular">
-          {status ? status : `${abs == null ? "—" : signedMoney(abs)}  ${pct == null ? "—" : fmtPct(pct)}`}
+        <div className="mt-auto pt-3 font-mono text-[18px] leading-none font-medium tabular">{status || money(price as number)}</div>
+        <div className={cn("mt-2 font-mono text-[12px] leading-none tabular", status || pct == null ? "text-muted" : pct >= 0 ? "text-up" : "text-down")}>
+          {status ? "" : pct == null ? "—" : fmtPct(pct)}
         </div>
       </button>
-      <button
+        <button
         type="button"
-        className="absolute top-1 right-1 rounded-sm bg-bg/55 px-1 text-[9px] font-medium tracking-wide uppercase opacity-80 hover:opacity-100 focus-visible:opacity-100"
+        className="absolute top-0 right-0 grid size-11 place-items-center text-[10px] font-medium tracking-wide text-muted uppercase"
         aria-label={`${row.name} constituents`}
         title="Constituents by index share"
         onClick={() => onComposition(row)}
@@ -235,7 +218,7 @@ export function IndexHeat({
           {groups.map((group) => (
             <div key={group.family || "flat"}>
               {group.family ? <h3 className="mb-1.5 text-[11px] font-semibold tracking-[0.08em] text-subtle uppercase">{FAMILY_LABEL[group.family] || group.family}</h3> : null}
-              <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
                 {group.rows.map((row) => (
                   <IndexTile key={row.symbol} row={row} quote={quoteOf(row)} failed={failed} onChart={openTerminal} onComposition={setComposition} />
                 ))}

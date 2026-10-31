@@ -152,6 +152,23 @@ function isEntryBridge(id: string): boolean {
   );
 }
 
+function vendorChunk(id: string): string | null {
+  if (!id.includes("node_modules") || isEntryBridge(id)) return null;
+  if (id.includes("lightweight-charts") || id.includes("fancy-canvas")) return "vendor-charts";
+  return "vendor";
+}
+
+/** Heavy chart modules stay out of the shared chunk so the landing does not download them. */
+function isHeavyChart(clean: string): boolean {
+  return (
+    clean.includes("/src/components/charts/candle-chart") ||
+    clean.includes("/src/components/ledger/ledger-chart") ||
+    clean.includes("/src/components/ledger/ledger-terminal") ||
+    clean.includes("/src/components/terminal/term-chart") ||
+    clean.includes("/src/components/terminal/markets-desk")
+  );
+}
+
 /**
  * Chunk name for app modules, or null to leave the module in the entry.
  * Route files stay in their own chunks. Shared UI must not stay in the entry,
@@ -167,6 +184,7 @@ function appChunkName(id: string): string | null {
     const rel = clean.slice(routesAt + "/src/routes/".length).replace(/\.[a-z]+$/i, "");
     return `route-${rel.replace(/[^a-zA-Z0-9]+/g, "-")}`;
   }
+  if (clean.includes("/src/") && isHeavyChart(clean)) return "charts";
   if (clean.includes("/src/")) return "shared";
   if (clean.includes("rolldown/runtime") || clean.includes("preload-helper")) return "runtime";
   return null;
@@ -185,7 +203,7 @@ function clientChunkPlugin(): Plugin {
               codeSplitting: {
                 groups: [
                   {
-                    name: "vendor",
+                    name: (id: string) => vendorChunk(id),
                     test: (id: string) => id.includes("node_modules") && !isEntryBridge(id),
                     priority: 30,
                     includeDependenciesRecursively: false,

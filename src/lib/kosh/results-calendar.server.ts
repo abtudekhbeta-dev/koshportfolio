@@ -5,6 +5,7 @@ import {
   announcementRole,
   buildResultsCalendar,
   periodEndFromText,
+  reconcileExchanges,
   type CalendarSourceHealth,
   type RawFiling,
   type RawMeeting,
@@ -17,7 +18,7 @@ const UA =
 let cache: { at: number; version: number; data: ResultsPack } | null = null;
 const TTL = 10 * 60 * 1000;
 const STALE_OK = 6 * 60 * 60 * 1000;
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 4;
 
 function ymd(d: Date): string {
   const t = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
@@ -65,7 +66,7 @@ function nseMeetings(raw: unknown): RawMeeting[] {
   }));
 }
 
-function nseFilings(raw: unknown): RawFiling[] {
+function nseFilings(raw: unknown, sourceName = "NSE financial results"): RawFiling[] {
   const out: RawFiling[] = [];
   for (const row of listOf(raw)) {
     const filed = str(row, "filingDate") || str(row, "broadCastDate");
@@ -80,7 +81,7 @@ function nseFilings(raw: unknown): RawFiling[] {
       periodEnd: parseIstDate(str(row, "toDate")),
       quarter: str(row, "relatingTo") || str(row, "period") || null,
       url: str(row, "xbrl") || null,
-      source: "NSE financial results",
+      source: sourceName,
       revised: str(row, "reInd").toUpperCase() === "Y",
       consolidated: /consolidat/i.test(str(row, "consolidated")) ? true : /standalone/i.test(str(row, "consolidated")) ? false : null,
     });
@@ -88,7 +89,7 @@ function nseFilings(raw: unknown): RawFiling[] {
   return out;
 }
 
-function nseAnnouncements(raw: unknown): { meetings: RawMeeting[]; filings: RawFiling[] } {
+function nseAnnouncements(raw: unknown, sourceName = "NSE corporate announcements"): { meetings: RawMeeting[]; filings: RawFiling[] } {
   const meetings: RawMeeting[] = [];
   const filings: RawFiling[] = [];
   for (const row of listOf(raw)) {
@@ -110,7 +111,7 @@ function nseAnnouncements(raw: unknown): { meetings: RawMeeting[]; filings: RawF
         periodEnd: periodEndFromText(text),
         quarter: null,
         url: file || null,
-        source: "NSE corporate announcements",
+        source: sourceName,
         revised: /revised/i.test(desc + text),
       });
       continue;
@@ -290,6 +291,96 @@ async function pull(): Promise<ResultsPack> {
     );
   }
 
+  try {
+    const raw = await getJson("https://www.nseindia.com/api/corporate-board-meetings?index=sme");
+    const rows = nseMeetings(raw);
+    meetings.push(...rows);
+    sources.push(
+      source(
+        "nse-sme-board",
+        "NSE SME board meetings",
+        "https://www.nseindia.com/companies-listing/corporate-filings-board-meetings",
+        true,
+        rows.length,
+        newest(rows.map((row) => ({ date: row.date }))),
+        null,
+      ),
+    );
+  } catch (err) {
+    sources.push(
+      source(
+        "nse-sme-board",
+        "NSE SME board meetings",
+        "https://www.nseindia.com/companies-listing/corporate-filings-board-meetings",
+        false,
+        0,
+        null,
+        err instanceof Error ? err.message : "Request failed",
+      ),
+    );
+  }
+
+  try {
+    const raw = await getJson("https://www.nseindia.com/api/corporates-financial-results?index=sme&period=Quarterly");
+    const rows = nseFilings(raw, "NSE SME financial results");
+    const cutoff = new Date(Date.now() - 200 * 86400000).toISOString().slice(0, 10);
+    const recent = rows.filter((row) => (row.filedAt || "") >= cutoff);
+    filings.push(...recent);
+    sources.push(
+      source(
+        "nse-sme-results",
+        "NSE SME financial results",
+        "https://www.nseindia.com/companies-listing/corporate-filings-financial-results",
+        true,
+        recent.length,
+        newest(rows),
+        null,
+      ),
+    );
+  } catch (err) {
+    sources.push(
+      source(
+        "nse-sme-results",
+        "NSE SME financial results",
+        "https://www.nseindia.com/companies-listing/corporate-filings-financial-results",
+        false,
+        0,
+        null,
+        err instanceof Error ? err.message : "Request failed",
+      ),
+    );
+  }
+
+  try {
+    const raw = await getJson("https://www.nseindia.com/api/corporate-announcements?index=sme");
+    const parsed = nseAnnouncements(raw, "NSE SME announcements");
+    meetings.push(...parsed.meetings);
+    filings.push(...parsed.filings);
+    sources.push(
+      source(
+        "nse-sme-ann",
+        "NSE SME latest announcements",
+        "https://www.nseindia.com/companies-listing/corporate-filings-announcements",
+        true,
+        parsed.filings.length + parsed.meetings.length,
+        newest(parsed.filings),
+        null,
+      ),
+    );
+  } catch (err) {
+    sources.push(
+      source(
+        "nse-sme-ann",
+        "NSE SME latest announcements",
+        "https://www.nseindia.com/companies-listing/corporate-filings-announcements",
+        false,
+        0,
+        null,
+        err instanceof Error ? err.message : "Request failed",
+      ),
+    );
+  }
+
   let bseError = "HTTP 403";
   const today = new Date();
   const from = new Date(today.getTime() - 45 * 86400000);
@@ -326,14 +417,17 @@ async function pull(): Promise<ResultsPack> {
     ),
   );
 
-  const events = buildResultsCalendar(meetings, filings, "NSE");
+  const events = reconcileExchanges(buildResultsCalendar(meetings, filings, "NSE"));
   const resultsFeed = sources.find((row) => row.id === "nse-results");
   const limitation = [
     bseError
-      ? "BSE’s results API did not respond (" + bseError + "). Dual-listed names are shown from the NSE filing only. BSE-only names are absent — no BSE date was filled in."
-      : "",
-    resultsFeed?.newest ? "Newest date on the NSE financial-results file: " + resultsFeed.newest + "." : "",
-    "The dated NSE announcement archive does not answer in time. Filings are taken from the latest announcement batch and the financial-results file, so an older filing that has left that batch can still look scheduled.",
+      ? "NSE equities and NSE SME are included. BSE’s results API did not respond (" +
+        bseError +
+        "). BSE-only names are absent — no BSE date was filled in. Dual-listed names use the NSE filing."
+      : "NSE equities and NSE SME are included. BSE answered, but those rows are not mapped into the calendar yet, so no BSE-only date was added.",
+    "Screener, Moneycontrol, Trendlyne, Tickertape, Investing.com and Economic Times were not connected. They do not offer an official feed this app can call, and their pages were not scraped. Company investor-relations sites are not a single feed, so they are not polled. No unverified estimate is shown.",
+    resultsFeed?.newest ? "Newest date on the NSE equities financial-results file: " + resultsFeed.newest + "." : "",
+    "Filings come from the financial-results files and the latest announcement batch. An older filing that has left that batch can still look scheduled. A meeting whose date changed is marked rescheduled and keeps the earlier date. Nothing here is an estimated date.",
   ]
     .filter(Boolean)
     .join(" ");

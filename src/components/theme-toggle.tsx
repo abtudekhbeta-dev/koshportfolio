@@ -8,7 +8,7 @@ export function ThemeHydrate() {
     const root = document.documentElement;
     root.setAttribute("data-theme", theme);
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", theme === "light" ? "#f3f1ea" : "#09090b");
+    if (meta) meta.setAttribute("content", theme === "light" ? "#f7f9ff" : "#09090b");
   }, [theme]);
   return null;
 }

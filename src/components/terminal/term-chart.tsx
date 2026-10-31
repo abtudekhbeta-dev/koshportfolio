@@ -24,6 +24,7 @@ import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { panBy, zoomRightEdge, atLatest } from "@/lib/kosh/chart-nav";
 import { adjustOhlcToBenchmark, applyHistoricalFx } from "@/lib/kosh/relative";
 import { histInit, histPush, histRedo, histUndo, type DrawHist } from "@/lib/kosh/draw-history";
+import { volumeBarPx } from "@/lib/kosh/volume-scale";
 import { projectTimeToX, projectXToTime } from "@/lib/kosh/draw-coords";
 import { resolveBench } from "@/lib/kosh/benchmarks";
 import { AdjustMenu } from "@/components/charts/adjust-menu";
@@ -891,7 +892,7 @@ export function TermChart({
                   );
                 })}
             {shown.map((b, i) => {
-              const vh = ((b.v || 0) / maxVol) * (VOL_H - 4);
+              const vh = volumeBarPx(b.v || 0, maxVol, VOL_H - 4);
               const x = xAt(i);
               const y = PAD.t + plotH + 6 + (VOL_H - 4 - vh);
               return (

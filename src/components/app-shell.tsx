@@ -96,7 +96,7 @@ function ClassicShell({ children, wide, full }: { children: ReactNode; wide?: bo
         </div>
       </div>
       ) : null}
-      <header className={cn("z-30 border-b border-border bg-bg/85 backdrop-blur-md", full ? "shrink-0" : "sticky top-0")}>
+      <header className={cn("z-30 border-b border-border bg-surface", full ? "shrink-0" : "sticky top-0")}>
         <div className={cn("kosh-app-header mx-auto grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 sm:grid-cols-[1fr_minmax(0,36rem)_1fr] sm:gap-3 sm:px-4", full ? "h-11 max-w-none" : "h-16", !full && (wide ? "max-w-[1400px]" : "max-w-6xl"))}>
           <div className="flex items-center gap-2">
             <BrandLink to="/" />
@@ -173,7 +173,7 @@ function ClassicShell({ children, wide, full }: { children: ReactNode; wide?: bo
       >
         {children}
       </main>
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] md:hidden">
         <div className="flex items-stretch">
           {PRIMARY.map((n) =>
             n.to === "/markets" ? (

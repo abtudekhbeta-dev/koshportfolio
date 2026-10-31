@@ -32,7 +32,7 @@ export function DialogContent({
           <DialogPrimitive.Title className="sr-only">Dialog</DialogPrimitive.Title>
         )}
         {children}
-        <DialogPrimitive.Close className="absolute top-3.5 right-3.5 rounded-sm p-1 text-muted hover:text-fg">
+        <DialogPrimitive.Close className="absolute top-2 right-2 grid size-11 place-items-center rounded-sm text-muted hover:text-fg">
           <X className="size-4" />
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>

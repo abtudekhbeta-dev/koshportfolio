@@ -23,6 +23,7 @@ import type { OhlcBar } from "@/lib/kosh/types";
 import { FIB_RATIOS, fibPrice, hitDraw, rayEnd, type HitPart } from "@/lib/kosh/ledger-draw";
 import type { DrawDash, DrawKind, LedgerDraw, LedgerInd } from "@/lib/kosh/ledger-layout";
 import type { LedgerChartType, LedgerTool } from "@/lib/kosh/ledger-spec";
+import { seriesScaleMode, volumePaneHeights } from "@/lib/kosh/chart-scale";
 import { ledgerChrome, type LedgerTheme } from "@/lib/kosh/ledger-chrome";
 import {
   fmtBarTime,
@@ -88,10 +89,8 @@ function snapTime(bars: OhlcBar[], t: number): number {
 function layoutPanes(chart: IChartApi, host: HTMLElement) {
   const panes = chart.panes();
   if (panes.length <= 1) return;
-  const total = host.clientHeight || 1;
-  const sub = Math.min(108, Math.max(72, Math.floor(total * 0.16)));
-  panes[0].setHeight(Math.max(140, total - sub * (panes.length - 1)));
-  for (let i = 1; i < panes.length; i++) panes[i].setHeight(sub);
+  const heights = volumePaneHeights(host.clientHeight || 1, panes.length);
+  for (let i = 0; i < panes.length; i++) panes[i].setHeight(heights[i] || 0);
 }
 
 function lineData(points: Point[], values: (number | null)[]) {
@@ -305,7 +304,7 @@ export function LedgerChart({
     const volUp = theme === "light" ? "rgba(27,143,92,0.55)" : "rgba(61,207,142,0.55)";
     const volDown = theme === "light" ? "rgba(209,69,69,0.5)" : "rgba(239,110,110,0.55)";
     const scale = {
-      mode: logScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+      mode: seriesScaleMode("price", logScale) === "logarithmic" ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
       borderColor: paint.border,
     };
     let price: ISeriesApi<SeriesType>;
@@ -343,8 +342,13 @@ export function LedgerChart({
     const closes = points.map((p) => p.bar.c);
     let pane = 1;
     const visible = indicators.filter((item) => !item.hidden);
+    const linearScales: Array<{ priceScale: () => { applyOptions: (opts: { mode: PriceScaleMode; borderColor: string }) => void } }> = [];
     if (visible.some((item) => item.kind === "volume") && hasVolume(points.map((p) => p.bar))) {
-      const volume = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "right" }, pane);
+      const volume = chart.addSeries(
+        HistogramSeries,
+        { priceFormat: { type: "volume" }, priceScaleId: "volume" },
+        pane,
+      );
       pane += 1;
       volume.setData(
         points.map((p) => ({
@@ -353,6 +357,7 @@ export function LedgerChart({
           color: p.bar.c >= p.bar.o ? volUp : volDown,
         })),
       );
+      linearScales.push(volume);
     }
     for (const ind of visible) {
       if (ind.kind === "sma" || ind.kind === "ema") {
@@ -392,9 +397,11 @@ export function LedgerChart({
           series.setData(lineData(points, rsi(closes, ind.period || 14)));
           series.createPriceLine({ price: 70, color: paint.border, lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false, title: "" });
           series.createPriceLine({ price: 30, color: paint.border, lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false, title: "" });
+          linearScales.push(series);
         } else if (ind.kind === "atr") {
           const series = chart.addSeries(LineSeries, { color: ind.color, lineWidth: 2, priceScaleId: "right" }, index);
           series.setData(lineData(points, atr(points.map((p) => p.bar), ind.period || 14)));
+          linearScales.push(series);
         } else {
           const pack = macd(closes);
           const hist = chart.addSeries(HistogramSeries, { priceScaleId: "right" }, index);
@@ -409,8 +416,13 @@ export function LedgerChart({
           const signal = chart.addSeries(LineSeries, { color: "#e6b85c", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: "right" }, index);
           line.setData(lineData(points, pack.line));
           signal.setData(lineData(points, pack.signal));
+          linearScales.push(hist, line, signal);
         }
       }
+    }
+    for (const series of linearScales) {
+      const mode = seriesScaleMode("volume", logScale) === "logarithmic" ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal;
+      series.priceScale().applyOptions({ mode, borderColor: paint.border });
     }
     layoutPanes(chart, host);
     if (points.length && applied.current !== viewNonce) {
@@ -418,7 +430,14 @@ export function LedgerChart({
       applied.current = viewNonce;
     } else if (logical) chart.timeScale().setVisibleLogicalRange(logical);
     setFrame((n) => n + 1);
-  }, [points, chartType, indicators, logScale, intra, range, viewNonce, alive, theme]);
+  }, [points, chartType, indicators, intra, range, viewNonce, alive, theme]);
+
+  useEffect(() => {
+    const price = priceRef.current;
+    if (!price || !alive) return;
+    const mode = seriesScaleMode("price", logScale) === "logarithmic" ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal;
+    price.priceScale().applyOptions({ mode });
+  }, [logScale, alive]);
 
   function paneBox() {
     const chart = chartRef.current;

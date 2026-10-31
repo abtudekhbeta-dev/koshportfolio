@@ -71,6 +71,7 @@ const STATUS: Record<string, string> = {
   "scheduled-confirmed": "Scheduled",
   reported: "Reported",
   postponed: "Postponed",
+  rescheduled: "Rescheduled",
   cancelled: "Cancelled",
   "date-unavailable": "No date",
 };

@@ -5,9 +5,15 @@ import { compareIstDate, parseIstDate } from "./dates.ts";
 export type ResultStatus =
   | "scheduled-confirmed"
   | "reported"
+  | "rescheduled"
   | "postponed"
   | "cancelled"
   | "date-unavailable";
+
+export type CalendarHistoryItem = {
+  date: string;
+  label: string;
+};
 
 export type CalendarLink = {
   exchange: "NSE" | "BSE";
@@ -35,6 +41,8 @@ export type CalendarEvent = {
   links: CalendarLink[];
   isin: string | null;
   revised: boolean;
+  /** Earlier and revised meeting dates, when the exchange stated both. Empty otherwise. */
+  history: CalendarHistoryItem[];
 };
 
 export type CalendarSourceHealth = {
@@ -164,12 +172,24 @@ function linksFor(exchange: "NSE" | "BSE", url: string | null, label: string): C
   return [{ exchange, url, label }];
 }
 
-function statusFromMeeting(text: string, date: string | null): ResultStatus {
+function statusFromMeeting(text: string, meetingDate: string | null, original: string | null, proposed: string | null): ResultStatus {
   const blob = text.toLowerCase();
   if (/cancel/.test(blob)) return "cancelled";
+  const earlier = original || meetingDate;
+  const later = proposed || meetingDate;
+  const moved = Boolean(earlier && later && earlier !== later);
+  if (moved && (/postpon|reschedul|adjourn|deferred/.test(blob) || Boolean(original && proposed))) return "rescheduled";
   if (/postpon|reschedul|adjourn|deferred/.test(blob)) return "postponed";
-  if (!date) return "date-unavailable";
+  if (!later && !earlier) return "date-unavailable";
   return "scheduled-confirmed";
+}
+
+function revisionHistory(earlier: string | null, later: string | null): CalendarHistoryItem[] {
+  if (!earlier || !later || earlier === later) return [];
+  return [
+    { date: earlier, label: "Earlier meeting date" },
+    { date: later, label: "Revised meeting date" },
+  ];
 }
 
 function meetingEvent(row: RawMeeting, exchange: "NSE" | "BSE"): CalendarEvent | null {
@@ -178,8 +198,10 @@ function meetingEvent(row: RawMeeting, exchange: "NSE" | "BSE"): CalendarEvent |
   if (!symbol || !isResultsText(text)) return null;
   const meetingDate = day(row.date) || day(row.proposedDate);
   const original = day(row.originalDate);
-  const status = statusFromMeeting(text, meetingDate);
-  const shown = status === "postponed" ? day(row.proposedDate) || meetingDate || original : meetingDate || original;
+  const proposed = day(row.proposedDate);
+  const status = statusFromMeeting(text, meetingDate, original, proposed);
+  const shown = status === "postponed" || status === "rescheduled" ? proposed || meetingDate || original : meetingDate || original;
+  const earlier = original || meetingDate;
   return {
     symbol,
     name: String(row.name || symbol).trim() || symbol,
@@ -188,7 +210,7 @@ function meetingEvent(row: RawMeeting, exchange: "NSE" | "BSE"): CalendarEvent |
     kind: "results",
     exchange,
     status: shown ? status : "date-unavailable",
-    meetingDate: original || meetingDate,
+    meetingDate: earlier,
     filedAt: null,
     filedStamp: null,
     periodEnd: periodEndFromText(text),
@@ -197,7 +219,8 @@ function meetingEvent(row: RawMeeting, exchange: "NSE" | "BSE"): CalendarEvent |
     sourceUrl: row.attachment && /^https:\/\//i.test(row.attachment) ? row.attachment : null,
     links: linksFor(exchange, row.attachment || null, "Board meeting notice"),
     isin: row.isin || null,
-    revised: false,
+    revised: status === "rescheduled",
+    history: status === "rescheduled" ? revisionHistory(earlier, shown) : [],
   };
 }
 
@@ -229,6 +252,7 @@ function filingEvent(row: RawFiling, exchange: "NSE" | "BSE"): CalendarEvent | n
     links: linksFor(exchange, row.url || null, row.revised ? "Revised results filing" : "Results filing"),
     isin: row.isin || null,
     revised: Boolean(row.revised),
+    history: [],
   };
 }
 
@@ -263,7 +287,16 @@ function mergePair(meeting: CalendarEvent, filing: CalendarEvent): CalendarEvent
     sourceUrl: filing.sourceUrl || meeting.sourceUrl,
     links,
     isin: filing.isin || meeting.isin,
+    history: meeting.history,
   };
+}
+
+function mergeHistory(a: CalendarHistoryItem[], b: CalendarHistoryItem[]): CalendarHistoryItem[] {
+  const out = [...a];
+  for (const item of b) {
+    if (!out.some((row) => row.date === item.date && row.label === item.label)) out.push(item);
+  }
+  return out;
 }
 
 function addLink(event: CalendarEvent, link: CalendarLink) {
@@ -272,7 +305,7 @@ function addLink(event: CalendarEvent, link: CalendarLink) {
 }
 
 function preferMeeting(a: CalendarEvent, b: CalendarEvent): CalendarEvent {
-  const rank = (status: ResultStatus) => (status === "cancelled" || status === "postponed" ? 3 : status === "scheduled-confirmed" ? 2 : 1);
+  const rank = (status: ResultStatus) => (status === "cancelled" || status === "postponed" || status === "rescheduled" ? 3 : status === "scheduled-confirmed" ? 2 : 1);
   const primary = rank(a.status) > rank(b.status) ? a : rank(b.status) > rank(a.status) ? b : a.purpose.length >= b.purpose.length ? a : b;
   const secondary = primary === a ? b : a;
   const links = [...primary.links];
@@ -287,6 +320,8 @@ function preferMeeting(a: CalendarEvent, b: CalendarEvent): CalendarEvent {
     periodEnd: primary.periodEnd || secondary.periodEnd,
     isin: primary.isin || secondary.isin,
     name: primary.name.length >= secondary.name.length ? primary.name : secondary.name,
+    history: mergeHistory(primary.history, secondary.history),
+    revised: primary.revised || secondary.revised,
   };
 }
 
@@ -330,6 +365,52 @@ export function buildResultsCalendar(meetings: RawMeeting[], filings: RawFiling[
     }
   }
   out.push(...byPeriod.values());
+  return out.sort((a, b) => compareIstDate(a.date || "9999-99-99", b.date || "9999-99-99") || a.symbol.localeCompare(b.symbol));
+}
+
+function crossScore(row: CalendarEvent): number {
+  const status = row.status === "reported" ? 40 : row.status === "rescheduled" || row.status === "postponed" || row.status === "cancelled" ? 20 : 10;
+  return status + (row.exchange === "NSE" ? 1 : 0);
+}
+
+function mergeCrossListing(a: CalendarEvent, b: CalendarEvent): CalendarEvent {
+  const primary = crossScore(a) >= crossScore(b) ? a : b;
+  const secondary = primary === a ? b : a;
+  const links = [...primary.links];
+  for (const link of secondary.links) addLink({ ...primary, links }, link);
+  return {
+    ...primary,
+    links,
+    history: mergeHistory(primary.history, secondary.history),
+    source: primary.source === secondary.source ? primary.source : `${primary.source} · ${secondary.source}`,
+    sourceUrl: primary.sourceUrl || secondary.sourceUrl,
+    isin: primary.isin || secondary.isin,
+    name: primary.name || secondary.name,
+    periodEnd: primary.periodEnd || secondary.periodEnd,
+    quarter: primary.quarter || secondary.quarter,
+    revised: primary.revised || secondary.revised,
+  };
+}
+
+/** Collapse the same ISIN and reporting month across NSE and BSE. Same-exchange rows stay separate. */
+export function reconcileExchanges(events: CalendarEvent[]): CalendarEvent[] {
+  const out: CalendarEvent[] = [];
+  const at = new Map<string, number>();
+  for (const row of events) {
+    const period = row.periodEnd?.slice(0, 7) || "";
+    if (!row.isin || !period) {
+      out.push(row);
+      continue;
+    }
+    const key = `${row.isin}|${period}`;
+    const prev = at.get(key);
+    if (prev == null || out[prev].exchange === row.exchange) {
+      if (prev == null) at.set(key, out.length);
+      out.push(row);
+      continue;
+    }
+    out[prev] = mergeCrossListing(out[prev], row);
+  }
   return out.sort((a, b) => compareIstDate(a.date || "9999-99-99", b.date || "9999-99-99") || a.symbol.localeCompare(b.symbol));
 }
 

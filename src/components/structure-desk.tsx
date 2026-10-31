@@ -6,7 +6,7 @@ import type { ChartFactsIn, StructureMode } from "@/lib/kosh/ai-kinds";
 import { asStructure } from "@/lib/kosh/note-shape";
 import { chartStructure } from "@/lib/kosh/ohlc";
 import { AnalysisSkeleton, StructureView } from "@/components/analysis-view";
-import { fetchSpec } from "@/components/charts/candle-chart";
+import { fetchSpec } from "@/lib/kosh/candle-spec";
 import { Button } from "@/components/ui/button";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";

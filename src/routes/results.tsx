@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { apiResults, apiScreener } from "@/lib/kosh/api";
 import { formatIstDate } from "@/lib/kosh/dates";
@@ -14,6 +14,7 @@ const STATUSES: { id: "all" | ResultStatus; label: string }[] = [
   { id: "scheduled-confirmed", label: "Scheduled" },
   { id: "reported", label: "Reported" },
   { id: "postponed", label: "Postponed" },
+  { id: "rescheduled", label: "Rescheduled" },
   { id: "cancelled", label: "Cancelled" },
   { id: "date-unavailable", label: "No date" },
 ];
@@ -22,19 +23,29 @@ function statusLabel(status: ResultStatus) {
   return STATUSES.find((row) => row.id === status)?.label || status;
 }
 
+function shiftDay(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + days));
+  return dt.toISOString().slice(0, 10);
+}
+
 function ResultsPage() {
   const q = useQuery({ queryKey: ["results-calendar"], queryFn: apiResults, staleTime: 10 * 60 * 1000 });
   const screen = useQuery({ queryKey: ["screener"], queryFn: apiScreener, staleTime: 10 * 60 * 1000 });
   const [view, setView] = useState<"upcoming" | "reported" | "calendar" | "list">("upcoming");
-  const [span, setSpan] = useState<"all" | "week" | "next" | "month" | "custom">("all");
+  const [span, setSpan] = useState<"all" | "today" | "tomorrow" | "week" | "next" | "month" | "custom">("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [exchange, setExchange] = useState<"all" | "NSE" | "BSE">("all");
   const [status, setStatus] = useState<(typeof STATUSES)[number]["id"]>("all");
   const [sector, setSector] = useState("All");
   const [cap, setCap] = useState("All");
+  const [period, setPeriod] = useState("All");
+  const [source, setSource] = useState("All");
+  const [sortKey, setSortKey] = useState<"date" | "name" | "sector" | "period">("date");
   const [text, setText] = useState("");
   const [open, setOpen] = useState<string | null>(null);
+  const [shown, setShown] = useState(80);
   const today = istToday();
   const meta = useMemo(() => {
     const map = new Map<string, { sector: string; mcapCr: number | null }>();
@@ -43,19 +54,32 @@ function ResultsPage() {
   }, [screen.data]);
   const sectors = useMemo(() => ["All", ...new Set([...meta.values()].map((row) => row.sector).filter(Boolean))].sort(), [meta]);
   const bounds = useMemo(() => {
+    if (span === "today") return { from: today, to: today };
+    if (span === "tomorrow") {
+      const day = shiftDay(today, 1);
+      return { from: day, to: day };
+    }
     if (span === "week") return weekBounds(today, 0);
     if (span === "next") return weekBounds(today, 1);
     if (span === "month") return monthBounds(today);
     if (span === "custom") return { from: from || null, to: to || null };
     return { from: null, to: null };
   }, [span, today, from, to]);
+  const periods = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of q.data?.events || []) if (row.quarter) set.add(row.quarter);
+    return ["All", ...[...set].sort()];
+  }, [q.data]);
+  const sources = useMemo(() => ["All", ...new Set((q.data?.events || []).map((row) => row.source).filter(Boolean))], [q.data]);
   const rows = useMemo(() => {
     const needle = text.trim().toUpperCase();
-    return (q.data?.events || []).filter((row) => {
+    const filtered = (q.data?.events || []).filter((row) => {
       if (view === "upcoming" && row.status === "reported") return false;
       if (view === "reported" && row.status !== "reported") return false;
       if (exchange !== "all" && row.exchange !== exchange) return false;
       if (status !== "all" && row.status !== status) return false;
+      if (source !== "All" && row.source !== source) return false;
+      if (period !== "All" && row.quarter !== period) return false;
       if (bounds.from || bounds.to) {
         if (!withinRange(row.date, bounds.from, bounds.to)) return false;
       }
@@ -71,15 +95,37 @@ function ResultsPage() {
       if (!needle) return true;
       return row.symbol.includes(needle) || row.name.toUpperCase().includes(needle);
     });
-  }, [q.data, view, exchange, status, bounds, sector, cap, text, meta]);
+    const copy = filtered.slice();
+    copy.sort((a, b) => {
+      if (sortKey === "name") return a.name.localeCompare(b.name) || a.symbol.localeCompare(b.symbol);
+      if (sortKey === "sector") return (meta.get(a.symbol)?.sector || "").localeCompare(meta.get(b.symbol)?.sector || "") || a.symbol.localeCompare(b.symbol);
+      if (sortKey === "period") return (a.periodEnd || a.quarter || "").localeCompare(b.periodEnd || b.quarter || "") || a.symbol.localeCompare(b.symbol);
+      return (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99") || a.symbol.localeCompare(b.symbol);
+    });
+    return copy;
+  }, [q.data, view, exchange, status, bounds, sector, cap, text, meta, period, source, sortKey]);
+  const historyBySymbol = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>();
+    for (const row of q.data?.events || []) {
+      if (row.status !== "reported") continue;
+      const list = map.get(row.symbol);
+      if (list) list.push(row);
+      else map.set(row.symbol, [row]);
+    }
+    return map;
+  }, [q.data]);
+  useEffect(() => {
+    setShown(80);
+  }, [view, span, exchange, status, sector, cap, text, from, to, period, source, sortKey]);
+  const visible = rows.slice(0, shown);
   const grouped = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
-    for (const row of rows) {
+    for (const row of visible) {
       const key = row.date || "Date unavailable";
       map.set(key, [...(map.get(key) || []), row]);
     }
     return [...map.entries()];
-  }, [rows]);
+  }, [visible]);
 
   return (
     <AppShell wide>
@@ -119,51 +165,69 @@ function ResultsPage() {
               ["list", "List"],
             ] as const
           ).map(([id, label]) => (
-            <button key={id} type="button" onClick={() => setView(id)} className={cn("h-9 rounded-sm px-3 text-[13px]", view === id ? "bg-surface text-fg shadow-[var(--shadow-border)]" : "text-muted")}>
+            <button key={id} type="button" onClick={() => setView(id)} className={cn("h-11 rounded-sm px-3 text-[13px]", view === id ? "bg-surface text-fg shadow-[var(--shadow-border)]" : "text-muted")}>
               {label}
             </button>
           ))}
           {(
             [
               ["all", "Any date"],
+              ["today", "Today"],
+              ["tomorrow", "Tomorrow"],
               ["week", "This week"],
               ["next", "Next week"],
               ["month", "This month"],
               ["custom", "Custom"],
             ] as const
           ).map(([id, label]) => (
-            <button key={id} type="button" onClick={() => setSpan(id)} className={cn("h-9 rounded-sm px-3 text-[13px]", span === id ? "bg-surface-2 text-fg" : "text-muted")}>
+            <button key={id} type="button" onClick={() => setSpan(id)} className={cn("h-11 rounded-sm px-3 text-[13px]", span === id ? "bg-surface-2 text-fg" : "text-muted")}>
               {label}
             </button>
           ))}
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
-          <input className="h-10 rounded-sm bg-surface px-3 text-[13px] shadow-[var(--shadow-border)] outline-none" placeholder="Company or symbol" value={text} onChange={(e) => setText(e.target.value)} aria-label="Search results" />
-          <select className="h-10 rounded-sm bg-surface px-2 text-[13px]" aria-label="Exchange" value={exchange} onChange={(e) => setExchange(e.target.value as typeof exchange)}>
+        <div className="flex flex-wrap gap-2">
+          <input className="h-11 min-w-[12rem] flex-1 rounded-sm bg-surface px-3 text-[13px] shadow-[var(--shadow-border)] outline-none" placeholder="Company or symbol" value={text} onChange={(e) => setText(e.target.value)} aria-label="Search results" />
+          <select className="h-11 rounded-sm bg-surface px-2 text-[13px]" aria-label="Exchange" value={exchange} onChange={(e) => setExchange(e.target.value as typeof exchange)}>
             <option value="all">NSE and BSE</option>
             <option value="NSE">NSE</option>
             <option value="BSE">BSE</option>
           </select>
-          <select className="h-10 rounded-sm bg-surface px-2 text-[13px]" aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
+          <select className="h-11 rounded-sm bg-surface px-2 text-[13px]" aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
             {STATUSES.map((row) => (
               <option key={row.id} value={row.id}>{row.label}</option>
             ))}
           </select>
-          <select className="h-10 rounded-sm bg-surface px-2 text-[13px]" aria-label="Sector" value={sector} onChange={(e) => setSector(e.target.value)}>
+          <select className="h-11 rounded-sm bg-surface px-2 text-[13px]" aria-label="Sector" value={sector} onChange={(e) => setSector(e.target.value)}>
             {sectors.slice(0, 80).map((row) => (
               <option key={row}>{row}</option>
             ))}
           </select>
-          <select className="h-10 rounded-sm bg-surface px-2 text-[13px]" aria-label="Market cap" value={cap} onChange={(e) => setCap(e.target.value)}>
+          <select className="h-11 rounded-sm bg-surface px-2 text-[13px]" aria-label="Market cap" value={cap} onChange={(e) => setCap(e.target.value)}>
             <option value="All">Any cap</option>
             <option value="large">Above ₹20,000 Cr</option>
             <option value="mid">₹5,000–20,000 Cr</option>
             <option value="small">Under ₹5,000 Cr</option>
           </select>
+          <select className="h-11 rounded-sm bg-surface px-2 text-[13px]" aria-label="Reporting period" value={period} onChange={(e) => setPeriod(e.target.value)}>
+            {periods.map((row) => (
+              <option key={row} value={row}>{row === "All" ? "Any period" : row}</option>
+            ))}
+          </select>
+          <select className="h-11 rounded-sm bg-surface px-2 text-[13px]" aria-label="Source" value={source} onChange={(e) => setSource(e.target.value)}>
+            {sources.map((row) => (
+              <option key={row} value={row}>{row === "All" ? "Any source" : row}</option>
+            ))}
+          </select>
+          <select className="h-11 rounded-sm bg-surface px-2 text-[13px]" aria-label="Sort" value={sortKey} onChange={(e) => setSortKey(e.target.value as typeof sortKey)}>
+            <option value="date">Sort by date</option>
+            <option value="name">Sort by company</option>
+            <option value="sector">Sort by sector</option>
+            <option value="period">Sort by period</option>
+          </select>
           {span === "custom" ? (
             <div className="flex gap-2">
-              <input type="date" aria-label="From" className="h-10 w-full rounded-sm bg-surface px-2 text-[13px]" value={from} onChange={(e) => setFrom(e.target.value)} />
-              <input type="date" aria-label="To" className="h-10 w-full rounded-sm bg-surface px-2 text-[13px]" value={to} onChange={(e) => setTo(e.target.value)} />
+              <input type="date" aria-label="From" className="h-11 w-full rounded-sm bg-surface px-2 text-[13px]" value={from} onChange={(e) => setFrom(e.target.value)} />
+              <input type="date" aria-label="To" className="h-11 w-full rounded-sm bg-surface px-2 text-[13px]" value={to} onChange={(e) => setTo(e.target.value)} />
             </div>
           ) : null}
         </div>
@@ -177,7 +241,7 @@ function ResultsPage() {
                 <h2 className="font-mono text-[12px] text-muted">{day === "Date unavailable" ? day : formatIstDate(day)}</h2>
                 <ul className="mt-2 grid gap-2">
                   {items.map((row) => (
-                    <EventRow key={row.symbol + row.status + row.purpose + row.date} row={row} card={meta.get(row.symbol)} open={open} setOpen={setOpen} history={(q.data?.events || []).filter((item) => item.symbol === row.symbol && item.status === "reported")} />
+                    <EventRow key={row.symbol + row.status + row.purpose + row.date} row={row} card={meta.get(row.symbol)} open={open} setOpen={setOpen} history={historyBySymbol.get(row.symbol) || []} />
                   ))}
                 </ul>
               </section>
@@ -197,13 +261,18 @@ function ResultsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
-                  <EventTable key={row.symbol + row.date + row.purpose + row.status} row={row} card={meta.get(row.symbol)} history={(q.data?.events || []).filter((item) => item.symbol === row.symbol && item.status === "reported")} open={open} setOpen={setOpen} />
+                {visible.map((row) => (
+                  <EventTable key={row.symbol + row.date + row.purpose + row.status} row={row} card={meta.get(row.symbol)} history={historyBySymbol.get(row.symbol) || []} open={open} setOpen={setOpen} />
                 ))}
               </tbody>
             </table>
           </div>
         )}
+        {rows.length > shown ? (
+          <button type="button" className="h-10 justify-self-start rounded-sm bg-surface px-3 text-[13px] shadow-[var(--shadow-border)]" onClick={() => setShown((n) => n + 80)}>
+            Show more ({rows.length - shown} left)
+          </button>
+        ) : null}
       </div>
     </AppShell>
   );
@@ -290,6 +359,15 @@ function Detail({ row, history }: { row: CalendarEvent; history: CalendarEvent[]
     <div className="grid gap-2">
       <p>{row.purpose}</p>
       <p>Quarter on the filing: {row.quarter || "not stated"}. Period end: {row.periodEnd ? formatIstDate(row.periodEnd) : "not stated"}.</p>
+      {(row.history || []).length > 1 ? (
+        <ol className="grid gap-1">
+          {(row.history || []).map((item) => (
+            <li key={item.label + item.date}>
+              {item.label}: {formatIstDate(item.date)} · {row.source}
+            </li>
+          ))}
+        </ol>
+      ) : null}
       <p>No date on this row was estimated from a past reporting pattern.</p>
       {row.links.length ? (
         <p className="flex flex-wrap gap-3">

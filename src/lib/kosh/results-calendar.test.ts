@@ -4,6 +4,7 @@ import {
   announcementRole,
   buildResultsCalendar,
   periodEndFromText,
+  reconcileExchanges,
   weekBounds,
 } from "./results-calendar.ts";
 
@@ -120,9 +121,60 @@ describe("results calendar", () => {
     );
     const abc = rows.find((row) => row.symbol === "ABC");
     const xyz = rows.find((row) => row.symbol === "XYZ");
-    assert.equal(abc?.status, "postponed");
+    assert.equal(abc?.status, "rescheduled");
     assert.equal(abc?.date, "2026-11-09");
+    assert.equal(abc?.meetingDate, "2026-11-02");
+    assert.deepEqual(abc?.history.map((item) => item.date), ["2026-11-02", "2026-11-09"]);
     assert.equal(xyz?.status, "cancelled");
+  });
+
+  it("keeps a postponement postponed when the exchange did not give a new date", () => {
+    const rows = buildResultsCalendar(
+      [
+        {
+          symbol: "DEF",
+          name: "Def",
+          date: "04-Nov-2026",
+          purpose: "Financial Results",
+          desc: "The board meeting to consider financial results has been postponed",
+        },
+      ],
+      [],
+    );
+    assert.equal(rows[0]?.status, "postponed");
+    assert.equal(rows[0]?.date, "2026-11-04");
+    assert.deepEqual(rows[0]?.history, []);
+  });
+
+  it("merges a dual-listed ISIN across exchanges and leaves a different period alone", () => {
+    const notice = {
+      name: "Infosys",
+      isin: "INE009A01021",
+      date: "12-Nov-2026",
+      purpose: "Financial Results",
+      desc: "To consider financial results for the quarter ended September 2026",
+    };
+    const nse = buildResultsCalendar([{ ...notice, symbol: "INFY" }], [], "NSE");
+    const bse = buildResultsCalendar([{ ...notice, symbol: "500209" }], [], "BSE");
+    const other = buildResultsCalendar(
+      [
+        {
+          ...notice,
+          symbol: "INFY",
+          date: "14-Jan-2027",
+          desc: "To consider financial results for the quarter ended December 2026",
+        },
+      ],
+      [],
+      "NSE",
+    );
+    const merged = reconcileExchanges([...nse, ...bse, ...other]);
+    const sept = merged.filter((row) => row.periodEnd === "2026-09-30");
+    assert.equal(sept.length, 1);
+    assert.equal(sept[0]?.symbol, "INFY");
+    assert.match(sept[0]?.source || "", /NSE/);
+    assert.match(sept[0]?.source || "", /BSE/);
+    assert.equal(merged.filter((row) => row.periodEnd === "2026-12-31").length, 1);
   });
 
   it("does not merge an older filing into a later quarter", () => {

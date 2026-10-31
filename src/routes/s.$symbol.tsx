@@ -1,11 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Star } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { CompanyLogo } from "@/components/company-logo";
 import { AskAi } from "@/components/ask-ai";
-import { CandleChart, fetchSpec } from "@/components/charts/candle-chart";
+import { fetchSpec } from "@/lib/kosh/candle-spec";
+
+const CandleChart = lazy(() => import("@/components/charts/candle-chart").then((m) => ({ default: m.CandleChart })));
 import { NavChart } from "@/components/charts/nav-chart";
 import { FinancialSnapshot, OwnershipBlock } from "@/components/analysis-view";
 import { SnapshotCard, ValuationModels, CoverageLine, FieldCoverage } from "@/components/kosh-snapshot";
@@ -475,16 +477,18 @@ function StockBody({
             </form>
           </div>
         </div>
-        <CandleChart
-          symbol={symbol}
-          bars={bars}
-          intra={false}
-          compareBars={cmpQ.data && !cmpQ.data.missing ? cmpQ.data.bars : null}
-          compareLabel={cmpQ.data?.name}
-          high52={pack.high52}
-          low52={pack.low52}
-          prevClose={pack.previousClose}
-        />
+        <Suspense fallback={<div className="grid h-80 place-items-center rounded-lg bg-surface text-sm text-muted shadow-[var(--shadow-border)]">Loading chart…</div>}>
+          <CandleChart
+            symbol={symbol}
+            bars={bars}
+            intra={false}
+            compareBars={cmpQ.data && !cmpQ.data.missing ? cmpQ.data.bars : null}
+            compareLabel={cmpQ.data?.name}
+            high52={pack.high52}
+            low52={pack.low52}
+            prevClose={pack.previousClose}
+          />
+        </Suspense>
         <p className="mt-2 text-[12px] text-muted">
           <a
             href={`https://www.tradingview.com/chart/?symbol=${exch === "BSE" ? "BSE" : "NSE"}:${encodeURIComponent(bare)}`}
