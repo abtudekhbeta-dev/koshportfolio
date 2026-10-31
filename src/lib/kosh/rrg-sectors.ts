@@ -146,3 +146,19 @@ export function annotateMembers(rows: { symbol: string | null; name: string; wei
     membership: "current" as const,
   };
 }
+
+const BROAD_CHART: Record<string, string> = {
+  "NIFTY 50": "^NSEI",
+  "NIFTY 100": "^CNX100",
+  "NIFTY 200": "^CNX200",
+  "NIFTY 500": "^CRSLDX",
+  SENSEX: "^BSESN",
+  "NIFTY MIDCAP 50": "^NSEMDCP50",
+};
+
+/** Yahoo symbol for a stored index. Null when this registry name is not a catalogue index. */
+export function registryChartSymbol(symbol: string): string | null {
+  const official = OFFICIAL_SECTORS.find((row) => row.registrySymbol === symbol);
+  if (official?.catalogueSymbol) return official.catalogueSymbol;
+  return BROAD_CHART[symbol] || null;
+}

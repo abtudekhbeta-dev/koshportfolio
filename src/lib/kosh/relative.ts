@@ -45,20 +45,30 @@ export type FxBar = { t: number; o: number; h: number; l: number; c: number };
 
 /**
  * Divide each OHLC by the USD/INR print on or before that day.
- * Does not stamp today's rate onto history. Bars with no prior FX are dropped.
+ * Does not stamp today's rate onto history. A rate older than `maxAgeDays`
+ * calendar days is treated as missing, so a stale print is not carried for months.
+ * Bars with no usable FX are dropped.
  */
-export function applyHistoricalFx<T extends FxBar>(bars: T[], fx: Px[]): { bars: T[]; missing: number } {
+export const FX_MAX_AGE_DAYS = 10;
+
+export function applyHistoricalFx<T extends FxBar>(
+  bars: T[],
+  fx: Px[],
+  maxAgeDays = FX_MAX_AGE_DAYS,
+): { bars: T[]; missing: number } {
+  const limit = Number.isFinite(maxAgeDays) && maxAgeDays >= 0 ? maxAgeDays : FX_MAX_AGE_DAYS;
   const sorted = fx
     .filter((f) => f.c > 0)
     .map((f) => [istDay(f.t), f.c] as const)
     .sort((a, b) => a[0] - b[0]);
   function rate(day: number): number | null {
-    let hit: number | null = null;
+    let hit: { day: number; rate: number } | null = null;
     for (const [d, c] of sorted) {
-      if (d <= day) hit = c;
+      if (d <= day) hit = { day: d, rate: c };
       else break;
     }
-    return hit;
+    if (!hit || day - hit.day > limit) return null;
+    return hit.rate;
   }
   const out: T[] = [];
   let missing = 0;
@@ -78,14 +88,18 @@ export type OhlcIn = { t: number; o: number; h: number; l: number; c: number };
 /**
  * Benchmark-adjusted OHLC. One candle series, not two indexed lines.
  *
+ * The close ratio is the two session closes. The open ratio is the two session opens.
+ * High and low are the same component-wise ratios (stock high / benchmark high, and
+ * the lows). That is not the high and low of the relative price during the session,
+ * which would need paired intraday prints. If those ratios invert, the wick is
+ * clamped to cover the open and the close. It is an approximation of the relative candle.
+ *
  * Alignment:
  * - "day": same IST calendar day. No print that day means the stock bar is dropped.
  * - "time": same clock minute, for intraday. A bar from another session is not borrowed.
  *
- * relative OHLC = stock component / benchmark component.
- * The slice is then rebased so the first relative close is 100.
- * If high and low invert, the wick uses the min and max of the four ratios.
- * Open and close stay on the formula. A zero benchmark component drops the bar.
+ * The slice is rebased so the first relative close is 100.
+ * A zero benchmark component drops the bar.
  */
 export function adjustOhlcToBenchmark<T extends OhlcIn>(
   stock: T[],

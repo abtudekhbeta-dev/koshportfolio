@@ -92,6 +92,7 @@ export type RrgReading = {
   droppedInstrument: number;
   droppedBenchmark: number;
   warnings: string[];
+  exchange?: string | null;
 };
 
 export function buildReading(input: {
@@ -105,6 +106,8 @@ export function buildReading(input: {
   notes: string[];
   limited: boolean;
   unresolved?: UnresolvedBreak[];
+  /** Bars of this timeframe used for the price and relative-return columns. Defaults to RETURN_WINDOW. */
+  returnBars?: number;
 }): RrgReading {
   const paired = pairTimeframe(input.instrument, input.benchmark, input.timeframe, input.asOf);
   const points = computeRrgPairs(
@@ -114,7 +117,8 @@ export function buildReading(input: {
   const last = ready.at(-1) || null;
   const prev = ready.at(-2) || null;
   const end = paired.pairs.at(-1) || null;
-  const span = Math.min(RETURN_WINDOW[input.timeframe], Math.max(0, paired.pairs.length - 1));
+  const wanted = input.returnBars && input.returnBars > 0 ? Math.round(input.returnBars) : RETURN_WINDOW[input.timeframe];
+  const span = Math.min(wanted, Math.max(0, paired.pairs.length - 1));
   const start = span > 0 ? paired.pairs[paired.pairs.length - 1 - span] : null;
   const warnings = [...input.notes];
   if (input.limited) warnings.unshift("Limited history. Do not treat this tail as a long-run rotation.");
@@ -194,6 +198,83 @@ export function filterReadings<T extends RrgReading>(rows: T[], quadrant: Quadra
     if (!text) return true;
     return row.symbol.toLowerCase().includes(text) || row.name.toLowerCase().includes(text);
   });
+}
+
+export type StrengthRank = {
+  symbol: string;
+  name: string;
+  exchange: string | null;
+  rank: number | null;
+  previousRank: number | null;
+  rankChange: number | null;
+  rsRatio: number | null;
+  rsMomentum: number | null;
+  absoluteReturn: number | null;
+  benchmarkReturn: number | null;
+  relativeReturn: number | null;
+  quadrant: Quadrant | null;
+};
+
+type Rankable = {
+  symbol: string;
+  name: string;
+  exchange?: string | null;
+  rsRatio: number | null;
+  rsMomentum: number | null;
+  absoluteReturn: number | null;
+  relativeReturn: number | null;
+  quadrant: Quadrant | null;
+  tail: { rsRatio: number | null }[];
+};
+
+function ordinalRanks(rows: { symbol: string; value: number }[]): Map<string, number> {
+  const ordered = [...rows].sort((a, b) => b.value - a.value || a.symbol.localeCompare(b.symbol));
+  const map = new Map<string, number>();
+  ordered.forEach((row, index) => map.set(row.symbol, index + 1));
+  return map;
+}
+
+/**
+ * Rank by RS-Ratio, not by price return.
+ * Rank 1 is the highest RS-Ratio. Ties break by symbol so the order is stable.
+ * Previous rank uses the prior tail point. A name without that point is left blank.
+ * Rank change is previous minus current: positive means it moved up.
+ * Benchmark return is absolute return minus relative return, the identity already used on the reading.
+ */
+export function rankByRelativeStrength(rows: Rankable[]): StrengthRank[] {
+  const current = ordinalRanks(
+    rows.flatMap((row) => (row.rsRatio != null && Number.isFinite(row.rsRatio) ? [{ symbol: row.symbol, value: row.rsRatio }] : [])),
+  );
+  const previous = ordinalRanks(
+    rows.flatMap((row) => {
+      const value = row.tail.at(-2)?.rsRatio;
+      return value != null && Number.isFinite(value) ? [{ symbol: row.symbol, value }] : [];
+    }),
+  );
+  return rows
+    .map((row) => {
+      const rank = current.get(row.symbol) ?? null;
+      const previousRank = previous.get(row.symbol) ?? null;
+      const benchmarkReturn =
+        row.absoluteReturn != null && row.relativeReturn != null && Number.isFinite(row.absoluteReturn) && Number.isFinite(row.relativeReturn)
+          ? row.absoluteReturn - row.relativeReturn
+          : null;
+      return {
+        symbol: row.symbol,
+        name: row.name,
+        exchange: row.exchange || null,
+        rank,
+        previousRank,
+        rankChange: rank != null && previousRank != null ? previousRank - rank : null,
+        rsRatio: row.rsRatio,
+        rsMomentum: row.rsMomentum,
+        absoluteReturn: row.absoluteReturn,
+        benchmarkReturn,
+        relativeReturn: row.relativeReturn,
+        quadrant: row.quadrant,
+      };
+    })
+    .sort((a, b) => (a.rank ?? 9999) - (b.rank ?? 9999) || a.symbol.localeCompare(b.symbol));
 }
 
 export type CrossReading = { symbol: string; name: string; daily: Quadrant | null; weekly: Quadrant | null; monthly: Quadrant | null };

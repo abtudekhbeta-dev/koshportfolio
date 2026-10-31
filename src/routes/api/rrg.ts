@@ -39,18 +39,22 @@ export const Route = createFileRoute("/api/rrg")({
         const tf: Timeframe = timeframe === "weekly" || timeframe === "monthly" ? timeframe : "daily";
         const asOf = url.searchParams.get("asOf") || undefined;
         const rawSymbols = url.searchParams.get("symbols");
-        const group = url.searchParams.get("group");
+        const groupParam = url.searchParams.get("group");
+        const group = groupParam === "size" || groupParam === "broad" || groupParam === "stock" || groupParam === "sector" || groupParam === "thematic" ? groupParam : undefined;
         const tail = Math.min(60, Math.max(2, Number(url.searchParams.get("tail")) || 12));
+        const lookback = Number(url.searchParams.get("lookback"));
+        const returnBars = Number.isFinite(lookback) && lookback >= 1 && lookback <= 260 ? Math.round(lookback) : undefined;
         try {
           const pack = loadRrgPack({
             mode: url.searchParams.get("mode") === "stock" ? "stock" : "sector",
-            group: group === "size" || group === "broad" || group === "stock" || group === "sector" ? group : undefined,
+            group,
             benchmark: url.searchParams.get("benchmark") || "NIFTY 50",
             symbols: rawSymbols == null ? [] : rawSymbols.split(",").map((item) => item.trim()).filter(Boolean),
             explicit: rawSymbols != null,
             timeframe: tf,
             asOf: asOf && /^\d{4}-\d{2}-\d{2}$/.test(asOf) ? asOf : undefined,
             tail,
+            returnBars,
           });
           return Response.json(pack, { status: pack.error ? 400 : 200 });
         } catch {

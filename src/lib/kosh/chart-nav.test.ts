@@ -94,6 +94,19 @@ describe("indexed benchmark and USD", () => {
     assert.ok(Math.abs(out.bars[0].c - 10) < 0.001);
   });
 
+  it("does not carry a USD/INR rate older than 10 calendar days", () => {
+    const start = 1_700_000_000;
+    const bars = [
+      { t: start, o: 80, h: 80, l: 80, c: 80 },
+      { t: start + 3 * 86400, o: 83, h: 83, l: 83, c: 83 },
+      { t: start + 11 * 86400, o: 90, h: 90, l: 90, c: 90 },
+    ];
+    const out = applyHistoricalFx(bars, [{ t: start, c: 80 }]);
+    assert.equal(out.bars.length, 2);
+    assert.equal(out.missing, 1);
+    assert.ok(Math.abs(out.bars[1].c - 83 / 80) < 0.001);
+  });
+
   it("turns matched OHLC into one benchmark-relative series rebased at 100", () => {
     const stock = [
       { t: 1_700_000_000, o: 100, h: 110, l: 90, c: 100 },

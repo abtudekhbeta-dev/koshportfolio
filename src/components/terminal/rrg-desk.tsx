@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { useChartFullscreen } from "@/components/charts/use-fullscreen";
 import { MarketsSwitch } from "@/components/terminal/markets-switch";
 import { RrgChart } from "@/components/terminal/rrg-chart";
+import { ChartLink, RrgRank } from "@/components/terminal/rrg-rank";
 import { filterReadings, quadrantLabel, rotationBrief, sortReadings, viewState, type RrgReading, type SortKey, type Timeframe } from "@/lib/kosh/rrg-frame";
 import { selectHoldings, type PlottedHolding } from "@/lib/kosh/rrg-holdings";
 import { classifyVerdicts, keepIfSameBenchmark, rotationRequest, type NoteKey, type RotationNote, type StockVerdict } from "@/lib/kosh/rrg-note";
@@ -17,8 +17,10 @@ import { cn } from "@/lib/utils";
 
 type Pack = Exclude<ReturnType<typeof buildPack>, { error: string }>;
 type Mode = "sector" | "stock";
-type Group = "sector" | "size" | "broad";
+type Group = "sector" | "size" | "broad" | "thematic";
 type Universe = Group | "stock";
+type Board = "rrg" | "rank";
+type ReturnWindow = "short" | "standard" | "long";
 type MemberRow = { symbol: string; name: string; weight: number | null; history: "stored" | "missing" };
 type Basket = {
   name: string;
@@ -63,6 +65,8 @@ export function RrgDesk() {
   const [timeframe, setTimeframe] = useState<Timeframe>(saved.timeframe);
   const [asOf, setAsOf] = useState("");
   const [tail, setTail] = useState(saved.tail);
+  const [board, setBoard] = useState<Board>("rrg");
+  const [returnWindow, setReturnWindow] = useState<ReturnWindow>("standard");
   const [sortKey, setSortKey] = useState<SortKey>("rsRatio");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [quadrant, setQuadrant] = useState<"all" | Quadrant>("all");
@@ -132,8 +136,8 @@ export function RrgDesk() {
     enabled: search.trim().length > 0,
   });
   const pack = useQuery({
-    queryKey: ["rrg", mode, group, benchmark, symbols.join("|"), timeframe, asOf, tail],
-    queryFn: () => loadPack({ mode, group, benchmark, symbols, timeframe, asOf, tail }),
+    queryKey: ["rrg", mode, group, benchmark, symbols.join("|"), timeframe, asOf, tail, returnWindow],
+    queryFn: () => loadPack({ mode, group, benchmark, symbols, timeframe, asOf, tail, lookback: spanFor(timeframe, returnWindow) }),
     placeholderData: (previous, previousQuery) => (previous && keepIfSameBenchmark(previousQuery?.queryKey, benchmark) ? previous : undefined),
   });
   const data = pack.data && !pack.data.error ? pack.data : null;
@@ -216,8 +220,11 @@ export function RrgDesk() {
       setSymbols((ordered.length ? ordered : SECTOR_DEFAULT).filter((symbol) => symbol !== benchmark).slice(0, 24));
       return;
     }
-    const picks = items.filter((item) => item.category === next && item.symbol !== benchmark && (item.status === "imported" || item.status === "limited")).map((item) => item.symbol);
+    const picks = items.filter((item) => item.category === next && item.symbol !== benchmark && (item.status === "imported" || item.status === "limited" || item.status === "stale")).map((item) => item.symbol);
     setSymbols((picks.length ? picks : SECTOR_DEFAULT).filter((symbol) => symbol !== benchmark).slice(0, 12));
+    if (next === "thematic") {
+      setNotice(picks.length ? "Only thematic indices with a stored history are plotted. The others are not filled in." : "No thematic index in the store has a usable history.");
+    }
   }
 
   function toggle(symbol: string) {
@@ -350,6 +357,10 @@ export function RrgDesk() {
       <div className="mx-auto flex max-w-[1440px] flex-col gap-2 px-3 py-2 sm:px-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-[18px] font-semibold tracking-tight">Sector Rotation</h1>
+          <div className="flex h-8 items-center rounded-sm border border-border bg-surface p-0.5" role="tablist" aria-label="Rotation view">
+            <button type="button" role="tab" aria-selected={board === "rrg"} className={cn("h-7 rounded-sm px-2 text-[12px]", board === "rrg" ? "bg-bg text-fg" : "text-muted")} onClick={() => setBoard("rrg")}>RRG</button>
+            <button type="button" role="tab" aria-selected={board === "rank"} className={cn("h-7 rounded-sm px-2 text-[12px]", board === "rank" ? "bg-bg text-fg" : "text-muted")} onClick={() => setBoard("rank")}>Ranking</button>
+          </div>
           <p className="text-[12px] text-muted">Compare sector performance and relative strength.</p>
           <p className="text-[12px] text-muted">{historical ? `Historical snapshot ${data?.benchmark.asOf}` : `Latest ${data?.benchmark.asOf || "—"}`} · {data?.benchmark.name || "Benchmark"} {data?.benchmark.close == null ? "" : data.benchmark.close.toFixed(2)}</p>
           <button type="button" className="text-[12px] text-muted hover:text-fg" onClick={() => void fs.toggle()}>{fs.fs ? "Exit full screen" : "Full screen"}</button>
@@ -358,10 +369,11 @@ export function RrgDesk() {
         <div className="flex flex-wrap items-center gap-1.5">
           <Field label="Universe">
             <select className={fieldClass} value={universe} onChange={(event) => chooseUniverse(event.target.value as Universe)}>
-              <option value="sector">Sectors</option>
-              <option value="broad">Broad</option>
-              <option value="size">Size</option>
-              <option value="stock">Stocks</option>
+              <option value="sector">Sector indices</option>
+              <option value="thematic">Thematic indices</option>
+              <option value="broad">Broad indices</option>
+              <option value="size">Size indices</option>
+              <option value="stock">Custom stocks</option>
             </select>
           </Field>
           {universe === "sector" ? (
@@ -386,8 +398,15 @@ export function RrgDesk() {
             </select>
           </Field>
           <Seg value={timeframe} options={[{ id: "daily", label: "D" }, { id: "weekly", label: "W" }, { id: "monthly", label: "M" }]} onChange={(value) => setTimeframe(value as Timeframe)} />
+          <Field label="Return">
+            <select className={fieldClass} aria-label="Return window" value={returnWindow} onChange={(event) => setReturnWindow(event.target.value as ReturnWindow)}>
+              <option value="short">Short</option>
+              <option value="standard">Standard</option>
+              <option value="long">Long</option>
+            </select>
+          </Field>
           <Field label="Tail">
-            <select className={fieldClass} value={TAILS.includes(tail) ? String(tail) : "custom"} onChange={(event) => { if (event.target.value !== "custom") setTail(Number(event.target.value)); }}>
+            <select className={fieldClass} aria-label="Tail length" value={TAILS.includes(tail) ? String(tail) : "custom"} onChange={(event) => { if (event.target.value !== "custom") setTail(Number(event.target.value)); }}>
               {TAILS.map((value) => <option key={value} value={value}>{value}</option>)}
               <option value="custom">Custom</option>
             </select>
@@ -482,7 +501,11 @@ export function RrgDesk() {
           <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
             <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-2">
               <div className="order-1 flex min-w-0 flex-col gap-2 lg:order-none">
+                {board === "rank" ? (
+                  <RrgRank readings={data.readings} benchmark={data.benchmark.name} windowLabel={windowCaption(timeframe, returnWindow)} onSelect={setSelected} selected={selected} />
+                ) : (
                 <RrgChart readings={data.readings} height={fs.fs ? 640 : "min(460px, 54vh)"} selected={selected} hidden={hidden} showLabels={labels} arrows={arrows} locked={playing} stroke={stroke} onSelect={setSelected} />
+                )}
                 <div className="rounded-sm border border-border bg-surface px-3 py-2">
                   <input type="range" className="w-full" min={0} max={Math.max(0, sessions.length - 1)} value={Math.max(0, cursor)} disabled={!sessions.length} onChange={(event) => {
                     setPlaying(false);
@@ -491,6 +514,7 @@ export function RrgDesk() {
                   }} />
                   <div className="mt-1 flex flex-wrap gap-2 text-[12px] text-muted">
                     <span className="font-medium text-fg">{data.benchmark.asOf || "—"}</span>
+                    <span>Stored sessions only. The point is the last bar on or before this date.</span>
                     <button type="button" onClick={() => jump(7)}>1w</button>
                     <button type="button" onClick={() => jump(30)}>1m</button>
                     <button type="button" onClick={() => jump(90)}>3m</button>
@@ -500,6 +524,7 @@ export function RrgDesk() {
                 {focus ? <Detail row={focus} cross={data.cross.find((item) => item.symbol === focus.symbol)} stock={mode === "stock"} /> : null}
               </div>
               <div className="order-3 min-w-0 lg:order-none">
+                {board === "rrg" ? (<>
                 <div className="mb-2 flex items-center gap-2">
                   <h2 className="text-[14px] font-semibold">Sector Rotation table</h2>
                   <input className="h-8 rounded-sm border border-border bg-surface px-2 text-[12px]" placeholder="Filter" value={query} onChange={(event) => setQuery(event.target.value)} />
@@ -542,6 +567,7 @@ export function RrgDesk() {
                     </tbody>
                   </table>
                 </div>
+                </>) : null}
               </div>
             </div>
             {tableOpen ? (
@@ -651,7 +677,7 @@ function Detail({ row, cross, stock }: { row: RrgReading; cross?: { daily: Quadr
       <p className="mt-1 text-muted">{row.direction} Price {ret(row.absoluteReturn)} from {row.returnFrom || "—"} to {row.returnTo || "—"}. Relative {ret(row.relativeReturn)}.</p>
       {held.map((line) => <p key={line} className="mt-1 text-warn">{line}</p>)}
       {cross ? <p className="mt-1 text-muted">Daily {quadrantLabel(cross.daily)}. Weekly {quadrantLabel(cross.weekly)}. Monthly {quadrantLabel(cross.monthly)}.</p> : null}
-      {stock ? <Link to="/s/$symbol" params={{ symbol: row.symbol }} className="mt-2 inline-block text-muted hover:text-fg">Open chart</Link> : null}
+      <div className="mt-2">{stock ? <ChartLink symbol={row.symbol} name={row.name} exchange={row.exchange} /> : <ChartLink symbol={row.symbol} name={row.name} exchange={row.exchange} />}</div>
     </section>
   );
 }
@@ -715,6 +741,21 @@ function shiftDate(iso: string, days: number) {
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
+
+function spanFor(timeframe: Timeframe, window: ReturnWindow): number | undefined {
+  if (window === "standard") return undefined;
+  const table = {
+    short: { daily: 21, weekly: 4, monthly: 3 },
+    long: { daily: 126, weekly: 26, monthly: 12 },
+  } as const;
+  return table[window][timeframe];
+}
+
+function windowCaption(timeframe: Timeframe, window: ReturnWindow) {
+  const bars = window === "standard" ? { daily: 63, weekly: 13, monthly: 6 }[timeframe] : spanFor(timeframe, window);
+  const unit = timeframe === "daily" ? "sessions" : timeframe === "weekly" ? "weeks" : "months";
+  return `Performance uses the last ${bars} ${unit}. It does not change the RS-Ratio rank.`;
+}
 function loadPrefs(): { universe: Universe; benchmark: string; timeframe: Timeframe; tail: number; arrows: boolean; speed: number } {
   const fallback = { universe: "sector" as Universe, benchmark: "NIFTY 50", timeframe: "weekly" as Timeframe, tail: 8, arrows: true, speed: 450 };
   if (typeof window === "undefined") return fallback;
@@ -728,7 +769,7 @@ function savePrefs(value: { universe: Universe; benchmark: string; timeframe: Ti
   try { window.localStorage.setItem(PREFS, JSON.stringify(value)); } catch { /* preferences are optional */ }
 }
 
-async function loadPack(input: { mode: Mode; group: Group; benchmark: string; symbols: string[]; timeframe: Timeframe; asOf: string; tail: number }): Promise<Pack> {
+async function loadPack(input: { mode: Mode; group: Group; benchmark: string; symbols: string[]; timeframe: Timeframe; asOf: string; tail: number; lookback?: number }): Promise<Pack> {
   const params = new URLSearchParams({
     mode: input.mode,
     group: input.mode === "stock" ? "stock" : input.group,
@@ -738,6 +779,7 @@ async function loadPack(input: { mode: Mode; group: Group; benchmark: string; sy
     tail: String(input.tail),
   });
   if (input.asOf) params.set("asOf", input.asOf);
+  if (input.lookback) params.set("lookback", String(input.lookback));
   const response = await fetch(`/api/rrg?${params}`);
   const body = (await response.json()) as Pack & { error?: string | null };
   if (!response.ok || body.error) throw new Error(body.error || "The stored histories could not be read.");

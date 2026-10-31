@@ -38,13 +38,14 @@ export type RrgLibrary = {
 
 export type RrgQuery = {
   mode: "sector" | "stock";
-  group?: "sector" | "size" | "broad" | "stock";
+  group?: "sector" | "size" | "broad" | "stock" | "thematic";
   benchmark: string;
   symbols: string[];
   explicit?: boolean;
   timeframe: Timeframe;
   asOf?: string;
   tail: number;
+  returnBars?: number;
 };
 
 const DEFAULT_STOCKS = ["RELIANCE", "HDFCBANK", "ICICIBANK", "INFY"];
@@ -163,12 +164,15 @@ function readingFor(meta: RegistryRow, stored: StoredRrg, benchmark: ClosePrint[
   const notes = [...(stored.meta?.notes || meta.notes || [])];
   if (gaps) notes.push(`${gaps} weekdays in the stored span have no close. They were not filled.`);
   if (meta.status === "stale") notes.push(`Series ends ${meta.to}. It is not filled forward to the benchmark.`);
-  return buildReading({
-    ...args(meta, stored.rows, benchmark, query.timeframe, query),
-    notes,
-    limited: meta.limited || stored.quality?.limitedHistory === true || meta.status === "limited",
-    unresolved: stored.unresolved,
-  });
+  return {
+    ...buildReading({
+      ...args(meta, stored.rows, benchmark, query.timeframe, query),
+      notes,
+      limited: meta.limited || stored.quality?.limitedHistory === true || meta.status === "limited",
+      unresolved: stored.unresolved,
+    }),
+    exchange: meta.exchange || null,
+  };
 }
 
 function args(meta: { symbol: string; name: string; limited: boolean }, instrument: ClosePrint[], benchmark: ClosePrint[], timeframe: Timeframe, query: RrgQuery) {
@@ -180,6 +184,7 @@ function args(meta: { symbol: string; name: string; limited: boolean }, instrume
     timeframe,
     asOf: query.asOf,
     tail: query.tail,
+    returnBars: query.returnBars,
     notes: [] as string[],
     limited: meta.limited,
   };

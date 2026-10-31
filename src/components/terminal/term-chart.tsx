@@ -725,13 +725,13 @@ export function TermChart({
         <span className="ml-auto text-[10px] text-subtle">
           {chartMode === "bench"
             ? benchPack && benchPack.bars.length >= 2
-              ? `${benchMeta.name} adjusted candles · first close in view = 100 · not a second line`
+              ? `${benchMeta.name} adjusted · first close = 100 · wicks are component ratios, not the relative-price extreme`
               : benchQ.isPending
                 ? `Loading ${benchMeta.name}…`
                 : `${benchMeta.name} unavailable · price scale unchanged`
             : chartMode === "usd"
               ? usdPack && usdPack.bars.length >= 2
-                ? "USD · historical USD/INR · not today's rate on old bars"
+                ? "USD · historical USD/INR within 10 days · not today's rate and not a stale carry"
                 : "USD/INR history unavailable"
               : useLog
                 ? "Log scale"

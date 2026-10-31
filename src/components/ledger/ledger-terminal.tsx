@@ -245,7 +245,7 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
       return {
         bars: adjusted.bars,
         adjusted: true,
-        note: `Relative to ${benchMeta.name}. The first shared close is 100. This is not the rupee price.${adjusted.dropped ? ` ${adjusted.dropped} sessions had no index print and were left out.` : ""}`,
+        note: `Relative to ${benchMeta.name}. The first shared close is 100. This is not the rupee price. The close is the two session closes. The wick is each high and low divided, not the high and low of the relative price during the session.${adjusted.dropped ? ` ${adjusted.dropped} sessions had no index print and were left out.` : ""}`,
       };
     }
     if (chartMode === "usd") {
@@ -262,7 +262,7 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
       return {
         bars: fx.bars,
         adjusted: true,
-        note: `Each candle is the rupee price divided by the USD/INR rate on or before that IST session.${spec.intra ? " Intraday bars share that day’s rate." : ""}${fx.missing ? ` ${fx.missing} sessions had no earlier rate and were left out.` : ""}`,
+        note: `Each candle is the rupee price divided by the USD/INR rate on or before that IST session. A rate older than 10 calendar days is not used.${spec.intra ? " Intraday bars share that day’s rate." : ""}${fx.missing ? ` ${fx.missing} sessions had no usable rate and were left out.` : ""}`,
       };
     }
     return { bars, adjusted: false, note: ohlc.data?.seriesNote || "" };

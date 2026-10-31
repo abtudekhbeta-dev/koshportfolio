@@ -1,13 +1,18 @@
 /**
  * Nifty indices Yahoo chart meta actually priced on 2026-10-14
- * (regularMarketPrice > 0 and a finite regularMarketChangePercent).
- * This is every Nifty index that feed returned, not a guessed NSE list.
+ * (regularMarketPrice > 0 and a finite regularMarketChangePercent),
+ * plus Sensex (^BSESN), which the market tape already quotes.
+ * Thematic names follow the NSE sector board in rrg-sectors.ts
+ * (Energy, Commodities, Infrastructure, Consumption, CPSE, and the
+ * MNC, PSE, Services, Manufacturing, and Infra Logistics indices).
+ * Not added, because this feed has no verified symbol for them:
+ * Capital Goods, Cement, Chemicals, Defence, Power, NBFC, Insurance.
  * Left out on purpose: NV20.NS is the Kotak Nifty 50 Value 20 ETF, and
  * ^NSEDIV is dividend points with a zero session change.
  */
 export const NIFTY_CATALOGUE_VERSION = "2026-10-14";
 
-export type IndexFamily = "Broad market" | "Sectoral" | "Mid / small cap" | "Strategy" | "Bonds" | "Volatility";
+export type IndexFamily = "Broad market" | "Sectoral" | "Thematic" | "Mid / small cap" | "Strategy" | "Bonds" | "Volatility";
 
 export type CatalogueIndex = {
   symbol: string;
@@ -19,6 +24,7 @@ export type CatalogueIndex = {
 
 export const NIFTY_CATALOGUE: CatalogueIndex[] = [
   { symbol: "^NSEI", name: "Nifty 50", family: "Broad market" },
+  { symbol: "^BSESN", name: "Sensex", family: "Broad market" },
   { symbol: "^NSMIDCP", name: "Nifty Next 50", family: "Broad market" },
   { symbol: "^CNX100", name: "Nifty 100", family: "Broad market" },
   { symbol: "^CNX200", name: "Nifty 200", family: "Broad market" },
@@ -38,20 +44,20 @@ export const NIFTY_CATALOGUE: CatalogueIndex[] = [
   { symbol: "NIFTY_HEALTHCARE.NS", name: "Nifty Healthcare", family: "Sectoral", key: true },
   { symbol: "^CNXFMCG", name: "Nifty FMCG", family: "Sectoral", key: true },
   { symbol: "NIFTY_CONSR_DURBL.NS", name: "Nifty Consumer Durables", family: "Sectoral", key: true },
-  { symbol: "^CNXCONSUM", name: "Nifty Consumption", family: "Sectoral", key: true },
-  { symbol: "^CNXENERGY", name: "Nifty Energy", family: "Sectoral", key: true },
+  { symbol: "^CNXCONSUM", name: "Nifty Consumption", family: "Thematic" },
+  { symbol: "^CNXENERGY", name: "Nifty Energy", family: "Thematic" },
   { symbol: "NIFTY_OIL_AND_GAS.NS", name: "Nifty Oil & Gas", family: "Sectoral", key: true },
   { symbol: "^CNXMETAL", name: "Nifty Metal", family: "Sectoral", key: true },
-  { symbol: "^CNXCMDT", name: "Nifty Commodities", family: "Sectoral", key: true },
+  { symbol: "^CNXCMDT", name: "Nifty Commodities", family: "Thematic" },
   { symbol: "^CNXREALTY", name: "Nifty Realty", family: "Sectoral", key: true },
-  { symbol: "^CNXINFRA", name: "Nifty Infra", family: "Sectoral", key: true },
-  { symbol: "NIFTY_INFRALOG.NS", name: "Nifty Infra Logistics", family: "Sectoral", key: true },
+  { symbol: "^CNXINFRA", name: "Nifty Infra", family: "Thematic" },
+  { symbol: "NIFTY_INFRALOG.NS", name: "Nifty Infra Logistics", family: "Thematic" },
   { symbol: "^CNXMEDIA", name: "Nifty Media", family: "Sectoral", key: true },
-  { symbol: "^CNXSERVICE", name: "Nifty Services", family: "Sectoral", key: true },
-  { symbol: "^CNXMNC", name: "Nifty MNC", family: "Sectoral", key: true },
-  { symbol: "^CNXPSE", name: "Nifty PSE", family: "Sectoral", key: true },
-  { symbol: "NIFTY_CPSE.NS", name: "Nifty CPSE", family: "Sectoral", key: true },
-  { symbol: "NIFTY_INDIA_MFG.NS", name: "Nifty India Manufacturing", family: "Sectoral", key: true },
+  { symbol: "^CNXSERVICE", name: "Nifty Services", family: "Thematic" },
+  { symbol: "^CNXMNC", name: "Nifty MNC", family: "Thematic" },
+  { symbol: "^CNXPSE", name: "Nifty PSE", family: "Thematic" },
+  { symbol: "NIFTY_CPSE.NS", name: "Nifty CPSE", family: "Thematic" },
+  { symbol: "NIFTY_INDIA_MFG.NS", name: "Nifty India Manufacturing", family: "Thematic" },
 
   { symbol: "^NSEMDCP50", name: "Nifty Midcap 50", family: "Mid / small cap" },
   { symbol: "NIFTY_MIDCAP_100.NS", name: "Nifty Midcap 100", family: "Mid / small cap" },
@@ -94,6 +100,7 @@ export const INDEX_FAMILIES: Array<IndexFamily | "All"> = [
   "All",
   "Broad market",
   "Sectoral",
+  "Thematic",
   "Mid / small cap",
   "Strategy",
   "Bonds",

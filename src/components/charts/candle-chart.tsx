@@ -1950,14 +1950,14 @@ export function CandleChart({
       ) : chartMode === "bench" ? (
         <div className="mt-1 text-[11px] text-muted">
           {benchPack && benchPack.bars.length >= 2
-            ? `${benchMeta.name} adjusted candles. First close in view is 100. The index is taken out of the stock, not drawn beside it.${benchPack.dropped ? ` ${benchPack.dropped} bars had no matching index print.` : ""} Not a signal.`
+            ? `${benchMeta.name} adjusted candles. First close in view is 100. The close is the two closes. Wicks are component ratios, not the session extreme of the relative price.${benchPack.dropped ? ` ${benchPack.dropped} bars had no matching index print.` : ""} Not a signal.`
             : benchQ.isPending
               ? `Loading ${benchMeta.name}…`
               : `${benchMeta.name} history unavailable for this window. Price scale unchanged.`}
         </div>
       ) : chartMode === "usd" ? (
         <div className="mt-1 text-[11px] text-muted">
-          {fxQ.data?.bars?.length ? "USD using each bar’s historical USD/INR. Not today’s rate on old bars." : "USD/INR history unavailable — price scale unchanged."}
+          {fxQ.data?.bars?.length ? "USD using each bar’s historical USD/INR, within 10 days. Not today’s rate, and not a stale rate carried forward." : "USD/INR history unavailable — price scale unchanged."}
         </div>
       ) : null}
 

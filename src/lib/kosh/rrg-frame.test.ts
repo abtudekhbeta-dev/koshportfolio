@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { aggregateCloses, buildReading, filterReadings, interpret, isoWeek, pairTimeframe, plotDomain, rotationBrief, rrgLayout, sortReadings, viewState, zoomDomain, type RrgReading } from "./rrg-frame.ts";
+import { aggregateCloses, buildReading, filterReadings, interpret, isoWeek, pairTimeframe, plotDomain, rankByRelativeStrength, rotationBrief, rrgLayout, sortReadings, viewState, zoomDomain, type RrgReading } from "./rrg-frame.ts";
 import { buildPack } from "./rrg-pack.ts";
 import { loadRrgPack } from "./rrg-read.server.ts";
 import { resolveSymbols } from "./rrg-universe.ts";
@@ -170,6 +170,29 @@ describe("rotation brief", () => {
     assert.match(brief.contrasts[0] || "", /C is lagging/);
     assert.equal(brief.aligned.length, 1);
     assert.equal(brief.split.length, 1);
+  });
+});
+
+describe("relative strength rank", () => {
+  it("ranks by RS-Ratio, leaves a missing previous point blank, and does not use price return", () => {
+    const rows = rankByRelativeStrength([
+      { symbol: "B", name: "Beta", exchange: "NSE", rsRatio: 90, rsMomentum: 101, absoluteReturn: 0.2, relativeReturn: 0.05, quadrant: "lagging", tail: [{ rsRatio: 110 }, { rsRatio: 90 }] },
+      { symbol: "A", name: "Alpha", exchange: "BSE", rsRatio: 110, rsMomentum: 99, absoluteReturn: -0.01, relativeReturn: 0.04, quadrant: "leading", tail: [{ rsRatio: 100 }, { rsRatio: 110 }] },
+      { symbol: "C", name: "Gamma", rsRatio: null, rsMomentum: null, absoluteReturn: 0.5, relativeReturn: 0.5, quadrant: null, tail: [] },
+    ]);
+    assert.equal(rows[0]?.symbol, "A");
+    assert.equal(rows[0]?.rank, 1);
+    assert.equal(rows[0]?.previousRank, 2);
+    assert.equal(rows[0]?.rankChange, 1);
+    assert.equal(rows[0]?.exchange, "BSE");
+    assert.ok(Math.abs((rows[0]?.benchmarkReturn || 0) - -0.05) < 1e-9);
+    assert.equal(rows[1]?.symbol, "B");
+    assert.equal(rows[1]?.rank, 2);
+    assert.equal(rows[1]?.previousRank, 1);
+    assert.equal(rows[1]?.rankChange, -1);
+    assert.equal(rows[2]?.rank, null);
+    assert.equal(rows[2]?.previousRank, null);
+    assert.equal(rows[2]?.rankChange, null);
   });
 });
 
