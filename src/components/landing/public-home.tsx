@@ -35,7 +35,6 @@ const SECONDARY = [
   { label: "Results calendar", to: "/results" as const },
   { label: "Undervalued Growth", to: "/value" as const },
   { label: "Alerts", to: "/alerts" as const },
-  { label: "Trading journal", to: "/journal" as const },
 ];
 
 function LandingMark() {
@@ -233,9 +232,6 @@ export function PublicHome() {
               ))}
               <Link to="/alerts" className="min-h-11 text-base font-medium" onClick={() => setMenu(false)}>
                 Alerts
-              </Link>
-              <Link to="/journal" className="min-h-11 text-base font-medium" onClick={() => setMenu(false)}>
-                Journal
               </Link>
             </div>
           </div>

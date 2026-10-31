@@ -16,7 +16,6 @@ const ACTIONS = [
   { id: "value", label: "Undervalued Growth", to: "/value" as const },
   { id: "results", label: "Results calendar", to: "/results" as const },
   { id: "alerts", label: "Alerts", to: "/alerts" as const },
-  { id: "journal", label: "Trading journal", to: "/journal" as const },
   { id: "compare", label: "Open Compare", to: "/compare" as const },
   { id: "watch", label: "Open Watch", to: "/watch" as const },
   { id: "markets", label: "Open Terminal", to: "/markets" as const },

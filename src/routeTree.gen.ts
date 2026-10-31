@@ -14,7 +14,6 @@ import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as CompareRouteImport } from './routes/compare'
 import { Route as IconsRouteImport } from './routes/icons'
-import { Route as JournalRouteImport } from './routes/journal'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MarketsRouteImport } from './routes/markets'
 import { Route as PicksRouteImport } from './routes/picks'
@@ -87,11 +86,6 @@ const CompareRoute = CompareRouteImport.update({
 const IconsRoute = IconsRouteImport.update({
   id: '/icons',
   path: '/icons',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const JournalRoute = JournalRouteImport.update({
-  id: '/journal',
-  path: '/journal',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -341,7 +335,6 @@ export interface FileRoutesByFullPath {
   '/app': typeof AppRoute
   '/compare': typeof CompareRoute
   '/icons': typeof IconsRoute
-  '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRouteWithChildren
   '/picks': typeof PicksRoute
@@ -397,7 +390,6 @@ export interface FileRoutesByTo {
   '/app': typeof AppRoute
   '/compare': typeof CompareRoute
   '/icons': typeof IconsRoute
-  '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRouteWithChildren
   '/picks': typeof PicksRoute
@@ -453,7 +445,6 @@ export interface FileRoutesById {
   '/app': typeof AppRoute
   '/compare': typeof CompareRoute
   '/icons': typeof IconsRoute
-  '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRouteWithChildren
   '/picks': typeof PicksRoute
@@ -511,7 +502,6 @@ export interface FileRouteTypes {
     | '/app'
     | '/compare'
     | '/icons'
-    | '/journal'
     | '/login'
     | '/markets'
     | '/picks'
@@ -567,7 +557,6 @@ export interface FileRouteTypes {
     | '/app'
     | '/compare'
     | '/icons'
-    | '/journal'
     | '/login'
     | '/markets'
     | '/picks'
@@ -622,7 +611,6 @@ export interface FileRouteTypes {
     | '/app'
     | '/compare'
     | '/icons'
-    | '/journal'
     | '/login'
     | '/markets'
     | '/picks'
@@ -679,7 +667,6 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRoute
   CompareRoute: typeof CompareRoute
   IconsRoute: typeof IconsRoute
-  JournalRoute: typeof JournalRoute
   LoginRoute: typeof LoginRoute
   MarketsRoute: typeof MarketsRouteWithChildren
   PicksRoute: typeof PicksRoute
@@ -755,13 +742,6 @@ declare module '@tanstack/react-router' {
       path: '/icons'
       fullPath: '/icons'
       preLoaderRoute: typeof IconsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/journal': {
-      id: '/journal'
-      path: '/journal'
-      fullPath: '/journal'
-      preLoaderRoute: typeof JournalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -1146,7 +1126,6 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRoute,
   CompareRoute: CompareRoute,
   IconsRoute: IconsRoute,
-  JournalRoute: JournalRoute,
   LoginRoute: LoginRoute,
   MarketsRoute: MarketsRouteWithChildren,
   PicksRoute: PicksRoute,

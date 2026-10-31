@@ -69,9 +69,6 @@ export function IntelligenceShell({ children, full }: { children: ReactNode; wid
           <RailLink to="/results" on={navOn("/results", pathname)}>
             Results
           </RailLink>
-          <RailLink to="/journal" on={navOn("/journal", pathname)}>
-            Journal
-          </RailLink>
           <RailLink to="/alerts" on={navOn("/alerts", pathname)}>
             Alerts
           </RailLink>
@@ -156,7 +153,7 @@ function RailLink({
   on,
   children,
 }: {
-  to: "/markets" | "/watch" | "/screen" | "/compare" | "/app" | "/p/$id" | "/value" | "/results" | "/journal" | "/alerts";
+  to: "/markets" | "/watch" | "/screen" | "/compare" | "/app" | "/p/$id" | "/value" | "/results" | "/alerts";
   params?: { id: string };
   search?: { view: "terminal" | "overview" };
   on?: boolean;
@@ -182,7 +179,6 @@ function RailLink({
   if (to === "/compare") return <Link to="/compare" className={className}>{children}</Link>;
   if (to === "/value") return <Link to="/value" className={className}>{children}</Link>;
   if (to === "/results") return <Link to="/results" className={className}>{children}</Link>;
-  if (to === "/journal") return <Link to="/journal" className={className}>{children}</Link>;
   if (to === "/alerts") return <Link to="/alerts" className={className}>{children}</Link>;
   return (
     <Link to="/app" className={className}>

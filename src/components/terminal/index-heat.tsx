@@ -4,7 +4,8 @@ import { IndexComposition } from "@/components/terminal/index-composition";
 import { fmtPct } from "@/lib/kosh/engine";
 import { terminalSearch } from "@/lib/kosh/instrument-nav";
 import { DEFAULT_KEY_SYMBOLS, FAMILY_LABEL, KEY_INDICES_KEY, catalogueBySymbol, loadKeyIndices, moveKey } from "@/lib/kosh/key-indices";
-import { INDEX_FAMILIES, NIFTY_CATALOGUE, type CatalogueIndex, type IndexFamily } from "@/lib/kosh/nifty-catalogue";
+import { HEAT_BOARDS, heatGroups, type HeatBoardId } from "@/lib/kosh/index-boards";
+import { NIFTY_CATALOGUE, type CatalogueIndex } from "@/lib/kosh/nifty-catalogue";
 import type { Quote } from "@/lib/kosh/types";
 import { bareSymbol } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -30,19 +31,26 @@ function IndexTile({
   const pct = price != null && quote && Number.isFinite(quote.changePct) ? quote.changePct : null;
   const status = price == null ? (failed ? "Unavailable" : "No quote") : null;
   return (
-    <div className="relative flex h-full min-h-[96px] flex-col rounded-lg border border-border bg-surface px-3 py-3">
-      <button type="button" className="flex h-full w-full min-w-0 flex-col pr-10 text-left" aria-label={`Open ${row.name} in Terminal`} onClick={() => onChart(row.symbol, row.name)}>
-        <div className="line-clamp-2 text-[12px] font-medium leading-4 text-fg" title={row.name}>
-          {row.name}
-        </div>
-        <div className="mt-auto pt-3 font-mono text-[18px] leading-none font-medium tabular">{status || money(price as number)}</div>
-        <div className={cn("mt-2 font-mono text-[12px] leading-none tabular", status || pct == null ? "text-muted" : pct >= 0 ? "text-up" : "text-down")}>
-          {status ? "" : pct == null ? "—" : fmtPct(pct)}
-        </div>
-      </button>
-        <button
+    <div className="flex h-[3.25rem] items-stretch overflow-hidden rounded-md border border-border bg-surface">
+      <button
         type="button"
-        className="absolute top-0 right-0 grid size-11 place-items-center text-[10px] font-medium tracking-wide text-muted uppercase"
+        className="flex h-full min-w-0 flex-1 flex-col justify-center gap-1 px-2.5 text-left"
+        aria-label={`Open ${row.name} in Terminal`}
+        onClick={() => onChart(row.symbol, row.name)}
+      >
+        <span className="truncate text-[12px] leading-none font-medium text-fg" title={row.name}>
+          {row.name}
+        </span>
+        <span className="flex items-baseline gap-2 leading-none">
+          <span className="shrink-0 font-mono text-[13px] font-medium tabular">{status || money(price as number)}</span>
+          <span className={cn("shrink-0 font-mono text-[12px] tabular", status || pct == null ? "text-muted" : pct >= 0 ? "text-up" : "text-down")}>
+            {status ? "" : pct == null ? "—" : fmtPct(pct)}
+          </span>
+        </span>
+      </button>
+      <button
+        type="button"
+        className="h-full shrink-0 px-2.5 text-[10px] font-medium tracking-wide text-muted uppercase"
         aria-label={`${row.name} constituents`}
         title="Constituents by index share"
         onClick={() => onComposition(row)}
@@ -76,7 +84,8 @@ export function IndexHeat({
   const [drag, setDrag] = useState<number | null>(null);
   const [q, setQ] = useState("");
   const [addQ, setAddQ] = useState("");
-  const [family, setFamily] = useState<(typeof INDEX_FAMILIES)[number]>("All");
+  const [board, setBoard] = useState<HeatBoardId>("broad");
+  const [closed, setClosed] = useState<Record<string, boolean>>({});
   const [composition, setComposition] = useState<CatalogueIndex | null>(null);
   useEffect(() => {
     setKeys(loadKeyIndices(window.localStorage.getItem(KEY_INDICES_KEY)));
@@ -95,22 +104,16 @@ export function IndexHeat({
     () => keys.map((symbol) => catalogueBySymbol(symbol)).filter((row): row is CatalogueIndex => Boolean(row)),
     [keys],
   );
-  const list = useMemo(() => {
+  const query = q.trim().toLowerCase();
+  const matched = useMemo(() => {
     const base = mode === "key" ? keyRows : NIFTY_CATALOGUE;
-    const query = q.trim().toLowerCase();
-    return base.filter((row) => {
-      if (mode === "all" && family !== "All" && row.family !== family) return false;
-      if (!query) return true;
-      return row.name.toLowerCase().includes(query) || row.symbol.toLowerCase().includes(query);
-    });
-  }, [mode, q, family, keyRows]);
-  const grouped = mode === "all" && !q.trim() && family === "All";
-  const groups = useMemo(() => {
-    if (!grouped) return [{ family: null as IndexFamily | null, rows: list }];
-    return INDEX_FAMILIES.filter((name): name is IndexFamily => name !== "All")
-      .map((name) => ({ family: name, rows: list.filter((row) => row.family === name) }))
-      .filter((group) => group.rows.length);
-  }, [grouped, list]);
+    if (!query || mode === "key") return base;
+    return base.filter((row) => row.name.toLowerCase().includes(query) || row.symbol.toLowerCase().includes(query));
+  }, [mode, query, keyRows]);
+  const sections = useMemo(() => {
+    if (mode === "key") return [{ board: "broad" as const, group: "", groupOrder: 0, rows: matched }];
+    return heatGroups(matched, query ? undefined : board);
+  }, [mode, matched, query, board]);
   const addable = useMemo(() => {
     const query = addQ.trim().toLowerCase();
     if (!query) return [];
@@ -155,15 +158,26 @@ export function IndexHeat({
                 aria-label="Search indices"
                 className="h-7 w-32 max-w-full rounded-sm bg-surface px-2 text-[11px] shadow-[var(--shadow-border)] outline-none"
               />
-              <select aria-label="Index family" value={family} onChange={(e) => setFamily(e.target.value as typeof family)} className="h-7 max-w-full rounded-sm bg-surface px-2 text-[11px] shadow-[var(--shadow-border)]">
-                {INDEX_FAMILIES.map((name) => (
-                  <option key={name} value={name}>{FAMILY_LABEL[name] || name}</option>
-                ))}
-              </select>
             </>
           )}
         </div>
       </div>
+      {mode === "all" && !query ? (
+        <div className="mb-2 flex flex-wrap gap-1" role="tablist" aria-label="Index category">
+          {HEAT_BOARDS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={board === item.id}
+              className={cn("h-7 rounded-sm px-2 text-[11px]", board === item.id ? "bg-surface text-fg shadow-[var(--shadow-border)]" : "text-muted")}
+              onClick={() => setBoard(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {mode === "key" && editing ? (
         <div className="mb-2 rounded-sm bg-surface px-2 py-2 shadow-[var(--shadow-border)]">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -214,18 +228,36 @@ export function IndexHeat({
       {pending && !quotes.length ? (
         <p className="text-[13px] text-muted">Loading index quotes…</p>
       ) : (
-        <div className="grid gap-3">
-          {groups.map((group) => (
-            <div key={group.family || "flat"}>
-              {group.family ? <h3 className="mb-1.5 text-[11px] font-semibold tracking-[0.08em] text-subtle uppercase">{FAMILY_LABEL[group.family] || group.family}</h3> : null}
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                {group.rows.map((row) => (
-                  <IndexTile key={row.symbol} row={row} quote={quoteOf(row)} failed={failed} onChart={openTerminal} onComposition={setComposition} />
-                ))}
+        <div className="grid gap-2">
+          {sections.map((group) => {
+            const hidden = Boolean(group.group) && closed[group.board + group.group];
+            const boardLabel = HEAT_BOARDS.find((item) => item.id === group.board)?.label || "";
+            const title = !group.group ? "" : query && boardLabel !== group.group ? `${boardLabel} · ${group.group}` : group.group;
+            return (
+              <div key={group.board + group.group}>
+                {title ? (
+                  <button
+                    type="button"
+                    className="mb-1 flex h-7 items-center gap-1.5 text-[11px] font-semibold tracking-[0.08em] text-muted uppercase"
+                    aria-expanded={!hidden}
+                    onClick={() => setClosed((current) => ({ ...current, [group.board + group.group]: !current[group.board + group.group] }))}
+                  >
+                    <span aria-hidden>{hidden ? "▸" : "▾"}</span>
+                    {title}
+                    <span className="font-normal tracking-normal text-subtle">{group.rows.length}</span>
+                  </button>
+                ) : null}
+                {hidden ? null : (
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {group.rows.map((row) => (
+                      <IndexTile key={row.symbol} row={row} quote={quoteOf(row)} failed={failed} onChart={openTerminal} onComposition={setComposition} />
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
-          {!list.length ? <p className="text-[13px] text-muted">{mode === "key" ? "No key indices yet. Edit the board to add some." : "No index matches that search."}</p> : null}
+            );
+          })}
+          {!sections.some((group) => group.rows.length) ? <p className="text-[13px] text-muted">{mode === "key" ? "No key indices yet. Edit the board to add some." : "No index matches that search."}</p> : null}
         </div>
       )}
       {composition ? (
