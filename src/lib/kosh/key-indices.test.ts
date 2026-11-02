@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DEFAULT_KEY_SYMBOLS, loadKeyIndices, moveKey, sanitizeKeyIndices } from "./key-indices.ts";
+import { DEFAULT_KEY_SYMBOLS, PREVIOUS_KEY_DEFAULT, loadKeyIndices, moveKey, sanitizeKeyIndices } from "./key-indices.ts";
 import { NIFTY_CATALOGUE } from "./nifty-catalogue.ts";
 
 describe("key indices", () => {
@@ -13,6 +13,12 @@ describe("key indices", () => {
     assert.deepEqual(loadKeyIndices(null), [...DEFAULT_KEY_SYMBOLS]);
     assert.deepEqual(loadKeyIndices("[]"), []);
     assert.deepEqual(loadKeyIndices("{"), [...DEFAULT_KEY_SYMBOLS]);
+    assert.ok(DEFAULT_KEY_SYMBOLS.includes("NIFTY_MICROCAP250.NS"));
+    assert.ok(DEFAULT_KEY_SYMBOLS.includes("NIFTYSMLCAP250.NS"));
+    assert.ok(DEFAULT_KEY_SYMBOLS.includes("^CNX200"));
+    assert.deepEqual(loadKeyIndices(JSON.stringify([...PREVIOUS_KEY_DEFAULT])), [...DEFAULT_KEY_SYMBOLS]);
+    assert.deepEqual(loadKeyIndices(JSON.stringify(["^NSEI", "^CNXIT"])), ["^NSEI", "^CNXIT"]);
+    assert.deepEqual(loadKeyIndices("[]"), []);
   });
 
   it("reorders without duplicating or dropping", () => {

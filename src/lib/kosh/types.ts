@@ -731,7 +731,7 @@ export type ResultEvent = {
   /** Official date is not on file — the day is a calendar convention or a typical window. */
   expected?: boolean;
   exchange?: "NSE" | "BSE";
-  status?: "scheduled-confirmed" | "reported" | "rescheduled" | "postponed" | "cancelled" | "date-unavailable";
+  status?: "scheduled-confirmed" | "expected" | "reported" | "rescheduled" | "postponed" | "cancelled" | "date-unavailable" | "needs-verification";
   meetingDate?: string | null;
   filedAt?: string | null;
   source?: string;

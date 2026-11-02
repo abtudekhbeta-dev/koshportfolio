@@ -4,10 +4,10 @@ import { IndexComposition } from "@/components/terminal/index-composition";
 import { fmtPct } from "@/lib/kosh/engine";
 import { terminalSearch } from "@/lib/kosh/instrument-nav";
 import { DEFAULT_KEY_SYMBOLS, FAMILY_LABEL, KEY_INDICES_KEY, catalogueBySymbol, loadKeyIndices, moveKey } from "@/lib/kosh/key-indices";
-import { HEAT_BOARDS, heatGroups, type HeatBoardId } from "@/lib/kosh/index-boards";
+import { HEAT_BOARDS, HEAT_FILL, heatGroups, heatTone, type HeatBoardId } from "@/lib/kosh/index-boards";
 import { NIFTY_CATALOGUE, type CatalogueIndex } from "@/lib/kosh/nifty-catalogue";
 import type { Quote } from "@/lib/kosh/types";
-import { bareSymbol } from "@/lib/store";
+import { bareSymbol, useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 function money(n: number) {
@@ -30,8 +30,10 @@ function IndexTile({
   const price = quote && quote.price > 0 ? quote.price : null;
   const pct = price != null && quote && Number.isFinite(quote.changePct) ? quote.changePct : null;
   const status = price == null ? (failed ? "Unavailable" : "No quote") : null;
+  const theme = useKosh((s) => s.theme);
+  const fill = HEAT_FILL[theme === "light" ? "light" : "dark"][heatTone(pct)];
   return (
-    <div className="flex h-[3.25rem] items-stretch overflow-hidden rounded-md border border-border bg-surface">
+    <div className="flex h-[52px] items-stretch overflow-hidden rounded-md border border-border" style={{ background: fill }}>
       <button
         type="button"
         className="flex h-full min-w-0 flex-1 flex-col justify-center gap-1 px-2.5 text-left"
@@ -228,7 +230,7 @@ export function IndexHeat({
       {pending && !quotes.length ? (
         <p className="text-[13px] text-muted">Loading index quotes…</p>
       ) : (
-        <div className="grid gap-2">
+        <div className="grid gap-1">
           {sections.map((group) => {
             const hidden = Boolean(group.group) && closed[group.board + group.group];
             const boardLabel = HEAT_BOARDS.find((item) => item.id === group.board)?.label || "";
@@ -238,7 +240,7 @@ export function IndexHeat({
                 {title ? (
                   <button
                     type="button"
-                    className="mb-1 flex h-7 items-center gap-1.5 text-[11px] font-semibold tracking-[0.08em] text-muted uppercase"
+                    className="mb-0.5 flex h-6 items-center gap-1.5 text-[11px] font-semibold tracking-[0.06em] text-muted uppercase"
                     aria-expanded={!hidden}
                     onClick={() => setClosed((current) => ({ ...current, [group.board + group.group]: !current[group.board + group.group] }))}
                   >
@@ -248,7 +250,7 @@ export function IndexHeat({
                   </button>
                 ) : null}
                 {hidden ? null : (
-                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <div className="grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),270px))]">
                     {group.rows.map((row) => (
                       <IndexTile key={row.symbol} row={row} quote={quoteOf(row)} failed={failed} onChart={openTerminal} onComposition={setComposition} />
                     ))}

@@ -68,12 +68,14 @@ function toneOf(kind: ResultEvent["kind"]) {
 }
 
 const STATUS: Record<string, string> = {
-  "scheduled-confirmed": "Scheduled",
+  "scheduled-confirmed": "Confirmed",
+  expected: "Expected",
   reported: "Reported",
   postponed: "Postponed",
   rescheduled: "Rescheduled",
   cancelled: "Cancelled",
-  "date-unavailable": "No date",
+  "date-unavailable": "Needs a date",
+  "needs-verification": "Needs verification",
 };
 
 export function EventCalendar({ compact, symbols }: { compact?: boolean; symbols?: string[] }) {
@@ -120,12 +122,6 @@ export function EventCalendar({ compact, symbols }: { compact?: boolean; symbols
           ))}
         </div>
       </div>
-      {q.data?.calendar?.stale || q.data?.calendar?.limitation ? (
-        <p className="mt-2 text-[12px] text-subtle">
-          {q.data.calendar.stale ? "Last refresh is stale. " : ""}
-          {q.data.calendar.limitation || q.data.calendar.failures?.join(" ")}
-        </p>
-      ) : null}
       {q.isPending && !shown.length ? (
         <p className="mt-3 text-sm text-muted">Loading the calendar…</p>
       ) : shown.length ? (

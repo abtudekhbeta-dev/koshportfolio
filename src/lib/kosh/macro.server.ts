@@ -2,6 +2,7 @@
 
 import type { DealEvent, FiidiiRow, MacroPack, ResultEvent } from "./types";
 import { loadResultsCalendar } from "./results-calendar.server";
+import { istToday, shiftDay } from "./results-calendar";
 import { universeName } from "./universe";
 import { parseIstDate } from "./dates";
 import { loadFlowPack } from "./market-flows.server";
@@ -54,7 +55,10 @@ async function fetchFiidii(): Promise<{ rows: FiidiiRow[]; flow: MacroPack["flow
 
 async function fetchResults(): Promise<{ events: ResultEvent[]; calendar: MacroPack["calendar"] }> {
   const pack = await loadResultsCalendar();
-  const events: ResultEvent[] = pack.events.slice(0, 80).map((row) => ({
+  const today = istToday();
+  const horizon = shiftDay(today, 14);
+  const forward = pack.events.filter((row) => row.date >= today && row.date <= horizon);
+  const events: ResultEvent[] = forward.map((row) => ({
     symbol: row.symbol,
     name: row.name,
     date: row.date,
@@ -67,6 +71,7 @@ async function fetchResults(): Promise<{ events: ResultEvent[]; calendar: MacroP
     source: row.source,
     sourceUrl: row.sourceUrl,
     quarter: row.quarter,
+    expected: row.status === "expected" ? true : undefined,
   }));
   return {
     events,

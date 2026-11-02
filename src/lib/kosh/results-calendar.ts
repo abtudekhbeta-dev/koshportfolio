@@ -4,11 +4,13 @@ import { compareIstDate, parseIstDate } from "./dates.ts";
 
 export type ResultStatus =
   | "scheduled-confirmed"
+  | "expected"
   | "reported"
   | "rescheduled"
   | "postponed"
   | "cancelled"
-  | "date-unavailable";
+  | "date-unavailable"
+  | "needs-verification";
 
 export type CalendarHistoryItem = {
   date: string;
@@ -141,6 +143,33 @@ export function periodEndFromText(text: string): string | null {
       const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
       return `${y}-${pad(m)}-${pad(last)}`;
     }
+  }
+  return null;
+}
+
+/** Meeting day stated in a notice. The announcement timestamp is not a meeting date. */
+export function meetingDateFromNotice(text: string): string | null {
+  const s = String(text || "");
+  const leads = [
+    "postponed to",
+    "rescheduled to",
+    "revised to",
+    "now proposed to be held on",
+    "will now be held on",
+    "will be held",
+    "to be held",
+    "scheduled to be held",
+    "is to be held",
+    "held on",
+  ];
+  const lower = s.toLowerCase();
+  for (const lead of leads) {
+    const at = lower.indexOf(lead);
+    if (at < 0) continue;
+    const slice = s.slice(at + lead.length, at + lead.length + 90).replace(/(\d)(st|nd|rd|th)\b/gi, "$1");
+    const dated = slice.match(/(\d{1,2}\s+[A-Za-z]+[, ]+\d{4}|[A-Za-z]+\s+\d{1,2}[, ]+\d{4})/);
+    const parsed = dated ? day(dated[1]) : null;
+    if (parsed) return parsed;
   }
   return null;
 }
@@ -305,7 +334,14 @@ function addLink(event: CalendarEvent, link: CalendarLink) {
 }
 
 function preferMeeting(a: CalendarEvent, b: CalendarEvent): CalendarEvent {
-  const rank = (status: ResultStatus) => (status === "cancelled" || status === "postponed" || status === "rescheduled" ? 3 : status === "scheduled-confirmed" ? 2 : 1);
+  const rank = (status: ResultStatus) =>
+    status === "needs-verification" || status === "cancelled" || status === "postponed" || status === "rescheduled"
+      ? 3
+      : status === "scheduled-confirmed"
+        ? 2
+        : status === "expected"
+          ? 0
+          : 1;
   const primary = rank(a.status) > rank(b.status) ? a : rank(b.status) > rank(a.status) ? b : a.purpose.length >= b.purpose.length ? a : b;
   const secondary = primary === a ? b : a;
   const links = [...primary.links];
@@ -369,7 +405,16 @@ export function buildResultsCalendar(meetings: RawMeeting[], filings: RawFiling[
 }
 
 function crossScore(row: CalendarEvent): number {
-  const status = row.status === "reported" ? 40 : row.status === "rescheduled" || row.status === "postponed" || row.status === "cancelled" ? 20 : 10;
+  const status =
+    row.status === "reported"
+      ? 40
+      : row.status === "needs-verification" || row.status === "rescheduled" || row.status === "postponed" || row.status === "cancelled"
+        ? 20
+        : row.status === "scheduled-confirmed"
+          ? 12
+          : row.status === "expected"
+            ? 4
+            : 10;
   return status + (row.exchange === "NSE" ? 1 : 0);
 }
 
@@ -435,4 +480,122 @@ export function monthBounds(anchor: string): { from: string; to: string } {
   const [y, m] = anchor.split("-").map(Number);
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
   return { from: `${y}-${pad(m)}-01`, to: `${y}-${pad(m)}-${pad(last)}` };
+}
+
+export function shiftDay(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + days));
+  return dt.toISOString().slice(0, 10);
+}
+
+/** Inclusive window from the anchor through `days` days later. */
+export function rollingBounds(anchor: string, days: number): { from: string; to: string } {
+  return { from: anchor, to: shiftDay(anchor, Math.max(0, Math.floor(days))) };
+}
+
+export function nextMonthBounds(anchor: string): { from: string; to: string } {
+  const [y, m] = anchor.split("-").map(Number);
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  return monthBounds(`${ny}-${pad(nm)}-01`);
+}
+
+/** Indian financial year label from a period end the exchange actually stated. */
+export function periodLabel(row: { quarter?: string | null; periodEnd?: string | null; purpose?: string | null }): string {
+  const quarter = (row.quarter || "").trim();
+  if (quarter && !/^quarterly$/i.test(quarter)) return quarter;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(row.periodEnd || "");
+  if (!match) return "—";
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const blob = `${quarter} ${row.purpose || ""}`;
+  const fy = month >= 4 ? year + 1 : year;
+  const tag = `FY${String(fy).slice(-2)}`;
+  if (/annual|full year|year ended/i.test(blob) && month === 3) return tag;
+  if (/half/i.test(blob)) return `${month <= 9 ? "H1" : "H2"} ${tag}`;
+  const q = month <= 3 ? "Q4" : month <= 6 ? "Q1" : month <= 9 ? "Q2" : "Q3";
+  return `${q} ${tag}`;
+}
+
+function bookKey(symbol: string): string {
+  return String(symbol || "").toUpperCase().replace(/\.(NS|BO)$/i, "").trim();
+}
+
+/** Portfolio wins when a symbol is on both lists. Comparison is the bare symbol, not the quantity. */
+export function membershipOf(
+  symbol: string,
+  portfolioSymbols: readonly string[],
+  watchSymbols: readonly string[],
+): "portfolio" | "watchlist" | null {
+  const key = bookKey(symbol);
+  if (!key) return null;
+  if (portfolioSymbols.some((row) => bookKey(row) === key)) return "portfolio";
+  if (watchSymbols.some((row) => bookKey(row) === key)) return "watchlist";
+  return null;
+}
+
+export type ExpectedHint = {
+  symbol: string;
+  name?: string;
+  isin?: string | null;
+  date: string;
+  periodEnd?: string | null;
+  quarter?: string | null;
+  source: string;
+  sourceUrl?: string | null;
+  exchange?: "NSE" | "BSE";
+};
+
+/**
+ * A secondary date is Expected only when no official row exists.
+ * A different official date stays the date on the row and is flagged, not overwritten.
+ */
+export function applyExpectations(events: CalendarEvent[], hints: ExpectedHint[]): CalendarEvent[] {
+  const out = events.map((row) => ({ ...row, history: [...row.history], links: [...row.links] }));
+  for (const hint of hints) {
+    const date = day(hint.date);
+    const symbol = bookKey(hint.symbol);
+    const source = String(hint.source || "").trim();
+    if (!date || !symbol || !source) continue;
+    const period = hint.periodEnd ? hint.periodEnd.slice(0, 7) : "";
+    const sameCompany = out.filter((row) => {
+      const same = bookKey(row.symbol) === symbol || Boolean(hint.isin && row.isin && row.isin === hint.isin);
+      if (!same || row.status === "reported") return false;
+      if (period && row.periodEnd && row.periodEnd.slice(0, 7) !== period) return false;
+      return true;
+    });
+    const open = period ? sameCompany : sameCompany.length === 1 ? sameCompany : sameCompany.filter((row) => row.date === date);
+    if (open.length === 1) {
+      const row = open[0];
+      if (row.date && row.date !== date) {
+        const label = `Secondary date · ${source}`;
+        if (!row.history.some((item) => item.date === date && item.label === label)) row.history.push({ date, label });
+        if (row.status === "scheduled-confirmed" || row.status === "expected") row.status = "needs-verification";
+      }
+      continue;
+    }
+    if (open.length > 1) continue;
+    const exchange = hint.exchange === "BSE" ? "BSE" : "NSE";
+    out.push({
+      symbol,
+      name: String(hint.name || symbol).trim() || symbol,
+      date,
+      purpose: hint.quarter ? `Anticipated ${hint.quarter}` : "Anticipated results date",
+      kind: "results",
+      exchange,
+      status: "expected",
+      meetingDate: null,
+      filedAt: null,
+      filedStamp: null,
+      periodEnd: hint.periodEnd ? day(hint.periodEnd) : null,
+      quarter: hint.quarter || null,
+      source,
+      sourceUrl: hint.sourceUrl && /^https:\/\//i.test(hint.sourceUrl) ? hint.sourceUrl : null,
+      links: linksFor(exchange, hint.sourceUrl || null, source),
+      isin: hint.isin || null,
+      revised: false,
+      history: [],
+    });
+  }
+  return out.sort((a, b) => compareIstDate(a.date || "9999-99-99", b.date || "9999-99-99") || a.symbol.localeCompare(b.symbol));
 }

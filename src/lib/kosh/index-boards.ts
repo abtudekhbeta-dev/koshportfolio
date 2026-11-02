@@ -32,30 +32,26 @@ function put(symbols: readonly string[], board: HeatBoardId, group: string, grou
 }
 
 put(
-  [
-    "^NSEI",
-    "^BSESN",
-    "^NSMIDCP",
-    "^CNX100",
-    "^CNX200",
-    "^CRSLDX",
-    "^NSEMDCP50",
-    "NIFTY_MIDCAP_100.NS",
-    "NIFTYMIDCAP150.NS",
-    "NIFTYSMLCAP50.NS",
-    "^CNXSC",
-    "NIFTYSMLCAP250.NS",
-    "NIFTY_LARGEMID250.NS",
-    "NIFTY_TOTAL_MKT.NS",
-    "NIFTY50_USD.NS",
-    "NIFTY_MID_SELECT.NS",
-    "NIFTYMIDSML400.NS",
-    "NIFTY_MICROCAP250.NS",
-  ],
+  ["^NSEI", "^BSESN"],
   "broad",
-  "Broad market",
+  "Benchmarks",
   0,
 );
+put(
+  ["^NSMIDCP", "^CNX100", "^CNX200", "^CRSLDX", "NIFTY_LARGEMID250.NS", "NIFTY_TOTAL_MKT.NS", "NIFTY50_USD.NS"],
+  "broad",
+  "Large and broad",
+  1,
+);
+put(
+  ["^NSEMDCP50", "NIFTY_MIDCAP_100.NS", "NIFTYMIDCAP150.NS", "NIFTY_MID_SELECT.NS"],
+  "broad",
+  "Mid-cap",
+  2,
+);
+put(["NIFTYSMLCAP50.NS", "^CNXSC", "NIFTYSMLCAP250.NS"], "broad", "Small-cap", 3);
+put(["NIFTY_MICROCAP250.NS"], "broad", "Micro-cap", 4);
+put(["NIFTYMIDSML400.NS"], "broad", "Cross-cap", 5);
 
 put(["^NSEBANK", "NIFTY_PVT_BANK.NS", "^CNXPSUBANK"], "sector", "Banking", 0);
 put(["NIFTY_FIN_SERVICE.NS", "^CNXFIN"], "sector", "Financial services", 1);
@@ -156,3 +152,34 @@ export function catalogueCoverage(): { missing: string[]; extra: string[] } {
   const extra = [...SPOT.keys()].filter((symbol) => !known.has(symbol));
   return { missing, extra };
 }
+
+export type HeatTone = "up-strong" | "up" | "up-soft" | "flat" | "down-soft" | "down" | "down-strong";
+
+/** Card wash from the session percentage. Missing or ~flat stays neutral. */
+export function heatTone(pct: number | null | undefined): HeatTone {
+  if (pct == null || !Number.isFinite(pct) || Math.abs(pct) < 0.05) return "flat";
+  const mag = Math.abs(pct);
+  if (pct > 0) return mag >= 1.25 ? "up-strong" : mag >= 0.4 ? "up" : "up-soft";
+  return mag >= 1.25 ? "down-strong" : mag >= 0.4 ? "down" : "down-soft";
+}
+
+export const HEAT_FILL: Record<"light" | "dark", Record<HeatTone, string>> = {
+  light: {
+    "up-strong": "#DDF3E7",
+    up: "#E8F6EE",
+    "up-soft": "#F0F8F2",
+    flat: "#FFFFFF",
+    "down-soft": "#FFF1F0",
+    down: "#FCE7E6",
+    "down-strong": "#F7DADA",
+  },
+  dark: {
+    "up-strong": "rgba(52, 168, 112, 0.42)",
+    up: "rgba(52, 168, 112, 0.28)",
+    "up-soft": "rgba(52, 168, 112, 0.16)",
+    flat: "rgba(255, 255, 255, 0.04)",
+    "down-soft": "rgba(196, 74, 74, 0.18)",
+    down: "rgba(196, 74, 74, 0.30)",
+    "down-strong": "rgba(196, 74, 74, 0.46)",
+  },
+};

@@ -2,9 +2,15 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   announcementRole,
+  applyExpectations,
   buildResultsCalendar,
+  meetingDateFromNotice,
+  membershipOf,
+  nextMonthBounds,
   periodEndFromText,
+  periodLabel,
   reconcileExchanges,
+  rollingBounds,
   weekBounds,
 } from "./results-calendar.ts";
 
@@ -207,5 +213,140 @@ describe("results calendar", () => {
 
   it("weeks start on Monday", () => {
     assert.deepEqual(weekBounds("2026-10-31"), { from: "2026-10-26", to: "2026-11-01" });
+  });
+
+  it("reads the meeting day from a notice and ignores the filing timestamp", () => {
+    assert.equal(
+      meetingDateFromNotice("The board meeting will be held on Thursday, 8th November, 2026 to consider the unaudited financial results"),
+      "2026-11-08",
+    );
+    assert.equal(
+      meetingDateFromNotice("The board meeting to consider financial results has been postponed to 9 November 2026"),
+      "2026-11-09",
+    );
+    assert.equal(meetingDateFromNotice("Outcome of the board meeting"), null);
+  });
+
+  it("shows a future official meeting as confirmed and keeps it when another feed is empty", () => {
+    const rows = buildResultsCalendar(
+      [
+        {
+          symbol: "RELIANCE",
+          name: "Reliance Industries",
+          date: "08-Nov-2026",
+          purpose: "Board Meeting Intimation",
+          desc: "To consider the unaudited financial results for the quarter ended September 30, 2026",
+        },
+      ],
+      [],
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.status, "scheduled-confirmed");
+    assert.equal(rows[0]?.date, "2026-11-08");
+    assert.equal(rows[0]?.periodEnd, "2026-09-30");
+    assert.equal(periodLabel(rows[0]), "Q2 FY27");
+  });
+
+  it("marks a portfolio symbol and a watchlist symbol without using quantities", () => {
+    assert.equal(membershipOf("RELIANCE", ["RELIANCE.NS"], []), "portfolio");
+    assert.equal(membershipOf("TCS", ["RELIANCE"], ["TCS.NS"]), "watchlist");
+    assert.equal(membershipOf("INFY.NS", ["INFY"], ["INFY"]), "portfolio");
+    assert.equal(membershipOf("HDFCBANK", [], []), null);
+  });
+
+  it("keeps a secondary date as expected until an official notice exists", () => {
+    const rows = applyExpectations([], [
+      {
+        symbol: "TCS",
+        name: "Tata Consultancy Services",
+        date: "2026-11-10",
+        periodEnd: "2026-09-30",
+        source: "Secondary calendar",
+        sourceUrl: "https://example.com/tcs",
+      },
+    ]);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.status, "expected");
+    assert.equal(rows[0]?.date, "2026-11-10");
+    assert.equal(rows[0]?.source, "Secondary calendar");
+  });
+
+  it("keeps the official date when a secondary source disagrees and records the conflict", () => {
+    const official = buildResultsCalendar(
+      [
+        {
+          symbol: "TCS",
+          name: "TCS",
+          isin: "INE467B01029",
+          date: "08-Nov-2026",
+          purpose: "Financial Results",
+          desc: "To consider financial results for the quarter ended September 30, 2026",
+        },
+      ],
+      [],
+    );
+    const rows = applyExpectations(official, [
+      {
+        symbol: "TCS",
+        name: "TCS",
+        isin: "INE467B01029",
+        date: "2026-11-10",
+        periodEnd: "2026-09-30",
+        source: "Secondary calendar",
+      },
+    ]);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.date, "2026-11-08");
+    assert.equal(rows[0]?.status, "needs-verification");
+    assert.equal(rows[0]?.history.some((item) => item.date === "2026-11-10"), true);
+  });
+
+  it("does not downgrade a confirmed date when the secondary source agrees", () => {
+    const official = buildResultsCalendar(
+      [
+        {
+          symbol: "TCS",
+          name: "TCS",
+          date: "08-Nov-2026",
+          purpose: "Financial Results",
+          desc: "To consider financial results for the quarter ended September 30, 2026",
+        },
+      ],
+      [],
+    );
+    const rows = applyExpectations(official, [
+      { symbol: "TCS", date: "2026-11-08", periodEnd: "2026-09-30", source: "Secondary calendar" },
+    ]);
+    assert.equal(rows[0]?.status, "scheduled-confirmed");
+    assert.equal(rows[0]?.date, "2026-11-08");
+  });
+
+  it("keeps a BSE-only company when there is no NSE row", () => {
+    const rows = reconcileExchanges(
+      buildResultsCalendar(
+        [
+          {
+            symbol: "543210",
+            name: "Only On BSE",
+            isin: "INE000X01010",
+            date: "18-Nov-2026",
+            purpose: "Financial Results",
+            desc: "To consider financial results for the quarter ended September 30, 2026",
+          },
+        ],
+        [],
+        "BSE",
+      ),
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.exchange, "BSE");
+    assert.equal(rows[0]?.symbol, "543210");
+    assert.equal(rows[0]?.status, "scheduled-confirmed");
+  });
+
+  it("labels the next month and a 60-day window from the anchor", () => {
+    assert.deepEqual(nextMonthBounds("2026-11-01"), { from: "2026-12-01", to: "2026-12-31" });
+    assert.deepEqual(rollingBounds("2026-11-01", 60), { from: "2026-11-01", to: "2026-12-31" });
+    assert.equal(periodLabel({ periodEnd: "2027-03-31", purpose: "year ended" }), "FY27");
   });
 });

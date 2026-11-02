@@ -4,6 +4,7 @@ import { parseIstDate } from "./dates.ts";
 import {
   announcementRole,
   buildResultsCalendar,
+  meetingDateFromNotice,
   periodEndFromText,
   reconcileExchanges,
   type CalendarSourceHealth,
@@ -16,9 +17,35 @@ const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 let cache: { at: number; version: number; data: ResultsPack } | null = null;
-const TTL = 10 * 60 * 1000;
+const TTL = 5 * 60 * 1000;
 const STALE_OK = 6 * 60 * 60 * 1000;
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 6;
+
+function nseQueryDay(offsetDays: number): string {
+  const t = new Date(Date.now() + offsetDays * 86400000 + 5.5 * 60 * 60 * 1000);
+  const dd = String(t.getUTCDate()).padStart(2, "0");
+  const mm = String(t.getUTCMonth() + 1).padStart(2, "0");
+  return `${dd}-${mm}-${t.getUTCFullYear()}`;
+}
+
+/** Upcoming meetings are announced days or weeks ahead. The undated feed is only the latest batch. */
+async function pullMeetings(index: "equities" | "sme"): Promise<unknown> {
+  const dated = `https://www.nseindia.com/api/corporate-board-meetings?index=${index}&from_date=${nseQueryDay(-90)}&to_date=${nseQueryDay(75)}`;
+  try {
+    return await getJson(dated);
+  } catch {
+    return await getJson(`https://www.nseindia.com/api/corporate-board-meetings?index=${index}`);
+  }
+}
+
+async function pullAnnouncements(index: "equities" | "sme"): Promise<unknown> {
+  const dated = `https://www.nseindia.com/api/corporate-announcements?index=${index}&from_date=${nseQueryDay(-21)}&to_date=${nseQueryDay(1)}`;
+  try {
+    return await getJson(dated);
+  } catch {
+    return await getJson(`https://www.nseindia.com/api/corporate-announcements?index=${index}`);
+  }
+}
 
 function ymd(d: Date): string {
   const t = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
@@ -116,11 +143,13 @@ function nseAnnouncements(raw: unknown, sourceName = "NSE corporate announcement
       });
       continue;
     }
+    const held = meetingDateFromNotice(`${desc} ${text}`);
+    if (!held) continue;
     meetings.push({
       symbol,
       name,
       isin: str(row, "sm_isin") || null,
-      date: parseIstDate(when),
+      date: held,
       purpose: desc,
       desc: text || desc,
       attachment: file || null,
@@ -168,222 +197,111 @@ function source(
 }
 
 async function pull(): Promise<ResultsPack> {
-  const sources: CalendarSourceHealth[] = [];
+  type Bucket = { meetings: RawMeeting[]; filings: RawFiling[]; health: CalendarSourceHealth };
+  const boardPage = "https://www.nseindia.com/companies-listing/corporate-filings-board-meetings";
+  const eventPage = "https://www.nseindia.com/companies-listing/corporate-filings-event-calendar";
+  const resultsPage = "https://www.nseindia.com/companies-listing/corporate-filings-financial-results";
+  const annPage = "https://www.nseindia.com/companies-listing/corporate-filings-announcements";
+  const cutoff = new Date(Date.now() - 200 * 86400000).toISOString().slice(0, 10);
+
+  async function bucket(id: string, name: string, url: string, run: () => Promise<Omit<Bucket, "health">>): Promise<Bucket> {
+    try {
+      const got = await run();
+      const count = got.meetings.length + got.filings.length;
+      return {
+        ...got,
+        health: source(id, name, url, true, count, newest([...got.filings, ...got.meetings.map((row) => ({ date: row.date }))]), null),
+      };
+    } catch (err) {
+      return {
+        meetings: [],
+        filings: [],
+        health: source(id, name, url, false, 0, null, err instanceof Error ? err.message : "Request failed"),
+      };
+    }
+  }
+
+  const jobs: (() => Promise<Bucket>)[] = [
+    () =>
+      bucket("nse-board", "NSE board meetings", boardPage, async () => {
+        const rows = nseMeetings(await pullMeetings("equities"));
+        return { meetings: rows, filings: [] };
+      }),
+    () =>
+      bucket("nse-events", "NSE event calendar", eventPage, async () => {
+        const rows = nseEvents(await getJson("https://www.nseindia.com/api/event-calendar"));
+        return { meetings: rows, filings: [] };
+      }),
+    () =>
+      bucket("nse-results", "NSE financial results", resultsPage, async () => {
+        const rows = nseFilings(await getJson("https://www.nseindia.com/api/corporates-financial-results?index=equities&period=Quarterly")).filter(
+          (row) => (row.filedAt || "") >= cutoff,
+        );
+        return { meetings: [], filings: rows };
+      }),
+    () =>
+      bucket("nse-ann", "NSE latest announcements", annPage, async () => {
+        const parsed = nseAnnouncements(await pullAnnouncements("equities"));
+        return { meetings: parsed.meetings, filings: parsed.filings };
+      }),
+    () =>
+      bucket("nse-sme-board", "NSE SME board meetings", boardPage, async () => {
+        const rows = nseMeetings(await pullMeetings("sme"));
+        return { meetings: rows, filings: [] };
+      }),
+    () =>
+      bucket("nse-sme-results", "NSE SME financial results", resultsPage, async () => {
+        const rows = nseFilings(
+          await getJson("https://www.nseindia.com/api/corporates-financial-results?index=sme&period=Quarterly"),
+          "NSE SME financial results",
+        ).filter((row) => (row.filedAt || "") >= cutoff);
+        return { meetings: [], filings: rows };
+      }),
+    () =>
+      bucket("nse-sme-ann", "NSE SME latest announcements", annPage, async () => {
+        const parsed = nseAnnouncements(await pullAnnouncements("sme"), "NSE SME announcements");
+        return { meetings: parsed.meetings, filings: parsed.filings };
+      }),
+    () => pullBse(),
+  ];
+
+  const buckets: Bucket[] = new Array(jobs.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < jobs.length) {
+      const index = cursor++;
+      buckets[index] = await jobs[index]();
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(3, jobs.length) }, () => worker()));
+
   const meetings: RawMeeting[] = [];
   const filings: RawFiling[] = [];
-
-  try {
-    const raw = await getJson("https://www.nseindia.com/api/corporate-board-meetings?index=equities");
-    const rows = nseMeetings(raw);
-    meetings.push(...rows);
-    sources.push(
-      source(
-        "nse-board",
-        "NSE board meetings",
-        "https://www.nseindia.com/companies-listing/corporate-filings-board-meetings",
-        true,
-        rows.length,
-        newest(rows.map((row) => ({ date: row.date }))),
-        null,
-      ),
-    );
-  } catch (err) {
-    sources.push(
-      source(
-        "nse-board",
-        "NSE board meetings",
-        "https://www.nseindia.com/companies-listing/corporate-filings-board-meetings",
-        false,
-        0,
-        null,
-        err instanceof Error ? err.message : "Request failed",
-      ),
-    );
+  const sources: CalendarSourceHealth[] = [];
+  for (const part of buckets) {
+    meetings.push(...part.meetings);
+    filings.push(...part.filings);
+    sources.push(part.health);
   }
 
-  try {
-    const raw = await getJson("https://www.nseindia.com/api/event-calendar");
-    const rows = nseEvents(raw);
-    meetings.push(...rows);
-    sources.push(
-      source(
-        "nse-events",
-        "NSE event calendar",
-        "https://www.nseindia.com/companies-listing/corporate-filings-event-calendar",
-        true,
-        rows.length,
-        newest(rows.map((row) => ({ date: row.date }))),
-        null,
-      ),
-    );
-  } catch (err) {
-    sources.push(
-      source(
-        "nse-events",
-        "NSE event calendar",
-        "https://www.nseindia.com/companies-listing/corporate-filings-event-calendar",
-        false,
-        0,
-        null,
-        err instanceof Error ? err.message : "Request failed",
-      ),
-    );
-  }
+  return {
+    events: reconcileExchanges(buildResultsCalendar(meetings, filings, "NSE")),
+    health: {
+      refreshedAt: new Date().toISOString(),
+      stale: false,
+      sources,
+      limitation: null,
+    },
+    asOf: new Date().toISOString(),
+  };
+}
 
-  try {
-    const raw = await getJson("https://www.nseindia.com/api/corporates-financial-results?index=equities&period=Quarterly");
-    const rows = nseFilings(raw);
-    const cutoff = new Date(Date.now() - 200 * 86400000).toISOString().slice(0, 10);
-    const recent = rows.filter((row) => (row.filedAt || "") >= cutoff);
-    filings.push(...recent);
-    sources.push(
-      source(
-        "nse-results",
-        "NSE financial results",
-        "https://www.nseindia.com/companies-listing/corporate-filings-financial-results",
-        true,
-        recent.length,
-        newest(rows),
-        null,
-      ),
-    );
-  } catch (err) {
-    sources.push(
-      source(
-        "nse-results",
-        "NSE financial results",
-        "https://www.nseindia.com/companies-listing/corporate-filings-financial-results",
-        false,
-        0,
-        null,
-        err instanceof Error ? err.message : "Request failed",
-      ),
-    );
-  }
-
-  try {
-    const raw = await getJson("https://www.nseindia.com/api/corporate-announcements?index=equities");
-    const parsed = nseAnnouncements(raw);
-    meetings.push(...parsed.meetings);
-    filings.push(...parsed.filings);
-    sources.push(
-      source(
-        "nse-ann",
-        "NSE latest announcements",
-        "https://www.nseindia.com/companies-listing/corporate-filings-announcements",
-        true,
-        parsed.filings.length + parsed.meetings.length,
-        newest(parsed.filings),
-        null,
-      ),
-    );
-  } catch (err) {
-    sources.push(
-      source(
-        "nse-ann",
-        "NSE latest announcements",
-        "https://www.nseindia.com/companies-listing/corporate-filings-announcements",
-        false,
-        0,
-        null,
-        err instanceof Error ? err.message : "Request failed",
-      ),
-    );
-  }
-
-  try {
-    const raw = await getJson("https://www.nseindia.com/api/corporate-board-meetings?index=sme");
-    const rows = nseMeetings(raw);
-    meetings.push(...rows);
-    sources.push(
-      source(
-        "nse-sme-board",
-        "NSE SME board meetings",
-        "https://www.nseindia.com/companies-listing/corporate-filings-board-meetings",
-        true,
-        rows.length,
-        newest(rows.map((row) => ({ date: row.date }))),
-        null,
-      ),
-    );
-  } catch (err) {
-    sources.push(
-      source(
-        "nse-sme-board",
-        "NSE SME board meetings",
-        "https://www.nseindia.com/companies-listing/corporate-filings-board-meetings",
-        false,
-        0,
-        null,
-        err instanceof Error ? err.message : "Request failed",
-      ),
-    );
-  }
-
-  try {
-    const raw = await getJson("https://www.nseindia.com/api/corporates-financial-results?index=sme&period=Quarterly");
-    const rows = nseFilings(raw, "NSE SME financial results");
-    const cutoff = new Date(Date.now() - 200 * 86400000).toISOString().slice(0, 10);
-    const recent = rows.filter((row) => (row.filedAt || "") >= cutoff);
-    filings.push(...recent);
-    sources.push(
-      source(
-        "nse-sme-results",
-        "NSE SME financial results",
-        "https://www.nseindia.com/companies-listing/corporate-filings-financial-results",
-        true,
-        recent.length,
-        newest(rows),
-        null,
-      ),
-    );
-  } catch (err) {
-    sources.push(
-      source(
-        "nse-sme-results",
-        "NSE SME financial results",
-        "https://www.nseindia.com/companies-listing/corporate-filings-financial-results",
-        false,
-        0,
-        null,
-        err instanceof Error ? err.message : "Request failed",
-      ),
-    );
-  }
-
-  try {
-    const raw = await getJson("https://www.nseindia.com/api/corporate-announcements?index=sme");
-    const parsed = nseAnnouncements(raw, "NSE SME announcements");
-    meetings.push(...parsed.meetings);
-    filings.push(...parsed.filings);
-    sources.push(
-      source(
-        "nse-sme-ann",
-        "NSE SME latest announcements",
-        "https://www.nseindia.com/companies-listing/corporate-filings-announcements",
-        true,
-        parsed.filings.length + parsed.meetings.length,
-        newest(parsed.filings),
-        null,
-      ),
-    );
-  } catch (err) {
-    sources.push(
-      source(
-        "nse-sme-ann",
-        "NSE SME latest announcements",
-        "https://www.nseindia.com/companies-listing/corporate-filings-announcements",
-        false,
-        0,
-        null,
-        err instanceof Error ? err.message : "Request failed",
-      ),
-    );
-  }
-
-  let bseError = "HTTP 403";
+/** BSE is probed. Rows are not mapped until a response shape has actually been seen. */
+async function pullBse(): Promise<{ meetings: RawMeeting[]; filings: RawFiling[]; health: CalendarSourceHealth }> {
+  const page = "https://www.bseindia.com/corporates/Comp_Resultsnew.aspx";
   const today = new Date();
   const from = new Date(today.getTime() - 45 * 86400000);
+  let error = "HTTP 403";
   try {
     const res = await fetch(
       `https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w?pageno=1&strCat=Result&strPrevDate=${ymd(from)}&strScrip=&strSearch=P&strToDate=${ymd(today)}&strType=C&subcategory=-1`,
@@ -401,51 +319,15 @@ async function pull(): Promise<ResultsPack> {
     const rows = Array.isArray(body) ? body : body && typeof body === "object" && Array.isArray((body as { Table?: unknown[] }).Table) ? (body as { Table: unknown[] }).Table : null;
     if (!rows) throw new Error("Unrecognised BSE payload");
     if (!rows.length) throw new Error("BSE returned no result rows");
-    bseError = "";
+    error = "BSE responded but the row shape is not mapped";
   } catch (err) {
-    bseError = err instanceof Error ? err.message : "Request failed";
+    error = err instanceof Error ? err.message : "Request failed";
   }
-  sources.push(
-    source(
-      "bse-results",
-      "BSE financial results",
-      "https://www.bseindia.com/corporates/Comp_Resultsnew.aspx",
-      !bseError,
-      0,
-      null,
-      bseError || null,
-    ),
-  );
-
-  const events = reconcileExchanges(buildResultsCalendar(meetings, filings, "NSE"));
-  const resultsFeed = sources.find((row) => row.id === "nse-results");
-  const limitation = [
-    bseError
-      ? "NSE equities and NSE SME are included. BSE’s results API did not respond (" +
-        bseError +
-        "). BSE-only names are absent — no BSE date was filled in. Dual-listed names use the NSE filing."
-      : "NSE equities and NSE SME are included. BSE answered, but those rows are not mapped into the calendar yet, so no BSE-only date was added.",
-    "Screener, Moneycontrol, Trendlyne, Tickertape, Investing.com and Economic Times were not connected. They do not offer an official feed this app can call, and their pages were not scraped. Company investor-relations sites are not a single feed, so they are not polled. No unverified estimate is shown.",
-    resultsFeed?.newest ? "Newest date on the NSE equities financial-results file: " + resultsFeed.newest + "." : "",
-    "Filings come from the financial-results files and the latest announcement batch. An older filing that has left that batch can still look scheduled. A meeting whose date changed is marked rescheduled and keeps the earlier date. Nothing here is an estimated date.",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return {
-    events,
-    health: {
-      refreshedAt: new Date().toISOString(),
-      stale: false,
-      sources,
-      limitation: limitation || null,
-    },
-    asOf: new Date().toISOString(),
-  };
+  return { meetings: [], filings: [], health: source("bse-results", "BSE financial results", page, false, 0, null, error) };
 }
 
-export async function loadResultsCalendar(): Promise<ResultsPack> {
-  if (cache && cache.version === CACHE_VERSION && Date.now() - cache.at < TTL) return cache.data;
+export async function loadResultsCalendar(opts?: { fresh?: boolean }): Promise<ResultsPack> {
+  if (!opts?.fresh && cache && cache.version === CACHE_VERSION && Date.now() - cache.at < TTL) return cache.data;
   try {
     const data = await pull();
     const anyOk = data.health.sources.some((row) => row.ok && row.id !== "bse-results");
@@ -454,25 +336,16 @@ export async function loadResultsCalendar(): Promise<ResultsPack> {
     }
     cache = { at: Date.now(), version: CACHE_VERSION, data };
     return data;
-  } catch (err) {
+  } catch {
     if (cache && Date.now() - cache.at < STALE_OK) {
       return {
         ...cache.data,
-        health: {
-          ...cache.data.health,
-          stale: true,
-          limitation: "Showing the last successful refresh. A new pull failed: " + (err instanceof Error ? err.message : "unknown"),
-        },
+        health: { ...cache.data.health, stale: true, limitation: null },
       };
     }
     return {
       events: [],
-      health: {
-        refreshedAt: null,
-        stale: true,
-        sources: [],
-        limitation: "The results sources did not respond. No dates were invented.",
-      },
+      health: { refreshedAt: null, stale: true, sources: [], limitation: null },
       asOf: new Date().toISOString(),
     };
   }

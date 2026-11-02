@@ -313,8 +313,8 @@ export async function apiMacro() {
   return json<MacroPack>("/api/macro");
 }
 
-export async function apiResults() {
-  return json<import("./results-calendar").ResultsPack>("/api/results");
+export async function apiResults(fresh = false) {
+  return json<import("./results-calendar").ResultsPack>(fresh ? "/api/results?fresh=1" : "/api/results");
 }
 
 export type NoteResult =

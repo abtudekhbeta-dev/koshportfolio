@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { catalogueCoverage, heatGroups, heatSpot } from "./index-boards.ts";
+import { catalogueCoverage, heatGroups, heatSpot, heatTone } from "./index-boards.ts";
 import { NIFTY_CATALOGUE } from "./nifty-catalogue.ts";
 
 describe("index heatmap boards", () => {
@@ -47,11 +47,28 @@ describe("index heatmap boards", () => {
     assert.equal(flat.length, NIFTY_CATALOGUE.length);
     assert.deepEqual(
       groups.filter((group) => group.board === "broad").map((group) => group.group),
-      ["Broad market"],
+      ["Benchmarks", "Large and broad", "Mid-cap", "Small-cap", "Micro-cap", "Cross-cap"],
     );
     const sectorNames = groups.filter((group) => group.board === "sector").map((group) => group.group);
     assert.deepEqual(sectorNames[0], "Banking");
+    assert.equal(heatSpot("NIFTY_MICROCAP250.NS")?.group, "Micro-cap");
+    assert.equal(heatSpot("NIFTYMIDSML400.NS")?.group, "Cross-cap");
+    assert.equal(heatSpot("NIFTY_LARGEMID250.NS")?.group, "Large and broad");
+    assert.equal(heatSpot("^NSEMDCP50")?.group, "Mid-cap");
     assert.equal(sectorNames.includes("Capital goods"), false);
     assert.ok(heatGroups(NIFTY_CATALOGUE, "thematic").every((group) => group.board === "thematic"));
+  });
+
+  it("washes cards from the session percentage and stays neutral when the move is missing", () => {
+    assert.equal(heatTone(2.4), "up-strong");
+    assert.equal(heatTone(0.6), "up");
+    assert.equal(heatTone(0.1), "up-soft");
+    assert.equal(heatTone(0.01), "flat");
+    assert.equal(heatTone(0), "flat");
+    assert.equal(heatTone(null), "flat");
+    assert.equal(heatTone(undefined), "flat");
+    assert.equal(heatTone(-0.2), "down-soft");
+    assert.equal(heatTone(-0.8), "down");
+    assert.equal(heatTone(-3), "down-strong");
   });
 });
