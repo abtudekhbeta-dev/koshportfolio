@@ -6,6 +6,7 @@ import { canOpenStock, stockBare } from "@/components/stock-link";
 import { fmtInr, fmtPct } from "@/lib/kosh/engine";
 import { buildHoldingHeat, displaySector, groupHeatSectors, type HeatInput, type HeatTile, type ShownTile } from "@/lib/kosh/holding-heat";
 import { treemap, type Tile } from "@/lib/kosh/index-basket";
+import { HEAT_INK, performancePaint } from "@/lib/kosh/heat-contrast";
 import { cn } from "@/lib/utils";
 
 type Metric = "weight" | "day" | "sector";
@@ -47,7 +48,8 @@ const SECTOR_ICON: Record<string, LucideIcon> = {
 };
 
 function sectorPaint(name: string) {
-  return SECTOR_FILL[name] || SECTOR_FILL.Other;
+  const fill = SECTOR_FILL[name] || SECTOR_FILL.Other;
+  return { background: fill.background, color: HEAT_INK };
 }
 
 function mix(from: number[], to: number[], t: number) {
@@ -57,24 +59,13 @@ function mix(from: number[], to: number[], t: number) {
 function weightTint(weight: number, max: number) {
   const t = max > 0 ? Math.max(0, Math.min(1, weight / max)) : 0;
   const e = Math.pow(t, 0.9);
-  const background = mix([236, 243, 252], [30, 78, 216], e);
-  const dark = e > 0.55;
-  return { background, color: dark ? "#f8fafc" : "#1e3a5f", dark };
+  const background = mix([236, 243, 252], [186, 214, 246], e);
+  return { background, color: HEAT_INK, dark: false };
 }
 
 function dayTint(pct: number | null) {
-  if (pct == null || !Number.isFinite(pct) || Math.abs(pct) < 0.05) {
-    return { background: "#e7eaee", color: "#3f4650", dark: false };
-  }
-  const t = Math.max(0.28, Math.min(0.7, Math.abs(pct) / 2.4));
-  if (pct > 0) return { background: mix([232, 246, 236], [167, 220, 186], t), color: "#14532d", dark: false };
-  return { background: mix([252, 236, 236], [244, 196, 196], t), color: "#7f1d1d", dark: false };
-}
-
-function dayInk(pct: number | null, onDark: boolean) {
-  if (pct == null || !Number.isFinite(pct) || Math.abs(pct) < 0.05) return onDark ? "#e2e8f0" : "#64748b";
-  if (pct > 0) return onDark ? "#bbf7d0" : "#15803d";
-  return onDark ? "#fecaca" : "#b91c1c";
+  const paint = performancePaint(pct, { strong: 1.5, mid: 0.4 });
+  return { background: paint.background, color: paint.color, dark: false };
 }
 
 function signed(n: number) {
@@ -401,7 +392,7 @@ function HeatLegend({ metric, shown }: { metric: Metric; shown: ShownTile[] }) {
     return (
       <span className="inline-flex items-center gap-1.5 text-[11px] text-muted">
         Lower weight
-        <span className="inline-block h-1.5 w-16 rounded-full" style={{ background: "linear-gradient(90deg,#e8f1fc,#1e4ed8)" }} />
+        <span className="inline-block h-1.5 w-16 rounded-full" style={{ background: "linear-gradient(90deg,#ecf3fc,#bad6f6)" }} />
         Higher weight
       </span>
     );
@@ -434,7 +425,6 @@ function TileFace({ tile, box, metric, dark }: { tile: ShownTile; box: Tile; met
   const label = tile.others ? "Others" : metric === "sector" ? tile.name : tile.symbol;
   const weight = `${tile.weightOfPriced.toFixed(1)}%`;
   const day = tile.dayPct == null ? "Day n/a" : fmtPct(tile.dayPct);
-  const ink = dayInk(tile.dayPct, dark);
   const wide = box.w >= 168 && box.h >= 88 && metric !== "sector" && !tile.others;
   const showLogo = metric !== "sector" && !tile.others && box.w >= 68 && box.h >= 78;
   const showTicker = box.w >= 36 && box.h >= 24;
@@ -471,9 +461,7 @@ function TileFace({ tile, box, metric, dark }: { tile: ShownTile; box: Tile; met
         <span className="min-w-0 text-left leading-tight">
           <span className="block truncate text-[14px] font-semibold">{label}</span>
           <span className="block font-mono text-[16px] font-semibold tabular">{weight}</span>
-          <span className="block font-mono text-[12px] tabular" style={{ color: ink }}>
-            {day}
-          </span>
+          <span className="block font-mono text-[12px] tabular">{day}</span>
         </span>
       </span>
     );
@@ -485,9 +473,7 @@ function TileFace({ tile, box, metric, dark }: { tile: ShownTile; box: Tile; met
       {showTicker ? <span className={cn("max-w-full truncate font-semibold", box.w >= 110 ? "text-[12px]" : "text-[11px]")}>{label}</span> : null}
       {showWeight ? <span className={cn("font-mono tabular", box.w >= 110 ? "text-[13px]" : "text-[11px]")}>{weight}</span> : null}
       {showExtra ? (
-        <span className="font-mono text-[11px] tabular" style={{ color: ink }}>
-          {day}
-        </span>
+        <span className="font-mono text-[11px] tabular">{day}</span>
       ) : null}
     </span>
   );

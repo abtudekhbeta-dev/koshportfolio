@@ -4,10 +4,11 @@ import { IndexComposition } from "@/components/terminal/index-composition";
 import { fmtPct } from "@/lib/kosh/engine";
 import { terminalSearch } from "@/lib/kosh/instrument-nav";
 import { DEFAULT_KEY_SYMBOLS, FAMILY_LABEL, KEY_INDICES_KEY, catalogueBySymbol, loadKeyIndices, moveKey } from "@/lib/kosh/key-indices";
-import { HEAT_BOARDS, HEAT_FILL, heatGroups, heatTone, type HeatBoardId } from "@/lib/kosh/index-boards";
+import { HEAT_BOARDS, heatBoardRows, type HeatBoardId } from "@/lib/kosh/index-boards";
+import { performancePaint } from "@/lib/kosh/heat-contrast";
 import { NIFTY_CATALOGUE, type CatalogueIndex } from "@/lib/kosh/nifty-catalogue";
 import type { Quote } from "@/lib/kosh/types";
-import { bareSymbol, useKosh } from "@/lib/store";
+import { bareSymbol } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 function money(n: number) {
@@ -30,31 +31,31 @@ function IndexTile({
   const price = quote && quote.price > 0 ? quote.price : null;
   const pct = price != null && quote && Number.isFinite(quote.changePct) ? quote.changePct : null;
   const status = price == null ? (failed ? "Unavailable" : "No quote") : null;
-  const theme = useKosh((s) => s.theme);
-  const fill = HEAT_FILL[theme === "light" ? "light" : "dark"][heatTone(pct)];
+  const paint = performancePaint(status ? null : pct, { strong: 1.25, mid: 0.4 });
   return (
-    <div className="flex h-[52px] items-stretch overflow-hidden rounded-md border border-border" style={{ background: fill }}>
+    <div
+      className="flex h-[52px] items-stretch overflow-hidden rounded-md border border-border"
+      style={{ background: paint.background, color: paint.color }}
+    >
       <button
         type="button"
-        className="flex h-full min-w-0 flex-1 flex-col justify-center gap-1 px-2.5 text-left"
+        className="flex h-full min-w-0 flex-1 flex-col justify-center gap-1 px-2.5 text-left text-inherit"
         aria-label={`Open ${row.name} in Terminal`}
         onClick={() => onChart(row.symbol, row.name)}
       >
-        <span className="truncate text-[12px] leading-none font-medium text-fg" title={row.name}>
+        <span className="truncate text-[12px] leading-none font-medium" title={row.name}>
           {row.name}
         </span>
-        <span className="flex items-baseline gap-2 leading-none">
+        <span className="flex items-baseline gap-2.5 leading-none">
           <span className="shrink-0 font-mono text-[13px] font-medium tabular">{status || money(price as number)}</span>
-          <span className={cn("shrink-0 font-mono text-[12px] tabular", status || pct == null ? "text-muted" : pct >= 0 ? "text-up" : "text-down")}>
-            {status ? "" : pct == null ? "—" : fmtPct(pct)}
-          </span>
+          <span className="shrink-0 font-mono text-[13px] font-semibold tabular">{status ? "" : pct == null ? "—" : fmtPct(pct)}</span>
         </span>
       </button>
       <button
         type="button"
-        className="h-full shrink-0 px-2.5 text-[10px] font-medium tracking-wide text-muted uppercase"
+        className="h-full shrink-0 px-2.5 text-[10px] font-medium tracking-wide uppercase"
         aria-label={`${row.name} constituents`}
-        title="Constituents by index share"
+        title="Constituents"
         onClick={() => onComposition(row)}
       >
         Shares
@@ -68,14 +69,16 @@ export function IndexHeat({
   pending,
   failed,
   stamp,
-  live,
+  freshLabel,
+  freshTitle,
   onChart,
 }: {
   quotes: Quote[];
   pending: boolean;
   failed: boolean;
   stamp: string | null;
-  live: boolean;
+  freshLabel: string;
+  freshTitle?: string;
   onChart: (symbol: string, name: string) => void;
 }) {
   const navigate = useNavigate();
@@ -87,7 +90,6 @@ export function IndexHeat({
   const [q, setQ] = useState("");
   const [addQ, setAddQ] = useState("");
   const [board, setBoard] = useState<HeatBoardId>("broad");
-  const [closed, setClosed] = useState<Record<string, boolean>>({});
   const [composition, setComposition] = useState<CatalogueIndex | null>(null);
   useEffect(() => {
     setKeys(loadKeyIndices(window.localStorage.getItem(KEY_INDICES_KEY)));
@@ -112,10 +114,10 @@ export function IndexHeat({
     if (!query || mode === "key") return base;
     return base.filter((row) => row.name.toLowerCase().includes(query) || row.symbol.toLowerCase().includes(query));
   }, [mode, query, keyRows]);
-  const sections = useMemo(() => {
-    if (mode === "key") return [{ board: "broad" as const, group: "", groupOrder: 0, rows: matched }];
-    return heatGroups(matched, query ? undefined : board);
-  }, [mode, matched, query, board]);
+  const rows = useMemo(() => {
+    if (mode === "key") return keyRows;
+    return heatBoardRows(matched, query ? undefined : board);
+  }, [mode, keyRows, matched, query, board]);
   const addable = useMemo(() => {
     const query = addQ.trim().toLowerCase();
     if (!query) return [];
@@ -135,7 +137,12 @@ export function IndexHeat({
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
           <h2 className="text-[12px] font-semibold tracking-[0.08em] text-muted uppercase">Index heatmap</h2>
-          {stamp ? <span className="text-[11px] text-subtle">{live ? "Session" : "Last session"} · {stamp}</span> : null}
+          {stamp || freshLabel ? (
+            <span className="text-[11px] text-subtle" title={freshTitle}>
+              {freshLabel}
+              {stamp ? ` · ${stamp}` : ""}
+            </span>
+          ) : null}
           {failed ? <span className="text-[11px] text-down">Quotes failed</span> : null}
         </div>
         <div className="flex flex-wrap items-center gap-1">
@@ -230,36 +237,11 @@ export function IndexHeat({
       {pending && !quotes.length ? (
         <p className="text-[13px] text-muted">Loading index quotes…</p>
       ) : (
-        <div className="grid gap-1">
-          {sections.map((group) => {
-            const hidden = Boolean(group.group) && closed[group.board + group.group];
-            const boardLabel = HEAT_BOARDS.find((item) => item.id === group.board)?.label || "";
-            const title = !group.group ? "" : query && boardLabel !== group.group ? `${boardLabel} · ${group.group}` : group.group;
-            return (
-              <div key={group.board + group.group}>
-                {title ? (
-                  <button
-                    type="button"
-                    className="mb-0.5 flex h-6 items-center gap-1.5 text-[11px] font-semibold tracking-[0.06em] text-muted uppercase"
-                    aria-expanded={!hidden}
-                    onClick={() => setClosed((current) => ({ ...current, [group.board + group.group]: !current[group.board + group.group] }))}
-                  >
-                    <span aria-hidden>{hidden ? "▸" : "▾"}</span>
-                    {title}
-                    <span className="font-normal tracking-normal text-subtle">{group.rows.length}</span>
-                  </button>
-                ) : null}
-                {hidden ? null : (
-                  <div className="grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),270px))]">
-                    {group.rows.map((row) => (
-                      <IndexTile key={row.symbol} row={row} quote={quoteOf(row)} failed={failed} onChart={openTerminal} onComposition={setComposition} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {!sections.some((group) => group.rows.length) ? <p className="text-[13px] text-muted">{mode === "key" ? "No key indices yet. Edit the board to add some." : "No index matches that search."}</p> : null}
+        <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr))]">
+          {rows.map((row) => (
+            <IndexTile key={row.symbol} row={row} quote={quoteOf(row)} failed={failed} onChart={openTerminal} onComposition={setComposition} />
+          ))}
+          {!rows.length ? <p className="text-[13px] text-muted">{mode === "key" ? "No key indices yet. Edit the board to add some." : "No index matches that search."}</p> : null}
         </div>
       )}
       {composition ? (

@@ -31,6 +31,37 @@ export function rayEnd(ax: number, ay: number, bx: number, by: number, width: nu
 
 export type HitPart = "body" | "a" | "b";
 
+const HANDLE = 14;
+const BODY = 12;
+
+/** Bar index (possibly fractional or outside the series) from a stored timestamp. */
+export function logicalFromTime(times: number[], t: number): number {
+  if (!times.length) return 0;
+  if (times.length === 1) return 0;
+  if (t <= times[0]) return (t - times[0]) / (times[1] - times[0] || 1);
+  const last = times.length - 1;
+  if (t >= times[last]) return last + (t - times[last]) / (times[last] - times[last - 1] || 1);
+  let lo = 0;
+  let hi = last;
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] <= t) lo = mid;
+    else hi = mid;
+  }
+  return lo + (t - times[lo]) / (times[hi] - times[lo] || 1);
+}
+
+/** Timestamp for a logical bar index, including the empty space to the right of the last bar. */
+export function timeFromLogical(times: number[], logical: number): number {
+  if (!times.length) return 0;
+  if (times.length === 1) return times[0];
+  if (logical <= 0) return times[0] + logical * (times[1] - times[0] || 1);
+  const last = times.length - 1;
+  if (logical >= last) return times[last] + (logical - last) * (times[last] - times[last - 1] || 1);
+  const i = Math.floor(logical);
+  return times[i] + (logical - i) * (times[i + 1] - times[i] || 1);
+}
+
 export function hitDraw(
   draw: LedgerDraw,
   px: number,
@@ -42,12 +73,12 @@ export function hitDraw(
   if (draw.hidden) return null;
   const a = project(draw.t0, draw.p0);
   if (!a) return null;
-  if (Math.hypot(px - a.x, py - a.y) <= 7) return "a";
+  if (Math.hypot(px - a.x, py - a.y) <= HANDLE) return "a";
   const b = draw.t1 != null && draw.p1 != null ? project(draw.t1, draw.p1) : null;
-  if (b && Math.hypot(px - b.x, py - b.y) <= 7) return "b";
-  if (draw.kind === "hline") return Math.abs(py - a.y) <= 6 ? "body" : null;
-  if (draw.kind === "vline") return Math.abs(px - a.x) <= 6 ? "body" : null;
-  if (draw.kind === "text") return Math.hypot(px - a.x, py - a.y) <= 14 ? "body" : null;
+  if (b && Math.hypot(px - b.x, py - b.y) <= HANDLE) return "b";
+  if (draw.kind === "hline") return Math.abs(py - a.y) <= BODY ? "body" : null;
+  if (draw.kind === "vline") return Math.abs(px - a.x) <= BODY ? "body" : null;
+  if (draw.kind === "text") return Math.hypot(px - (a.x + 8), py - (a.y - 6)) <= 18 ? "body" : null;
   if (!b) return null;
   if (draw.kind === "rect") {
     const left = Math.min(a.x, b.x);
@@ -55,16 +86,16 @@ export function hitDraw(
     const top = Math.min(a.y, b.y);
     const bottom = Math.max(a.y, b.y);
     const inside = px >= left && px <= right && py >= top && py <= bottom;
-    const near = px >= left - 6 && px <= right + 6 && py >= top - 6 && py <= bottom + 6 && !inside;
+    const near = px >= left - BODY && px <= right + BODY && py >= top - BODY && py <= bottom + BODY && !inside;
     return inside || near ? "body" : null;
   }
   if (draw.kind === "fib") {
     for (const ratio of FIB_RATIOS) {
       const y = project(draw.t0, fibPrice(draw.p0, draw.p1 as number, ratio))?.y;
-      if (y != null && Math.abs(py - y) <= 5 && px >= Math.min(a.x, b.x) - 4 && px <= Math.max(a.x, b.x) + 4) return "body";
+      if (y != null && Math.abs(py - y) <= 10 && px >= Math.min(a.x, b.x) - 8 && px <= Math.max(a.x, b.x) + 8) return "body";
     }
     return null;
   }
   const end = draw.kind === "ray" ? rayEnd(a.x, a.y, b.x, b.y, width, height) : b;
-  return distToSeg(px, py, a.x, a.y, end.x, end.y) <= 6 ? "body" : null;
+  return distToSeg(px, py, a.x, a.y, end.x, end.y) <= BODY ? "body" : null;
 }

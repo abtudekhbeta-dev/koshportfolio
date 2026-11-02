@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { HeatLegend } from "@/components/charts/stock-treemap";
 import { IndexWeightMap, type WeightStock } from "@/components/charts/index-weight-map";
@@ -21,8 +21,8 @@ type Basket = {
   unavailable: string | null;
 };
 
-async function loadBasket(symbol: string) {
-  const res = await fetch("/api/index-constituents?symbol=" + encodeURIComponent(symbol));
+async function loadBasket(symbol: string, fresh = false) {
+  const res = await fetch("/api/index-constituents?symbol=" + encodeURIComponent(symbol) + (fresh ? "&fresh=1" : ""));
   const data = (await res.json()) as Basket;
   if (!res.ok && !data.unavailable) throw new Error("Holdings feed failed");
   return data;
@@ -47,11 +47,16 @@ export function IndexComposition({
   onClose: () => void;
 }) {
   const [q, setQ] = useState("");
-  const [equal, setEqual] = useState(false);
+  const [equal, setEqual] = useState(true);
   const [logos, setLogos] = useState(true);
+  const freshRef = useRef(false);
   const basket = useQuery({
     queryKey: ["index-basket", row.symbol],
-    queryFn: () => loadBasket(row.symbol),
+    queryFn: () => {
+      const fresh = freshRef.current;
+      freshRef.current = false;
+      return loadBasket(row.symbol, fresh);
+    },
     staleTime: 30 * 60_000,
   });
   const symbols = useMemo(
@@ -107,6 +112,11 @@ export function IndexComposition({
 
   const data = basket.data;
   const linked = rows.filter((item) => item.symbol).length;
+  const weightsReady = rows.length > 0 && rows.every((item) => item.weight > 0);
+
+  useEffect(() => {
+    if (!weightsReady) setEqual(true);
+  }, [weightsReady]);
 
   return (
     <div
@@ -123,7 +133,7 @@ export function IndexComposition({
           <div className="min-w-0">
             <h3 className="text-[18px] font-semibold tracking-tight">{row.name}</h3>
             <p className="mt-1 text-[12px] text-muted">
-              {equal ? "Equal area for every name." : "Tile area is the published share in this index."} Colour is the live session move. Other periods are not on this feed.
+              {equal ? "Equal area for every name." : "Tile area is the published share in this index."} Colour is the session move. The whole map stays in this panel.
             </p>
           </div>
           <button type="button" className="h-8 shrink-0 rounded-sm bg-surface px-2 text-[12px]" onClick={onClose}>
@@ -138,8 +148,25 @@ export function IndexComposition({
             aria-label="Find a constituent"
             className="h-8 w-48 max-w-full rounded-sm bg-surface px-2 text-[12px] shadow-[var(--shadow-border)] outline-none"
           />
-          <button type="button" className="h-8 rounded-sm bg-surface px-2 text-[12px] shadow-[var(--shadow-border)]" aria-pressed={equal} onClick={() => setEqual((v) => !v)}>
-            {equal ? "Index weight" : "Equal size"}
+          <button
+            type="button"
+            className="h-8 rounded-sm bg-surface px-2 text-[12px] shadow-[var(--shadow-border)]"
+            aria-pressed={equal}
+            onClick={() => setEqual(true)}
+          >
+            Equal weight
+          </button>
+          <button
+            type="button"
+            className="h-8 rounded-sm bg-surface px-2 text-[12px] shadow-[var(--shadow-border)] disabled:opacity-40"
+            aria-pressed={!equal}
+            disabled={!weightsReady}
+            title={weightsReady ? "Size tiles by the published index share" : "Market weight needs a published share for every name"}
+            onClick={() => {
+              if (weightsReady) setEqual(false);
+            }}
+          >
+            Market weight
           </button>
           <button type="button" className="h-8 rounded-sm bg-surface px-2 text-[12px] shadow-[var(--shadow-border)]" aria-pressed={logos} onClick={() => setLogos((v) => !v)}>
             {logos ? "Hide logos" : "Show logos"}
@@ -148,29 +175,42 @@ export function IndexComposition({
             View index chart
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-3">
           {basket.isPending ? <p className="text-[13px] text-muted">Loading published holdings…</p> : null}
           {basket.isError ? <p className="text-[13px] text-down">The holdings feed did not answer.</p> : null}
-          {data?.unavailable ? <p className="text-[13px] text-muted">{data.unavailable}</p> : null}
+          {data?.unavailable ? (
+            <div className="grid gap-2">
+              <p className="text-[13px] text-muted">{data.unavailable}</p>
+              <button
+                type="button"
+                className="h-8 w-fit rounded-sm bg-surface px-3 text-[12px] shadow-[var(--shadow-border)]"
+                onClick={() => {
+                  freshRef.current = true;
+                  void basket.refetch();
+                }}
+              >
+                Try again
+              </button>
+            </div>
+          ) : null}
           {data && !data.unavailable ? (
             <>
               <p className="mb-2 text-[12px] text-muted">
                 {rows.length} names
                 {data.weightSum ? ` · weights ${data.weightSum.toFixed(1)}%` : ""}
                 {data.asOf ? ` · ${data.asOf}` : ""}
-                {data.source ? ` · ${data.source}` : ""}
                 {linked < rows.length ? ` · ${rows.length - linked} without an NSE code` : ""}
+                {!weightsReady ? " · market weight is off because a published share is missing" : ""}
               </p>
-              <div className="overflow-hidden rounded-md bg-surface shadow-[var(--shadow-border)]">
-                <IndexWeightMap stocks={stocks} equal={equal} logos={logos} onOpen={open} />
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md bg-surface shadow-[var(--shadow-border)]">
+                <div className="min-h-0 flex-1">
+                  <IndexWeightMap stocks={stocks} equal={equal || !weightsReady} logos={logos} onOpen={open} />
+                </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-2">
                   <HeatLegend metric="Change 1D, %" />
                   <p className="text-[10px] text-muted">{LOGO_ATTRIBUTION}</p>
                 </div>
               </div>
-              <p className="mt-2 text-[11px] text-subtle">
-                The map uses the width of this panel, then grows taller until every name has room. Tile area follows the index share.
-              </p>
             </>
           ) : null}
         </div>

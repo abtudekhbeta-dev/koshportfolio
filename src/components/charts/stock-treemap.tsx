@@ -51,7 +51,7 @@ export function StockTreemap({
           <button
             key={sector.name}
             type="button"
-            className="absolute z-[1] truncate px-1 text-left text-[10px] font-semibold tracking-wide text-white/80 uppercase hover:text-white"
+            className="absolute z-[1] truncate px-1 text-left text-[10px] font-semibold tracking-wide uppercase"
             style={{ left: `${sector.box.x}%`, top: `${sector.box.y}%`, width: `${sector.box.w}%`, height: 16 }}
             onClick={() => onZoom?.(sector.name)}
           >
@@ -96,34 +96,34 @@ export function StockTreemap({
         );
       })}
       {tip ? (
-        <div className="pointer-events-auto absolute bottom-2 left-2 z-10 max-w-[260px] rounded-md bg-[#101418]/95 p-2.5 text-left text-[12px] text-white shadow-lg" role="status">
+        <div className="pointer-events-auto absolute bottom-2 left-2 z-10 max-w-[260px] rounded-md border border-border p-2.5 text-left text-[12px] shadow-lg" style={{ background: "#f7f9fc", color: "#142033" }} role="status">
           <div className="flex items-center gap-2">
             {logos && tip.symbol ? <CompanyLogo symbol={tip.symbol} name={tip.name} size={22} /> : null}
             <div className="min-w-0">
               <div className="truncate font-semibold">{tip.symbol || tip.name}</div>
-              <div className="truncate text-[11px] text-white/70">{tip.name}</div>
+              <div className="truncate text-[11px] opacity-70">{tip.name}</div>
             </div>
           </div>
           <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[11px] tabular">
-            <dt className="text-white/60">Price</dt>
+            <dt className="opacity-60">Price</dt>
             <dd>{tip.price != null ? fmtPx(tip.price) : "—"}</dd>
-            <dt className="text-white/60">{tip.metric}</dt>
+            <dt className="opacity-60">{tip.metric}</dt>
             <dd>{tip.pct == null ? "No print" : fmtPct(tip.pct)}</dd>
-            <dt className="text-white/60">Change</dt>
+            <dt className="opacity-60">Change</dt>
             <dd>{tip.changeAbs == null ? "—" : (tip.changeAbs > 0 ? "+" : "") + fmtPx(tip.changeAbs)}</dd>
-            <dt className="text-white/60">Mkt cap</dt>
+            <dt className="opacity-60">Mkt cap</dt>
             <dd>{fmtCr(tip.mcapCr)}</dd>
-            <dt className="text-white/60">Index share</dt>
+            <dt className="opacity-60">Index share</dt>
             <dd>{tip.weight == null ? "—" : tip.weight.toFixed(2) + "%"}</dd>
-            <dt className="text-white/60">Sector</dt>
+            <dt className="opacity-60">Sector</dt>
             <dd className="truncate">{tip.sector || "—"}</dd>
           </dl>
           {tip.symbol ? (
-            <button type="button" className="mt-2 text-[12px] text-[#9ecbff] hover:underline" onClick={() => onOpen(tip.symbol || "", tip.name)}>
+            <button type="button" className="mt-2 text-[12px] underline" onClick={() => onOpen(tip.symbol || "", tip.name)}>
               Open chart
             </button>
           ) : (
-            <p className="mt-2 text-[11px] text-white/60">No NSE code for this name.</p>
+            <p className="mt-2 text-[11px] opacity-70">No NSE code for this name.</p>
           )}
         </div>
       ) : null}

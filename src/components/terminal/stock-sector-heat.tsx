@@ -2,15 +2,16 @@ import { useMemo, useState } from "react";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { sectorOf } from "@/lib/kosh/sectors";
 import type { BoardRow } from "@/lib/kosh/stock-board";
-import { cn } from "@/lib/utils";
+import { HEAT_FILL, HEAT_INK } from "@/lib/kosh/heat-contrast";
 
-function tone(v: number | null) {
-  if (v == null || !Number.isFinite(v)) return "bg-surface-2 text-muted";
-  if (v >= 1.5) return "bg-up/70 text-fg";
-  if (v >= 0.15) return "bg-up/25 text-fg";
-  if (v > -0.15) return "bg-surface-2 text-fg";
-  if (v > -1.5) return "bg-down/25 text-fg";
-  return "bg-down/70 text-fg";
+function tone(v: number | null): { background: string; color: string } {
+  const color = HEAT_INK;
+  if (v == null || !Number.isFinite(v)) return { background: HEAT_FILL.missing, color };
+  if (v >= 1.5) return { background: HEAT_FILL.upStrong, color };
+  if (v >= 0.15) return { background: HEAT_FILL.upSoft, color };
+  if (v > -0.15) return { background: HEAT_FILL.flat, color };
+  if (v > -1.5) return { background: HEAT_FILL.downSoft, color };
+  return { background: HEAT_FILL.downStrong, color };
 }
 
 export function StockSectorHeat({
@@ -78,7 +79,8 @@ export function StockSectorHeat({
                   key={row.symbol}
                   type="button"
                   onClick={() => onOpen(row.symbol, row.name)}
-                  className={cn("min-h-[72px] rounded-sm px-2 py-1.5 text-left", tone(row.chgPct))}
+                  className="min-h-[72px] rounded-sm px-2 py-1.5 text-left"
+                  style={tone(row.chgPct)}
                   title={row.source === "none" ? `${row.name} has no quote` : row.name}
                 >
                   <div className="truncate text-[11px] font-semibold">{row.symbol}</div>

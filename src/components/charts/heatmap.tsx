@@ -1,15 +1,16 @@
 import type { MonthRow } from "@/lib/kosh/types";
-import { cn } from "@/lib/utils";
+import { HEAT_FILL, HEAT_INK } from "@/lib/kosh/heat-contrast";
 
 const MONTHS = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
 
-function heatClass(v: number) {
-  if (v >= 8) return "bg-up text-accent-fg";
-  if (v >= 3) return "bg-up/70 text-accent-fg";
-  if (v >= 0) return "bg-up/30 text-fg";
-  if (v >= -3) return "bg-down/30 text-fg";
-  if (v >= -8) return "bg-down/70 text-accent-fg";
-  return "bg-down text-accent-fg";
+function heatStyle(v: number): { background: string; color: string } {
+  const color = HEAT_INK;
+  if (v >= 8) return { background: HEAT_FILL.upStrong, color };
+  if (v >= 3) return { background: HEAT_FILL.upMid, color };
+  if (v >= 0) return { background: HEAT_FILL.upSoft, color };
+  if (v >= -3) return { background: HEAT_FILL.downSoft, color };
+  if (v >= -8) return { background: HEAT_FILL.downMid, color };
+  return { background: HEAT_FILL.downStrong, color };
 }
 
 export function MonthHeatmap({ months }: { months: MonthRow[] }) {
@@ -46,7 +47,8 @@ function YearRow({ year, months }: { year: string; months: MonthRow[] }) {
           <div
             key={k}
             title={`${k}  ${row.port.toFixed(1)}%`}
-            className={cn("grid h-7 place-items-center rounded-xs font-mono text-[10px] font-medium", heatClass(row.port))}
+            className="grid h-7 place-items-center rounded-xs font-mono text-[10px] font-medium"
+            style={heatStyle(row.port)}
           >
             {row.port.toFixed(0)}
           </div>

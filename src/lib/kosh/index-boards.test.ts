@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { catalogueCoverage, heatGroups, heatSpot, heatTone } from "./index-boards.ts";
+import { catalogueCoverage, heatBoardRows, heatGroups, heatSpot, heatTone, heatToneClass } from "./index-boards.ts";
 import { NIFTY_CATALOGUE } from "./nifty-catalogue.ts";
 
 describe("index heatmap boards", () => {
@@ -70,5 +70,20 @@ describe("index heatmap boards", () => {
     assert.equal(heatTone(-0.2), "down-soft");
     assert.equal(heatTone(-0.8), "down");
     assert.equal(heatTone(-3), "down-strong");
+    assert.equal(heatToneClass("up-strong"), "bg-up/70");
+    assert.equal(heatToneClass("up"), "bg-up/35");
+    assert.equal(heatToneClass("up-soft"), "bg-up/20");
+    assert.equal(heatToneClass("flat"), "bg-surface-2");
+    assert.equal(heatToneClass("down-soft"), "bg-down/20");
+    assert.equal(heatToneClass("down"), "bg-down/35");
+    assert.equal(heatToneClass("down-strong"), "bg-down/70");
+    assert.equal(heatToneClass(heatTone(null)).includes("#"), false);
+    const sector = heatBoardRows(NIFTY_CATALOGUE, "sector");
+    assert.equal(sector.length, heatGroups(NIFTY_CATALOGUE, "sector").reduce((n, group) => n + group.rows.length, 0));
+    assert.equal(new Set(sector.map((row) => row.symbol)).size, sector.length);
+    assert.equal(sector[0]?.symbol, "^NSEBANK");
+    assert.ok(sector.some((row) => row.symbol === "NIFTY_FIN_SERVICE.NS"));
+    assert.ok(sector.some((row) => row.symbol === "^CNXFIN"));
+    assert.equal(heatBoardRows(NIFTY_CATALOGUE).length, NIFTY_CATALOGUE.length);
   });
 });

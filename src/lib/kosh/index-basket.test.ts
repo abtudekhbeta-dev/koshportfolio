@@ -11,6 +11,7 @@ import {
   weightSum,
 } from "./index-basket.ts";
 import { heatPaint, packWeightRows } from "./heat-layout.ts";
+import { HEAT_FILL, HEAT_INK, contrastRatio, movementInk, performancePaint } from "./heat-contrast.ts";
 import { INDEX_SNAPSHOTS } from "./index-snapshots.ts";
 
 describe("index basket benchmark match", () => {
@@ -129,8 +130,17 @@ describe("weight mosaic", () => {
     };
     assert.ok(area(0) > area(1));
     assert.ok(area(1) > area(2));
-    assert.equal(heatPaint(null).background, "#3c434a");
+    assert.equal(heatPaint(null).background, HEAT_FILL.missing);
+    assert.equal(heatPaint(null).color, HEAT_INK);
     assert.notEqual(heatPaint(0).background, heatPaint(2).background);
+    assert.equal(heatPaint(3).color, HEAT_INK);
+    assert.equal(heatPaint(-3).color, HEAT_INK);
+    assert.equal(movementInk(2), HEAT_INK);
+    for (const fill of Object.values(HEAT_FILL)) {
+      assert.ok(contrastRatio(HEAT_INK, fill) >= 4.5, `${fill} ${contrastRatio(HEAT_INK, fill)}`);
+    }
+    assert.equal(performancePaint(1.6, { strong: 1.5, mid: 0.4 }).background, HEAT_FILL.upStrong);
+    assert.equal(performancePaint(0.2).background, HEAT_FILL.upSoft);
   });
 
   it("gives equal weights nearly equal tiles", () => {

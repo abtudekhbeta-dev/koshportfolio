@@ -1009,6 +1009,16 @@ export function CandleChart({
   const [tool, setTool] = useState<ToolId>("pan");
   const [toolLock, setToolLock] = useState(false);
   const [draft, setDraft] = useState<DrawShape | null>(null);
+  const toolRef = useRef(tool);
+  const draftRef = useRef<DrawShape | null>(null);
+  const pressRef = useRef<{ created: boolean; x: number; y: number } | null>(null);
+  toolRef.current = tool;
+  draftRef.current = draft;
+  useEffect(() => {
+    if (chartMode === "price") return;
+    draftRef.current = null;
+    setDraft(null);
+  }, [chartMode]);
   const drawClicks = useRef(0);
   const cardRef = useRef<HTMLDivElement>(null);
   const { fs, fallback, toggle: toggleFs } = useChartFullscreen(cardRef);
@@ -1026,7 +1036,9 @@ export function CandleChart({
   const menuRef = useRef<HTMLDivElement>(null);
   const key = symbol ? drawKey(symbol, intervalId) : "";
   const [shapes, setShapes] = useState<DrawShape[]>(() => (key ? useKosh.getState().drawings[key] || [] : []));
-  const drawHist = useRef<DrawHist<DrawShape>>(histInit([]));
+  const shapesRef = useRef(shapes);
+  shapesRef.current = shapes;
+  const drawHist = useRef<DrawHist<DrawShape>>(histInit(shapes));
   const wrapRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const vLine = useRef<HTMLDivElement>(null);
@@ -1106,8 +1118,13 @@ export function CandleChart({
   }, [playing, replayOn, nAll]);
 
   useEffect(() => {
-    setShapes(key ? useKosh.getState().drawings[key] || [] : []);
+    const next = key ? useKosh.getState().drawings[key] || [] : [];
+    shapesRef.current = next;
+    drawHist.current = histInit(next);
+    setShapes(next);
     setDraft(null);
+    draftRef.current = null;
+    drawClicks.current = 0;
   }, [key]);
 
   function saveChart() {
@@ -1122,10 +1139,7 @@ export function CandleChart({
   }
 
   function finishTool() {
-    if (!toolLock) {
-      setTool("pan");
-      setToolLock(false);
-    }
+    if (!toolLock) setTool("pan");
   }
 
   useEffect(() => {
@@ -1137,6 +1151,7 @@ export function CandleChart({
         const step = e.shiftKey ? histRedo(drawHist.current) : histUndo(drawHist.current);
         if (!step) return;
         drawHist.current = step.hist;
+        shapesRef.current = step.shapes;
         setShapes(step.shapes);
         if (key) setDrawings(key, step.shapes);
         setSelectedId(null);
@@ -1151,9 +1166,12 @@ export function CandleChart({
         return;
       }
       if (e.key !== "Escape") return;
-      if (draft) {
+      if (draft || draftRef.current) {
+        draftRef.current = null;
         setDraft(null);
         drawClicks.current = 0;
+        setTool("pan");
+        setToolLock(false);
         return;
       }
       if (selectedId) {
@@ -1167,12 +1185,17 @@ export function CandleChart({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [draft, fs, tool, selectedId, shapes]);
+  }, [draft, fs, tool, selectedId, shapes, key]);
 
   function commit(next: DrawShape[]) {
+    shapesRef.current = next;
     drawHist.current = histPush(drawHist.current, next);
     setShapes(next);
     if (key) setDrawings(key, next);
+  }
+
+  function placeShape(done: DrawShape) {
+    commit([...shapesRef.current, done]);
   }
 
   useEffect(() => {
@@ -1296,16 +1319,20 @@ export function CandleChart({
       return;
     }
     if (draft && src.length) {
+      const live = draftRef.current || draft;
       const t = timeAt(x);
-      if (draft.kind === "channel" && drawClicks.current >= 2) {
-        setDraft({ ...draft, off: channelOffFromThird(draft, t, price) });
-      } else if ((draft.kind === "long" || draft.kind === "short") && drawClicks.current >= 2) {
-        setDraft({ ...draft, t1: t, y1: price });
-      } else if ((draft.kind === "long" || draft.kind === "short") && drawClicks.current === 1) {
-        setDraft({ ...draft, y2: price, t1: t });
+      let next = live;
+      if (live.kind === "channel" && drawClicks.current >= 2) {
+        next = { ...live, off: channelOffFromThird(live, t, price) };
+      } else if ((live.kind === "long" || live.kind === "short") && drawClicks.current >= 2) {
+        next = { ...live, t1: t, y1: price };
+      } else if ((live.kind === "long" || live.kind === "short") && drawClicks.current === 1) {
+        next = { ...live, y2: price, t1: t };
       } else {
-        setDraft({ ...draft, t1: t, y1: price });
+        next = { ...live, t1: t, y1: price };
       }
+      draftRef.current = next;
+      setDraft(next);
     }
     if (drag.current && e.buttons && tool === "pan") {
       const dx = e.clientX - drag.current.x;
@@ -1329,12 +1356,31 @@ export function CandleChart({
   }
 
   function onDown(e: React.PointerEvent) {
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* Capture can throw on a synthetic event. The gesture still follows move and up. */
+    }
     const L = layout.current;
     if (!L) return;
     const { x, y } = svgXY(e);
     const i = L.iOf(x);
-    if (tool === "pan" && !replayPick) {
+    const drawingOn = chartMode === "price";
+    const active = drawingOn ? toolRef.current : "pan";
+    if (active !== "pan" && !replayPick) {
+      const price = snapY(i, y);
+      const t = timeAt(x);
+      const existing = draftRef.current;
+      pressRef.current = { created: !existing, x: e.clientX, y: e.clientY };
+      if (!existing) {
+        const next: DrawShape = { id: newDrawId(), kind: active, t0: t, y0: price, t1: t, y1: price };
+        draftRef.current = next;
+        drawClicks.current = 1;
+        setDraft(next);
+      }
+      return;
+    }
+    if (active === "pan" && !replayPick && drawingOn) {
       const hit = hitTest(shapes, x, y, src, L.xOf, L.yOf, L.left, L.right, L.plotTop, L.plotBot);
       if (hit) {
         const orig = shapes.find((s) => s.id === hit.id);
@@ -1384,68 +1430,58 @@ export function CandleChart({
       return;
     }
 
-    if (tool !== "pan") {
-      if (tool === "hline" || tool === "vline") {
-        const id = newDrawId();
-        setShapes((s) => {
-          const next: DrawShape[] = [...s, { id, kind: tool, t0: t, y0: price }];
-          if (key) setDrawings(key, next);
-          return next;
-        });
-        setSelectedId(id);
-        finishTool();
-        return;
-      }
-      if (!draft) {
-        drawClicks.current = 1;
-        setDraft({ id: newDrawId(), kind: tool, t0: t, y0: price, t1: t, y1: price });
-        return;
-      }
-      if (draft.kind === "channel" && drawClicks.current === 1) {
-        drawClicks.current = 2;
-        setDraft({ ...draft, t1: t, y1: price });
-        return;
-      }
-      if (draft.kind === "channel" && drawClicks.current >= 2) {
-        const done = { ...draft, off: channelOffFromThird(draft, t, price) };
-        setShapes((s) => {
-          const next = [...s, done];
-          if (key) setDrawings(key, next);
-          return next;
-        });
+    if (toolRef.current !== "pan") {
+      const live = draftRef.current;
+      const press = pressRef.current;
+      pressRef.current = null;
+      const moved = press ? Math.hypot(e.clientX - press.x, e.clientY - press.y) > 5 : false;
+      const onePoint = toolRef.current === "hline" || toolRef.current === "vline";
+      if (press?.created && !moved && !onePoint) return;
+      if (!live) return;
+      if (onePoint || (moved && live.kind !== "channel" && live.kind !== "long" && live.kind !== "short") || (!press?.created && live.kind !== "channel" && live.kind !== "long" && live.kind !== "short")) {
+        const done = { ...live, t1: t, y1: onePoint ? live.y0 : price, ...(onePoint ? { t0: t, y0: price } : {}) };
+        placeShape(done);
         setSelectedId(done.id);
+        draftRef.current = null;
         setDraft(null);
         drawClicks.current = 0;
         finishTool();
         return;
       }
-      if ((draft.kind === "long" || draft.kind === "short") && drawClicks.current === 1) {
+      if (live.kind === "channel" && drawClicks.current === 1 && !press?.created) {
         drawClicks.current = 2;
-        setDraft({ ...draft, y2: price, t1: t });
+        const next = { ...live, t1: t, y1: price };
+        draftRef.current = next;
+        setDraft(next);
         return;
       }
-      if ((draft.kind === "long" || draft.kind === "short") && drawClicks.current >= 2) {
-        const done = { ...draft, t1: t, y1: price };
-        setShapes((s) => {
-          const next = [...s, done];
-          if (key) setDrawings(key, next);
-          return next;
-        });
+      if (live.kind === "channel" && drawClicks.current >= 2 && !press?.created) {
+        const done = { ...live, off: channelOffFromThird(live, t, price) };
+        placeShape(done);
         setSelectedId(done.id);
+        draftRef.current = null;
         setDraft(null);
         drawClicks.current = 0;
         finishTool();
         return;
       }
-      setShapes((s) => {
-        const next = [...s, { ...draft, t1: t, y1: price }];
-        if (key) setDrawings(key, next);
-        return next;
-      });
-      setSelectedId(draft.id);
-      setDraft(null);
-      drawClicks.current = 0;
-      finishTool();
+      if ((live.kind === "long" || live.kind === "short") && drawClicks.current === 1 && !press?.created) {
+        drawClicks.current = 2;
+        const next = { ...live, y2: price, t1: t };
+        draftRef.current = next;
+        setDraft(next);
+        return;
+      }
+      if ((live.kind === "long" || live.kind === "short") && drawClicks.current >= 2 && !press?.created) {
+        const done = { ...live, t1: t, y1: price };
+        placeShape(done);
+        setSelectedId(done.id);
+        draftRef.current = null;
+        setDraft(null);
+        drawClicks.current = 0;
+        finishTool();
+        return;
+      }
       return;
     }
 
@@ -1844,17 +1880,12 @@ export function CandleChart({
             <button
               key={t.id}
               type="button"
-              title={t.id === "pan" ? "Pan" : on && toolLock ? "Locked — stays after each draw" : "Click once to draw · double-click to keep"}
+              title={t.id === "pan" ? "Pan" : "Draw"}
               onClick={() => {
                 setTool(t.id);
+                draftRef.current = null;
                 setDraft(null);
-                setToolLock(false);
-                if (t.id !== "pan") setMeasureOn(false);
-              }}
-              onDoubleClick={() => {
-                setTool(t.id);
-                setToolLock(t.id !== "pan");
-                setDraft(null);
+                drawClicks.current = 0;
                 if (t.id !== "pan") setMeasureOn(false);
               }}
               className={cn(
@@ -1870,11 +1901,31 @@ export function CandleChart({
         })}
         <button
           type="button"
-          title="Undo last drawing"
-          disabled={!shapes.length && !draft}
+          aria-pressed={toolLock}
+          title="Keep the drawing tool after each placement"
+          onClick={() => setToolLock((value) => !value)}
+          className={cn("h-8 rounded-sm px-2.5 text-[11px] font-medium shadow-[var(--shadow-border)]", toolLock ? "bg-surface-2 text-fg" : "bg-bg text-muted")}
+        >
+          Keep drawing
+        </button>
+        <button
+          type="button"
+          title="Undo last drawing change"
+          disabled={drawHist.current.past.length < 2 && !draft}
           onClick={() => {
-            if (draft) setDraft(null);
-            else commit(shapes.slice(0, -1));
+            if (draftRef.current || draft) {
+              draftRef.current = null;
+              setDraft(null);
+              drawClicks.current = 0;
+              return;
+            }
+            const step = histUndo(drawHist.current);
+            if (!step) return;
+            drawHist.current = step.hist;
+            shapesRef.current = step.shapes;
+            setShapes(step.shapes);
+            if (key) setDrawings(key, step.shapes);
+            setSelectedId(null);
           }}
           className="inline-flex h-8 items-center gap-1.5 rounded-sm bg-bg px-2.5 text-[11px] font-medium text-muted shadow-[var(--shadow-border)] disabled:opacity-40"
         >
@@ -2004,7 +2055,7 @@ export function CandleChart({
               : undefined
           }
         />
-        {L && (shapes.length || draft || structure?.marks.length || patternsOn) ? (
+        {L && ((chartMode === "price" && (shapes.length || draft)) || structure?.marks.length || patternsOn) ? (
           <svg viewBox={`0 0 ${VW} ${vh}`} width="100%" height={vh} preserveAspectRatio="none" className="pointer-events-none absolute inset-0 z-[3]">
             {structure?.marks.length ? (
               <MarksSvg marks={structure.marks} src={src} xOf={L.xOf} yOf={L.yOf} right={L.right} />
@@ -2012,10 +2063,14 @@ export function CandleChart({
             {patternsOn ? (
               <PatternSvg hits={patterns} src={src} xOf={L.xOf} yOf={L.yOf} intervalId={intervalId} />
             ) : null}
-            {shapes.map((s) => (
-              <ShapeSvg key={s.id} s={s} src={src} xOf={L.xOf} yOf={L.yOf} right={L.right} selected={s.id === selectedId} />
-            ))}
-            {draft ? <ShapeSvg s={draft} src={src} xOf={L.xOf} yOf={L.yOf} right={L.right} /> : null}
+            {chartMode === "price"
+              ? shapes.map((s) => (
+                  <g key={s.id} data-kosh-draw={s.kind}>
+                    <ShapeSvg s={s} src={src} xOf={L.xOf} yOf={L.yOf} right={L.right} selected={s.id === selectedId} />
+                  </g>
+                ))
+              : null}
+            {chartMode === "price" && draft ? <ShapeSvg s={draft} src={src} xOf={L.xOf} yOf={L.yOf} right={L.right} /> : null}
           </svg>
         ) : null}
         {replayOn && (replayPick || !playing) ? (
@@ -2034,7 +2089,7 @@ export function CandleChart({
         <div
           ref={overlayRef}
           className="absolute inset-0 z-10 touch-none"
-          style={{ cursor: tool === "pan" ? (selectedId ? "move" : "crosshair") : "cell" }}
+          style={{ cursor: tool === "pan" ? "crosshair" : "crosshair" }}
           onPointerMove={onMove}
           onPointerDown={onDown}
           onPointerUp={onUp}

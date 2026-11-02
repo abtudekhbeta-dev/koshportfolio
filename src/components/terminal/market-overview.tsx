@@ -15,6 +15,7 @@ import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { instrumentKind, terminalSearch } from "@/lib/kosh/instrument-nav";
 import { overlayQuotes, pickLiveSymbols } from "@/lib/kosh/live-overlay";
 import { isIstSession } from "@/lib/kosh/market-hours";
+import { shortFresh, tapeFreshness, visiblePoll } from "@/lib/kosh/market-data";
 import { applyScreen, sectorPulse } from "@/lib/kosh/screens";
 import { cycleSort, sortEntities, sortGlyph, type SortDir } from "@/lib/kosh/kosh-table";
 import { useKosh } from "@/lib/store";
@@ -61,7 +62,7 @@ export function MarketOverview() {
     queryKey: ["tape"],
     queryFn: apiTape,
     staleTime: liveSession ? 2_500 : 30_000,
-    refetchInterval: () => (isIstSession() ? 5_000 : 60_000),
+    refetchInterval: () => visiblePoll(5_000, 60_000, isIstSession()),
   });
   const ports = useKosh((s) => s.portfolios);
   const watchlists = useKosh((s) => s.watchlists);
@@ -93,7 +94,7 @@ export function MarketOverview() {
     queryFn: () => apiFastPrints(liveSyms),
     enabled: liveSyms.length > 0,
     staleTime: liveSession ? 1_500 : 30_000,
-    refetchInterval: () => (isIstSession() ? 3_000 : 60_000),
+    refetchInterval: () => visiblePoll(3_000, 60_000, isIstSession()),
     placeholderData: (prev) => prev,
   });
   const liveRows = overlayQuotes(rows, quotes.data);
@@ -168,6 +169,13 @@ export function MarketOverview() {
     .sort((a, b) => a.changePct - b.changePct)
     .slice(0, 8);
   const green = rows.filter((r) => r.changePct >= 0).length;
+  const fresh = tape.data?.some((row) => row.price > 0)
+    ? tapeFreshness(tape.data, isIstSession())
+    : {
+        state: "off" as const,
+        label: tape.isError ? "UNAVAILABLE" : "LOADING",
+        title: tape.isError ? "The tape did not return a price." : "Fetching the last session.",
+      };
   const news = useQuery({
     queryKey: ["news", "NIFTY", "market"],
     queryFn: () => apiNews("NIFTY", "Nifty Sensex Indian stock market"),
@@ -181,6 +189,9 @@ export function MarketOverview() {
           <h1 className="text-[22px] font-semibold tracking-tight">Indian market overview</h1>
           <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-muted">
             Indices, breadth, movers, and Pulse — what the cash market is doing today. Open Terminal to watch a name.
+          </p>
+          <p className="mt-1 text-[11px] text-subtle" title={fresh.title}>
+            {fresh.label === "LOADING" ? "Loading" : shortFresh(fresh.state)}
           </p>
         </div>
         <Link

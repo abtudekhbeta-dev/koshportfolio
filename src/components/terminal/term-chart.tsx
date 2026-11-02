@@ -211,8 +211,15 @@ export function TermChart({
   const [view, setView] = useState({ start: 0, count: TF_VIEW[interval] || 180 });
   const [inds, setInds] = useState<IndFlags>({ sma20: false, ema21: false, bb: false, vwap: false, rsi: false, macd: false });
   const [tool, setTool] = useState<ToolId>("pan");
+  const [keepDraw, setKeepDraw] = useState(false);
   const drawOpen = useKosh((s) => s.chartPrefs.drawOpen !== false);
   const [draft, setDraft] = useState<DrawShape | null>(null);
+  const toolRef = useRef(tool);
+  const draftRef = useRef<DrawShape | null>(null);
+  const keepRef = useRef(keepDraw);
+  toolRef.current = tool;
+  draftRef.current = draft;
+  keepRef.current = keepDraw;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const drag = useRef<{ x: number; start: number } | null>(null);
   const move = useRef<{ id: string; mode: HitMode; x: number; y: number; t: number; py: number } | null>(null);
@@ -221,6 +228,14 @@ export function TermChart({
   useEffect(() => {
     histDraw.current = histInit(drawings[dKey] || EMPTY_SHAPES);
   }, [dKey]);
+
+  useEffect(() => {
+    if (chartMode === "price") return;
+    draftRef.current = null;
+    setDraft(null);
+    clicks.current = 0;
+    move.current = null;
+  }, [chartMode]);
 
   useEffect(() => {
     const el = wrap.current;
@@ -451,16 +466,20 @@ export function TermChart({
       }
       if (e.key === "Escape") {
         e.preventDefault();
-        if (draft) {
+        if (draft || draftRef.current) {
+          draftRef.current = null;
           setDraft(null);
           clicks.current = 0;
+          setKeepDraw(false);
+          setTool("crosshair");
           return;
         }
         if (selectedId) {
           setSelectedId(null);
           return;
         }
-        setTool("pan");
+        setKeepDraw(false);
+        setTool("crosshair");
         return;
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
@@ -652,6 +671,7 @@ export function TermChart({
                     onClick={(e) => {
                       e.stopPropagation();
                       setTool(t.id);
+                      draftRef.current = null;
                       setDraft(null);
                       clicks.current = 0;
                     }}
@@ -665,6 +685,20 @@ export function TermChart({
                 </Tooltip>
               );
             })}
+            <Tooltip content={keepDraw ? "Keep drawing is on" : "Keep drawing is off"}>
+              <button
+                type="button"
+                aria-label="Keep drawing"
+                aria-pressed={keepDraw}
+                className={cn("h-7 rounded-sm px-2 text-[11px] font-medium", keepDraw ? "bg-surface text-fg shadow-[var(--shadow-border)]" : "text-muted hover:text-fg")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setKeepDraw((value) => !value);
+                }}
+              >
+                Keep
+              </button>
+            </Tooltip>
             <Tooltip content="Undo drawing">
               <button
                 type="button"
@@ -744,61 +778,88 @@ export function TermChart({
       <div
         ref={wrap}
         data-chart-surface
-        className={cn("relative min-h-0 flex-1", tool === "pan" || tool === "crosshair" ? "cursor-crosshair" : "cursor-cell")}
+        className={cn("relative min-h-0 flex-1", "cursor-crosshair")}
         onPointerDown={(e) => {
           onActivate();
           const pt = xyAt(e.clientX, e.clientY);
-          (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
-          if (tool === "pan" || tool === "crosshair") {
-            const hit = hitTest(shapes, pt.x, pt.y, shown, xAt, yPx, PAD.l, size.w - PAD.r, PAD.t, PAD.t + plotH);
-            if (hit) {
-              setSelectedId(hit.id);
-              move.current = { id: hit.id, mode: hit.mode, x: pt.x, y: pt.y, t: pt.t, py: pt.p };
-              return;
+          try {
+            (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+          } catch {
+            /* A lost pointer must not abort the drawing gesture. */
+          }
+          const armed = chartMode === "price" ? tool : tool === "crosshair" ? "crosshair" : "pan";
+          if (armed === "pan" || armed === "crosshair") {
+            if (chartMode === "price") {
+              const hit = hitTest(shapes, pt.x, pt.y, shown, xAt, yPx, PAD.l, size.w - PAD.r, PAD.t, PAD.t + plotH);
+              if (hit) {
+                setSelectedId(hit.id);
+                move.current = { id: hit.id, mode: hit.mode, x: pt.x, y: pt.y, t: pt.t, py: pt.p };
+                return;
+              }
             }
             setSelectedId(null);
-            if (tool === "pan") drag.current = { x: e.clientX, start: view.start };
+            if (armed === "pan") drag.current = { x: e.clientX, start: view.start };
             return;
           }
-          if (!draft) {
+          const active = toolRef.current;
+          if (active === "hline" || active === "vline") {
+            const done: DrawShape = { id: newDrawId(), kind: active, t0: pt.t, y0: pt.p };
+            save([...shapes, done]);
+            setSelectedId(done.id);
+            draftRef.current = null;
+            setDraft(null);
+            if (!keepRef.current) setTool("crosshair");
+            return;
+          }
+          const live = draftRef.current;
+          if (!live) {
             clicks.current = 1;
-            setDraft({ id: newDrawId(), kind: tool, t0: pt.t, y0: pt.p, t1: pt.t, y1: pt.p });
+            const next: DrawShape = { id: newDrawId(), kind: active as DrawKind, t0: pt.t, y0: pt.p, t1: pt.t, y1: pt.p };
+            draftRef.current = next;
+            setDraft(next);
             return;
           }
-          if (draft.kind === "channel" && clicks.current === 1) {
+          if (live.kind === "channel" && clicks.current === 1) {
             clicks.current = 2;
-            setDraft({ ...draft, t1: pt.t, y1: pt.p });
+            const next = { ...live, t1: pt.t, y1: pt.p };
+            draftRef.current = next;
+            setDraft(next);
             return;
           }
-          if (draft.kind === "channel" && clicks.current >= 2) {
-            const done: DrawShape = { ...draft, off: channelOffFromThird(draft, pt.t, pt.p) };
+          if (live.kind === "channel" && clicks.current >= 2) {
+            const done: DrawShape = { ...live, off: channelOffFromThird(live, pt.t, pt.p) };
             save([...shapes, done]);
             setSelectedId(done.id);
+            draftRef.current = null;
             setDraft(null);
             clicks.current = 0;
-            setTool("pan");
+            if (!keepRef.current) setTool("crosshair");
             return;
           }
-          if ((draft.kind === "long" || draft.kind === "short") && clicks.current === 1) {
+          if ((live.kind === "long" || live.kind === "short") && clicks.current === 1) {
             clicks.current = 2;
-            setDraft({ ...draft, y2: pt.p, t1: pt.t });
+            const next = { ...live, y2: pt.p, t1: pt.t };
+            draftRef.current = next;
+            setDraft(next);
             return;
           }
-          if ((draft.kind === "long" || draft.kind === "short") && clicks.current >= 2) {
-            const done: DrawShape = { ...draft, t1: pt.t, y1: pt.p };
+          if ((live.kind === "long" || live.kind === "short") && clicks.current >= 2) {
+            const done: DrawShape = { ...live, t1: pt.t, y1: pt.p };
             save([...shapes, done]);
             setSelectedId(done.id);
+            draftRef.current = null;
             setDraft(null);
             clicks.current = 0;
-            setTool("pan");
+            if (!keepRef.current) setTool("crosshair");
             return;
           }
-          const done: DrawShape = { ...draft, t1: pt.t, y1: pt.p };
+          const done: DrawShape = { ...live, t1: pt.t, y1: pt.p };
           save([...shapes, done]);
           setSelectedId(done.id);
+          draftRef.current = null;
           setDraft(null);
           clicks.current = 0;
-          setTool("pan");
+          if (!keepRef.current) setTool("crosshair");
         }}
         onPointerMove={(e) => {
           const pt = xyAt(e.clientX, e.clientY);
@@ -807,27 +868,26 @@ export function TermChart({
           const yy = pt.y;
           hoverRaf.current = requestAnimationFrame(() => paintHover(ii, yy));
           if (move.current) {
+            if (chartMode !== "price") {
+              move.current = null;
+              return;
+            }
             const cur = shapes.find((s) => s.id === move.current!.id);
             if (!cur) return;
             const next = applyDrag(cur, move.current.mode, pt.t - move.current.t, pt.p - move.current.py, pt.t, pt.p);
-            save(shapes.map((s) => (s.id === next.id ? next : s)));
+            setDrawings(dKey, shapes.map((s) => (s.id === next.id ? next : s)));
             move.current = { ...move.current, t: pt.t, py: pt.p, x: pt.x, y: pt.y };
             return;
           }
-          if (draft) {
-            if (draft.kind === "channel" && clicks.current >= 2) {
-              setDraft({ ...draft, off: channelOffFromThird(draft, pt.t, pt.p) });
-              return;
-            }
-            if ((draft.kind === "long" || draft.kind === "short") && clicks.current >= 2) {
-              setDraft({ ...draft, t1: pt.t, y1: pt.p });
-              return;
-            }
-            if ((draft.kind === "long" || draft.kind === "short") && clicks.current === 1) {
-              setDraft({ ...draft, y2: pt.p, t1: pt.t });
-              return;
-            }
-            setDraft({ ...draft, t1: pt.t, y1: pt.p });
+          const live = draftRef.current;
+          if (live) {
+            let next = live;
+            if (live.kind === "channel" && clicks.current >= 2) next = { ...live, off: channelOffFromThird(live, pt.t, pt.p) };
+            else if ((live.kind === "long" || live.kind === "short") && clicks.current >= 2) next = { ...live, t1: pt.t, y1: pt.p };
+            else if ((live.kind === "long" || live.kind === "short") && clicks.current === 1) next = { ...live, y2: pt.p, t1: pt.t };
+            else next = { ...live, t1: pt.t, y1: pt.p };
+            draftRef.current = next;
+            setDraft(next);
             return;
           }
           if (!drag.current) return;
@@ -837,6 +897,7 @@ export function TermChart({
           setView((v) => ({ ...v, start }));
         }}
         onPointerUp={() => {
+          if (move.current) histDraw.current = histPush(histDraw.current, useKosh.getState().drawings[dKey] || []);
           drag.current = null;
           move.current = null;
         }}
@@ -915,10 +976,14 @@ export function TermChart({
                   <PatternOverlay key={h.kind + i} hit={h} src={shown} xAt={xAt} yPx={yPx} right={size.w - PAD.r} />
                 ))
               : null}
-            {shapes.map((s) => (
-              <ShapeDraw key={s.id} s={s} src={shown} xAt={xAt} yPx={yPx} right={size.w - PAD.r} selected={s.id === selectedId} />
-            ))}
-            {draft ? <ShapeDraw s={draft} src={shown} xAt={xAt} yPx={yPx} right={size.w - PAD.r} /> : null}
+            {chartMode === "price"
+              ? shapes.map((s) => (
+                  <g key={s.id} data-kosh-draw={s.kind}>
+                    <ShapeDraw s={s} src={shown} xAt={xAt} yPx={yPx} right={size.w - PAD.r} selected={s.id === selectedId} />
+                  </g>
+                ))
+              : null}
+            {chartMode === "price" && draft ? <ShapeDraw s={draft} src={shown} xAt={xAt} yPx={yPx} right={size.w - PAD.r} /> : null}
             {last ? (
               <g>
                 <circle cx={xAt(n - 1)} cy={yPx(last.c)} r="3" fill={lastUp ? UP : DOWN} stroke="var(--color-bg)" />

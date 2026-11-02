@@ -146,6 +146,11 @@ export function heatGroups(rows: CatalogueIndex[], board?: HeatBoardId): HeatGro
   );
 }
 
+/** One continuous list for a primary tab. Group order is kept; the headings are not part of the list. */
+export function heatBoardRows(rows: CatalogueIndex[], board?: HeatBoardId): CatalogueIndex[] {
+  return heatGroups(rows, board).flatMap((group) => group.rows);
+}
+
 export function catalogueCoverage(): { missing: string[]; extra: string[] } {
   const known = new Set(NIFTY_CATALOGUE.map((row) => row.symbol));
   const missing = NIFTY_CATALOGUE.filter((row) => !SPOT.has(row.symbol)).map((row) => row.symbol);
@@ -155,7 +160,7 @@ export function catalogueCoverage(): { missing: string[]; extra: string[] } {
 
 export type HeatTone = "up-strong" | "up" | "up-soft" | "flat" | "down-soft" | "down" | "down-strong";
 
-/** Card wash from the session percentage. Missing or ~flat stays neutral. */
+/** Card wash from the session percentage. Missing or ~flat stays neutral. Same thresholds in both themes. */
 export function heatTone(pct: number | null | undefined): HeatTone {
   if (pct == null || !Number.isFinite(pct) || Math.abs(pct) < 0.05) return "flat";
   const mag = Math.abs(pct);
@@ -163,23 +168,13 @@ export function heatTone(pct: number | null | undefined): HeatTone {
   return mag >= 1.25 ? "down-strong" : mag >= 0.4 ? "down" : "down-soft";
 }
 
-export const HEAT_FILL: Record<"light" | "dark", Record<HeatTone, string>> = {
-  light: {
-    "up-strong": "#DDF3E7",
-    up: "#E8F6EE",
-    "up-soft": "#F0F8F2",
-    flat: "#FFFFFF",
-    "down-soft": "#FFF1F0",
-    down: "#FCE7E6",
-    "down-strong": "#F7DADA",
-  },
-  dark: {
-    "up-strong": "rgba(52, 168, 112, 0.42)",
-    up: "rgba(52, 168, 112, 0.28)",
-    "up-soft": "rgba(52, 168, 112, 0.16)",
-    flat: "rgba(255, 255, 255, 0.04)",
-    "down-soft": "rgba(196, 74, 74, 0.18)",
-    down: "rgba(196, 74, 74, 0.30)",
-    "down-strong": "rgba(196, 74, 74, 0.46)",
-  },
-};
+/** Shared movement tokens. Theme colours come from --k-up / --k-down, not a second palette. */
+export function heatToneClass(tone: HeatTone): string {
+  if (tone === "up-strong") return "bg-up/70";
+  if (tone === "up") return "bg-up/35";
+  if (tone === "up-soft") return "bg-up/20";
+  if (tone === "down-soft") return "bg-down/20";
+  if (tone === "down") return "bg-down/35";
+  if (tone === "down-strong") return "bg-down/70";
+  return "bg-surface-2";
+}

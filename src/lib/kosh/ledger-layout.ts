@@ -48,6 +48,10 @@ export type LedgerLayout = {
   drawingsHidden: boolean;
   /** Watchlist column width in pixels. Older saves omit this and keep 286. */
   watchWidth: number;
+  /** Stay on the drawing tool after each placement. Older saves omit this. */
+  keepDrawing: boolean;
+  /** Off, weak (nearby OHLC), or strong (nearest OHLC of the bar). */
+  magnet: "off" | "weak" | "strong";
 };
 
 const COLORS = /^#[0-9a-fA-F]{6}$/;
@@ -69,6 +73,8 @@ export function defaultLedgerLayout(): LedgerLayout {
     drawings: {},
     drawingsHidden: false,
     watchWidth: 286,
+    keepDrawing: false,
+    magnet: "off",
   };
 }
 
@@ -76,12 +82,12 @@ export function drawScope(symbol: string, interval: string): string {
   return `${listingId(symbol)}|${intervalSpec(interval).id}`;
 }
 
-export function loadLedgerLayout(raw?: string | null): { layout: LedgerLayout; recovered: boolean } {
+export function loadLedgerLayout(raw?: string | null): { layout: LedgerLayout; recovered: boolean; unreadable?: boolean } {
   if (raw == null) {
     try {
       raw = typeof localStorage === "undefined" ? null : localStorage.getItem(LEDGER_LAYOUT_KEY);
     } catch {
-      return { layout: defaultLedgerLayout(), recovered: false };
+      return { layout: defaultLedgerLayout(), recovered: false, unreadable: true };
     }
   }
   if (!raw) return { layout: defaultLedgerLayout(), recovered: false };
@@ -133,6 +139,8 @@ export function sanitizeLayout(input: unknown): { layout: LedgerLayout; recovere
       drawings,
       drawingsHidden: row.drawingsHidden === true,
       watchWidth: clampWatchWidth(typeof row.watchWidth === "number" ? row.watchWidth : 286),
+      keepDrawing: row.keepDrawing === true,
+      magnet: row.magnet === "weak" || row.magnet === "strong" ? row.magnet : "off",
     },
     recovered,
   };

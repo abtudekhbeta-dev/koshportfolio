@@ -41,6 +41,8 @@ describe("draw-hit", () => {
     const b: OhlcBar = { t: 1, o: 100, h: 108, l: 95, c: 102, v: 1 };
     assert.equal(magnetPrice(b, 107.2, true), 108);
     assert.equal(magnetPrice(b, 107.2, false), 107.2);
+    assert.equal(magnetPrice(b, 107.2, true, 0.5), 107.2);
+    assert.equal(magnetPrice(b, 107.2, true, 1), 108);
   });
 });
 

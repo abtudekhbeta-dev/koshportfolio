@@ -21,13 +21,6 @@ function initials(name: string, symbol: string) {
   return src.slice(0, 2).toUpperCase();
 }
 
-function ink(symbol: string) {
-  const tones = ["#1c4538", "#6d2c3a", "#1e3a5f", "#6a4712", "#3a3834", "#2d4a3e"];
-  let n = 0;
-  for (const ch of bare(symbol) || symbol) n = (n * 33 + ch.charCodeAt(0)) >>> 0;
-  return tones[n % tones.length];
-}
-
 /** One logo for a listed company. Image from api.dharun.dev; monogram if it is missing. */
 export function CompanyLogo({
   symbol,
@@ -48,8 +41,8 @@ export function CompanyLogo({
     return (
       <span
         aria-hidden
-        className={cn("inline-grid shrink-0 place-items-center rounded-full font-semibold text-white", className)}
-        style={{ width: px, height: px, background: ink(ticker || name || "?"), fontSize: px < 22 ? 8 : 10 }}
+        className={cn("inline-grid shrink-0 place-items-center rounded-full font-semibold", className)}
+        style={{ width: px, height: px, background: "#e7eaef", color: "#142033", fontSize: px < 22 ? 8 : 10 }}
       >
         {initials(name || "", ticker)}
       </span>

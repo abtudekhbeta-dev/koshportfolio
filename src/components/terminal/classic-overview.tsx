@@ -13,10 +13,11 @@ import { IndexHeat } from "@/components/terminal/index-heat";
 import { MarketFlowsGlance } from "@/components/terminal/market-flows";
 import { apiFastPrints, apiNews, apiScreener, apiTape } from "@/lib/kosh/api";
 import { fmtPct, fmtPx } from "@/lib/kosh/engine";
+import { HEAT_FILL, HEAT_INK } from "@/lib/kosh/heat-contrast";
 import { instrumentKind, terminalSearch } from "@/lib/kosh/instrument-nav";
 import { overlayQuotes, pickLiveSymbols } from "@/lib/kosh/live-overlay";
 import { isIstSession } from "@/lib/kosh/market-hours";
-import { freshestPrint, tapeFreshness } from "@/lib/kosh/market-data";
+import { freshestPrint, shortFresh, tapeFreshness, visiblePoll } from "@/lib/kosh/market-data";
 import { NIFTY_CATALOGUE } from "@/lib/kosh/nifty-catalogue";
 import { sectorIndex } from "@/lib/kosh/benchmarks";
 import { sortEntities, type SortDir } from "@/lib/kosh/kosh-table";
@@ -57,6 +58,16 @@ function istStamp(ms: number | null | undefined) {
   return `${d.getUTCDate()} ${mon} ${hh}:${mm} IST`;
 }
 
+function stockHeat(pct: number | null): { background: string; color: string } {
+  const color = HEAT_INK;
+  if (pct == null || !Number.isFinite(pct)) return { background: HEAT_FILL.missing, color };
+  if (pct >= 1.5) return { background: HEAT_FILL.upStrong, color };
+  if (pct > 0) return { background: HEAT_FILL.upSoft, color };
+  if (pct <= -1.5) return { background: HEAT_FILL.downStrong, color };
+  if (pct < 0) return { background: HEAT_FILL.downSoft, color };
+  return { background: HEAT_FILL.flat, color };
+}
+
 export function ClassicOverview() {
   const liveSession = isIstSession();
   const ports = useKosh((s) => s.portfolios);
@@ -88,19 +99,19 @@ export function ClassicOverview() {
     queryKey: ["tape"],
     queryFn: apiTape,
     staleTime: liveSession ? 2_500 : 30_000,
-    refetchInterval: () => (isIstSession() ? 5_000 : 60_000),
+    refetchInterval: () => visiblePoll(5_000, 60_000, isIstSession()),
   });
   const indexQuotes = useQuery({
     queryKey: ["nifty-catalogue"],
     queryFn: () => apiFastPrints(NIFTY_CATALOGUE.map((s) => s.symbol)),
     staleTime: liveSession ? 2_500 : 30_000,
-    refetchInterval: () => (isIstSession() ? 5_000 : 60_000),
+    refetchInterval: () => visiblePoll(5_000, 60_000, isIstSession()),
   });
   const screen = useQuery({
     queryKey: ["screener"],
     queryFn: apiScreener,
     staleTime: liveSession ? 30_000 : 10 * 60_000,
-    refetchInterval: () => (isIstSession() ? 60_000 : 5 * 60_000),
+    refetchInterval: () => visiblePoll(60_000, 5 * 60_000, isIstSession()),
   });
   const screenRows = screen.data?.rows || [];
   const activeList = watchlists.find((l) => l.id === (listId || activeWatchId)) || watchlists[0];
@@ -135,7 +146,7 @@ export function ClassicOverview() {
     queryFn: () => apiFastPrints(liveSyms),
     enabled: liveSyms.length > 0,
     staleTime: liveSession ? 1_500 : 30_000,
-    refetchInterval: () => (isIstSession() ? 3_000 : 60_000),
+    refetchInterval: () => visiblePoll(3_000, 60_000, isIstSession()),
     placeholderData: (prev) => prev,
   });
   const priced = useMemo(
@@ -200,6 +211,13 @@ export function ClassicOverview() {
     (indexQuotes.data || []).find((q) => bareSymbol(q.symbol) === bareSymbol(chartSym || "") || bareSymbol(q.input) === bareSymbol(chartSym || "")) ||
     null;
   const filterCount = (dir !== "any" ? 1 : 0) + (membership !== "any" ? 1 : 0);
+  const indexFresh = indexQuotes.data?.some((row) => row.price > 0)
+    ? tapeFreshness(indexQuotes.data, isIstSession())
+    : {
+        state: "off" as const,
+        label: indexQuotes.isError ? "UNAVAILABLE" : "LOADING",
+        title: indexQuotes.isError ? "Index quotes did not return a price." : "Fetching index quotes.",
+      };
   const indexStamp = istStamp(freshestPrint(indexQuotes.data)?.marketTime || freshestPrint(indexQuotes.data)?.retrievedAt || null);
 
   useEffect(() => {
@@ -304,7 +322,8 @@ export function ClassicOverview() {
           pending={indexQuotes.isPending}
           failed={indexQuotes.isError}
           stamp={indexStamp}
-          live={liveSession}
+          freshLabel={indexFresh.label === "LOADING" ? "Loading" : shortFresh(indexFresh.state)}
+          freshTitle={indexFresh.title}
           onChart={openChart}
         />
       </div>
@@ -427,24 +446,12 @@ export function ClassicOverview() {
                     key={row.symbol}
                     type="button"
                     onClick={() => openChart(row.symbol, row.name)}
-                    className={cn(
-                      "min-h-[72px] rounded-sm px-2 py-1.5 text-left transition-colors duration-300",
-                      row.chgPct == null
-                        ? "bg-surface-2 text-muted"
-                        : row.chgPct >= 1.5
-                          ? "bg-up/70 text-fg"
-                          : row.chgPct > 0
-                            ? "bg-up/25 text-fg"
-                            : row.chgPct <= -1.5
-                              ? "bg-down/70 text-fg"
-                              : row.chgPct < 0
-                                ? "bg-down/25 text-fg"
-                                : "bg-surface-2 text-fg",
-                    )}
+                    className="min-h-[72px] rounded-sm px-2 py-1.5 text-left"
+                    style={stockHeat(row.chgPct)}
                   >
                     <div className="truncate text-[12px] font-medium">{row.name}</div>
-                    <div className="text-[10px] text-subtle">{row.symbol}</div>
-                    <div className="mt-1 font-mono text-[14px] tabular">{row.chgPct == null ? "—" : fmtPct(row.chgPct)}</div>
+                    <div className="text-[10px]">{row.symbol}</div>
+                    <div className="mt-1 font-mono text-[14px] font-semibold tabular">{row.chgPct == null ? "—" : fmtPct(row.chgPct)}</div>
                     <div className="font-mono text-[10px] tabular">{row.last != null ? fmtPx(row.last) : "No quote"}</div>
                   </button>
                 ))

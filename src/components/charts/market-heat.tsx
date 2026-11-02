@@ -3,16 +3,18 @@ import { Link } from "@tanstack/react-router";
 import type { ScreenRow } from "@/lib/kosh/types";
 import { fmtPct } from "@/lib/kosh/engine";
 import { heatGroups } from "@/lib/kosh/heat";
+import { HEAT_FILL, HEAT_INK } from "@/lib/kosh/heat-contrast";
 import { cn } from "@/lib/utils";
 
-function heat(v: number) {
-  if (v >= 3) return "bg-up text-accent-fg";
-  if (v >= 1) return "bg-up/70 text-accent-fg";
-  if (v >= 0.15) return "bg-up/35 text-fg";
-  if (v > -0.15) return "bg-surface-2 text-muted";
-  if (v > -1) return "bg-down/35 text-fg";
-  if (v > -3) return "bg-down/70 text-accent-fg";
-  return "bg-down text-accent-fg";
+function heatStyle(v: number): { background: string; color: string } {
+  const color = HEAT_INK;
+  if (v >= 3) return { background: HEAT_FILL.upStrong, color };
+  if (v >= 1) return { background: HEAT_FILL.upMid, color };
+  if (v >= 0.15) return { background: HEAT_FILL.upSoft, color };
+  if (v > -0.15) return { background: HEAT_FILL.flat, color };
+  if (v > -1) return { background: HEAT_FILL.downSoft, color };
+  if (v > -3) return { background: HEAT_FILL.downMid, color };
+  return { background: HEAT_FILL.downStrong, color };
 }
 
 export function MarketHeat({ rows }: { rows: ScreenRow[] }) {
@@ -23,9 +25,9 @@ export function MarketHeat({ rows }: { rows: ScreenRow[] }) {
     <div className="grid gap-4">
       <div className="flex items-center gap-3 text-[11px] text-muted">
         <span>Daily change</span>
-        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-[2px] bg-down/70" /> Down</span>
-        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-[2px] bg-surface-2" /> Flat</span>
-        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-[2px] bg-up/70" /> Up</span>
+        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-[2px]" style={{ background: HEAT_FILL.downStrong }} /> Down</span>
+        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-[2px]" style={{ background: HEAT_FILL.flat }} /> Flat</span>
+        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-[2px]" style={{ background: HEAT_FILL.upStrong }} /> Up</span>
       </div>
       {groups.map((g) => {
         const expanded = g.collapseDefault ? Boolean(open[g.sector]) : true;
@@ -57,7 +59,8 @@ export function MarketHeat({ rows }: { rows: ScreenRow[] }) {
                       key={r.symbol}
                       to="/s/$symbol"
                       params={{ symbol: r.symbol }}
-                      className={cn("min-h-[52px] rounded-md px-2 py-2 transition-transform duration-150 hover:scale-[1.01]", heat(r.changePct))}
+                      className={cn("min-h-[52px] rounded-md px-2 py-2 transition-transform duration-150 hover:scale-[1.01]")}
+                      style={heatStyle(r.changePct)}
                     >
                       <div className="truncate text-[12px] font-medium">{r.symbol}</div>
                       <div className="font-mono text-[11px] tabular">{fmtPct(r.changePct)}</div>

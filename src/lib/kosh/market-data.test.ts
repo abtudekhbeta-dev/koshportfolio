@@ -9,8 +9,10 @@ import {
   patchLastBar,
   quoteStatus,
   quoteStatusLabel,
+  shortFresh,
   termBars,
   termFetchSpec,
+  visiblePoll,
 } from "./market-data.ts";
 
 function bar(t: number, o: number, h: number, l: number, c: number, v = 10): OhlcBar {
@@ -104,6 +106,17 @@ describe("classifyFreshness", () => {
 
   it("is unavailable without a price", () => {
     assert.equal(classifyFreshness({ session: true, price: 0, marketTime: now, retrievedAt: now, now }).state, "off");
+  });
+
+  it("uses a short status and does not call a hidden tab's poll", () => {
+    assert.equal(shortFresh("live"), "Live");
+    assert.equal(shortFresh("delayed"), "Delayed");
+    assert.equal(shortFresh("last"), "Last available");
+    assert.equal(shortFresh("stale"), "Stale");
+    assert.equal(shortFresh("off"), "Unavailable");
+    assert.equal(visiblePoll(5_000, 60_000, true, true), false);
+    assert.equal(visiblePoll(5_000, 60_000, true, false), 5_000);
+    assert.equal(visiblePoll(5_000, 60_000, false, false), 60_000);
   });
 });
 

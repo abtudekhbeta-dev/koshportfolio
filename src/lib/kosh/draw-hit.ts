@@ -125,7 +125,7 @@ export function hitTest(
   return null;
 }
 
-export function magnetPrice(bar: OhlcBar | undefined, price: number, on: boolean) {
+export function magnetPrice(bar: OhlcBar | undefined, price: number, on: boolean, reach?: number) {
   if (!on || !bar) return price;
   const pts = [bar.o, bar.h, bar.l, bar.c];
   let best = price;
@@ -137,6 +137,7 @@ export function magnetPrice(bar: OhlcBar | undefined, price: number, on: boolean
       best = p;
     }
   }
+  if (reach != null && d > reach) return price;
   return best;
 }
 

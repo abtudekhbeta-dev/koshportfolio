@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { apiTape } from "@/lib/kosh/api";
 import { isIstSession } from "@/lib/kosh/market-hours";
-import { tapeFreshness } from "@/lib/kosh/market-data";
+import { tapeFreshness, visiblePoll } from "@/lib/kosh/market-data";
 import { AddHoldings } from "@/components/add-holdings";
 import { AlertBanner } from "@/components/alert-banner";
 import { AuthSlot } from "@/components/auth-slot";
@@ -67,7 +67,7 @@ function ClassicShell({ children, wide, full }: { children: ReactNode; wide?: bo
   const tape = useQuery({
     queryKey: ["tape"],
     queryFn: apiTape,
-    refetchInterval: isIstSession() ? 5_000 : 60_000,
+    refetchInterval: () => visiblePoll(5_000, 60_000, isIstSession()),
     staleTime: isIstSession() ? 2_500 : 30_000,
     enabled: !full,
   });

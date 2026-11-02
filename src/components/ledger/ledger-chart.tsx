@@ -16,11 +16,13 @@ import {
   type SeriesType,
   type Time,
   type UTCTimestamp,
+  type Logical,
 } from "lightweight-charts";
 import { atr, bollinger, ema, macd, rsi, sma } from "@/lib/kosh/ohlc";
 import { sliceLookback } from "@/lib/kosh/ohlc";
 import type { OhlcBar } from "@/lib/kosh/types";
-import { FIB_RATIOS, fibPrice, hitDraw, rayEnd, type HitPart } from "@/lib/kosh/ledger-draw";
+import { FIB_RATIOS, fibPrice, hitDraw, logicalFromTime, rayEnd, timeFromLogical, type HitPart } from "@/lib/kosh/ledger-draw";
+import { magnetPrice } from "@/lib/kosh/draw-hit";
 import type { DrawDash, DrawKind, LedgerDraw, LedgerInd } from "@/lib/kosh/ledger-layout";
 import type { LedgerChartType, LedgerTool } from "@/lib/kosh/ledger-spec";
 import { seriesScaleMode, volumePaneHeights } from "@/lib/kosh/chart-scale";
@@ -135,6 +137,8 @@ export function LedgerChart({
   onDrawings,
   onContext,
   onFinished,
+  keepDrawing,
+  magnet,
   theme,
   pen,
 }: {
@@ -153,6 +157,8 @@ export function LedgerChart({
   onDrawings: (next: LedgerDraw[], phase: Phase) => void;
   onContext: (info: { x: number; y: number; price: number | null; time: number | null }) => void;
   onFinished?: () => void;
+  keepDrawing?: boolean;
+  magnet?: "off" | "weak" | "strong";
   theme: LedgerTheme;
   pen: { color: string; width: number; dash: DrawDash };
 }) {
@@ -165,11 +171,19 @@ export function LedgerChart({
   const toolRef = useRef(tool);
   const hiddenRef = useRef(drawingsHidden);
   const intraRef = useRef(intra);
+  const keepRef = useRef(keepDrawing === true);
+  const magnetRef = useRef(magnet || "off");
+  const onDrawingsRef = useRef(onDrawings);
+  const onFinishedRef = useRef(onFinished);
   barsRef.current = bars;
   drawingsRef.current = drawings;
   toolRef.current = tool;
   hiddenRef.current = drawingsHidden;
   intraRef.current = intra;
+  keepRef.current = keepDrawing === true;
+  magnetRef.current = magnet || "off";
+  onDrawingsRef.current = onDrawings;
+  onFinishedRef.current = onFinished;
   const themeRef = useRef(theme);
   const penRef = useRef(pen);
   themeRef.current = theme;
@@ -181,10 +195,16 @@ export function LedgerChart({
   const [draft, setDraft] = useState<LedgerDraw | null>(null);
   const [textAt, setTextAt] = useState<{ t: number; p: number; x: number; y: number } | null>(null);
   const dragRef = useRef<
-    | { mode: "create"; kind: DrawKind; start: DataPoint; now: DataPoint; px: number }
+    | { mode: "create"; kind: DrawKind; start: DataPoint; now: DataPoint; px: number; second: boolean }
     | { mode: "move"; part: HitPart; origin: LedgerDraw; start: DataPoint }
     | null
   >(null);
+  const placeRef = useRef<{ kind: DrawKind; start: DataPoint } | null>(null);
+  const liveRef = useRef<LedgerDraw[] | null>(null);
+  const openGesture = useRef(false);
+  const [guide, setGuide] = useState<{ x: number; y: number } | null>(null);
+  const [hotId, setHotId] = useState<string | null>(null);
+  const guideRaf = useRef(0);
   const applied = useRef(-1);
   const points = useMemo(() => toPoints(bars, intra), [bars, intra]);
   const legend = useMemo(() => indicatorLegend(bars, indicators, intra), [bars, indicators, intra]);
@@ -274,6 +294,41 @@ export function LedgerChart({
       handleScale: { axisPressedMouseMove: nav, mouseWheel: true, pinch: true },
     });
   }, [tool, alive]);
+
+  useEffect(() => {
+    if (tool === "cursor" || tool === "crosshair") {
+      const pending = openGesture.current;
+      placeRef.current = null;
+      if (dragRef.current?.mode === "create") dragRef.current = null;
+      setDraft(null);
+      setGuide(null);
+      setTextAt(null);
+      if (pending) {
+        openGesture.current = false;
+        onDrawingsRef.current(drawingsRef.current, "cancel");
+      }
+    }
+  }, [tool]);
+
+  useEffect(() => {
+    const drop = () => {
+      const drag = dragRef.current;
+      dragRef.current = null;
+      placeRef.current = null;
+      setDraft(null);
+      setTextAt(null);
+      openGesture.current = false;
+      if (drag?.mode === "move") {
+        const restored = drawingsRef.current.map((row) => (row.id === drag.origin.id ? drag.origin : row));
+        onDrawingsRef.current(restored, "move");
+        onDrawingsRef.current(restored, "cancel");
+        return;
+      }
+      onDrawingsRef.current(drawingsRef.current, "cancel");
+    };
+    window.addEventListener("blur", drop);
+    return () => window.removeEventListener("blur", drop);
+  }, []);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -459,36 +514,75 @@ export function LedgerChart({
     const series = priceRef.current;
     if (!chart || !series) return null;
     const box = paneBox();
-    const x = chart.timeScale().timeToCoordinate(chartTime(t, intra));
+    const times = barsRef.current.map((bar) => bar.t);
+    const logical = logicalFromTime(times, t);
+    const direct = chart.timeScale().timeToCoordinate(chartTime(t, intraRef.current));
+    const x = direct ?? chart.timeScale().logicalToCoordinate(logical as Logical);
     const y = series.priceToCoordinate(p);
     if (x == null || y == null) return null;
     return { x: x + box.left, y: y + box.top };
   }
 
-  function unproject(x: number, y: number): DataPoint | null {
+  function priceReach(price: number, pixels: number) {
+    const series = priceRef.current;
+    if (!series) return Infinity;
+    const y = series.priceToCoordinate(price);
+    if (y == null) return Infinity;
+    const other = series.coordinateToPrice(y + pixels);
+    if (other == null || !Number.isFinite(other)) return Infinity;
+    return Math.abs(other - price);
+  }
+
+  function withMagnet(point: DataPoint, invert: boolean): DataPoint {
+    const mode = magnetRef.current;
+    const effective = invert ? (mode === "off" ? "strong" : "off") : mode;
+    if (effective === "off") return point;
+    const series = barsRef.current;
+    if (!series.length) return point;
+    const nearest = snapTime(series, point.t);
+    const bar = series.find((row) => row.t === nearest);
+    if (!bar) return point;
+    if (effective === "strong") return { t: nearest, p: magnetPrice(bar, point.p, true) };
+    const snapped = magnetPrice(bar, point.p, true, priceReach(point.p, 12));
+    return snapped === point.p ? point : { t: nearest, p: snapped };
+  }
+
+  function unproject(x: number, y: number, invert: boolean): DataPoint | null {
     const chart = chartRef.current;
     const series = priceRef.current;
     if (!chart || !series) return null;
     const box = paneBox();
     const localX = x - box.left;
     const localY = y - box.top;
-    if (localX < 0 || localX > chart.timeScale().width() || localY < 0 || localY > box.height) return null;
-    const time = chart.timeScale().coordinateToTime(localX);
+    if (localY < 0 || localY > box.height) return null;
+    if (localX < -8 || localX > chart.timeScale().width() + 8) return null;
+    const logical = chart.timeScale().coordinateToLogical(localX);
     const price = series.coordinateToPrice(localY);
-    const unix = timeToUnix(time as number | { year: number; month: number; day: number } | null);
-    if (unix == null || price == null || !Number.isFinite(price)) return null;
-    return { t: snapTime(barsRef.current, unix), p: price };
+    if (logical == null || price == null || !Number.isFinite(price)) return null;
+    const t = timeFromLogical(barsRef.current.map((bar) => bar.t), logical);
+    return withMagnet({ t, p: price }, invert);
   }
 
-  function eventPoint(e: React.PointerEvent | React.MouseEvent): { x: number; y: number; data: DataPoint } | null {
+  function eventPoint(e: { clientX: number; clientY: number; ctrlKey?: boolean; metaKey?: boolean }): { x: number; y: number; data: DataPoint } | null {
     const svg = svgRef.current;
     if (!svg) return null;
     const rect = svg.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    const data = unproject(x, y);
+    const data = unproject(x, y, Boolean(e.ctrlKey || e.metaKey));
     if (!data) return null;
     return { x, y, data };
+  }
+
+  function queueGuide(point: { x: number; y: number; data: DataPoint }) {
+    const snapped = project(point.data.t, point.data.p);
+    const x = snapped?.x ?? point.x;
+    const y = snapped?.y ?? point.y;
+    if (guideRaf.current) cancelAnimationFrame(guideRaf.current);
+    guideRaf.current = requestAnimationFrame(() => {
+      guideRaf.current = 0;
+      setGuide({ x, y });
+    });
   }
 
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
@@ -518,33 +612,66 @@ export function LedgerChart({
       }
       onSelect(found.draw.id);
       if (found.draw.locked) return;
-      e.currentTarget.setPointerCapture(e.pointerId);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* The pointer can already be gone. The drag still tracks move and up. */
+      }
       dragRef.current = { mode: "move", part: found.part, origin: found.draw, start: hitPoint.data };
-      onDrawings(drawingsRef.current, "start");
+      liveRef.current = drawingsRef.current;
+      onDrawingsRef.current(drawingsRef.current, "start");
+      openGesture.current = true;
       return;
     }
     e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = { mode: "create", kind: current, start: hitPoint.data, now: hitPoint.data, px: 0 };
-    onDrawings(drawingsRef.current, "start");
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* Same as a move: keep the gesture if capture is unavailable. */
+    }
+    const pending = placeRef.current;
+    const second = Boolean(pending && pending.kind === current && current !== "hline" && current !== "vline" && current !== "text");
+    const start = second && pending ? pending.start : hitPoint.data;
+    dragRef.current = { mode: "create", kind: current, start, now: hitPoint.data, px: second ? 99 : 0, second };
+    if (!second) {
+      onDrawingsRef.current(drawingsRef.current, "start");
+      openGesture.current = true;
+    }
+    if (current !== "text") setDraft(draftFrom(current, start, hitPoint.data, penRef.current));
   }
 
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    const drag = dragRef.current;
-    if (!drag) return;
     const hitPoint = eventPoint(e);
-    if (!hitPoint) return;
+    const drawing = toolRef.current !== "cursor" && toolRef.current !== "crosshair";
+    if (drawing && hitPoint) queueGuide(hitPoint);
+    const drag = dragRef.current;
+    const pending = placeRef.current;
+    if (!drag && pending && hitPoint && drawing) {
+      setDraft(draftFrom(pending.kind, pending.start, hitPoint.data, penRef.current));
+      return;
+    }
+    if (!drag || !hitPoint) return;
     if (drag.mode === "create") {
       drag.now = hitPoint.data;
-      drag.px = Math.hypot(hitPoint.x - (project(drag.start.t, drag.start.p)?.x || hitPoint.x), hitPoint.y - (project(drag.start.t, drag.start.p)?.y || hitPoint.y));
+      const origin = project(drag.start.t, drag.start.p);
+      drag.px = Math.hypot(hitPoint.x - (origin?.x || hitPoint.x), hitPoint.y - (origin?.y || hitPoint.y));
       if (drag.kind !== "text") setDraft(draftFrom(drag.kind, drag.start, drag.now, penRef.current));
       return;
     }
     const nextDraw = shiftDraw(drag.origin, drag.part, drag.start, hitPoint.data);
-    onDrawings(
-      drawingsRef.current.map((row) => (row.id === nextDraw.id ? nextDraw : row)),
-      "move",
-    );
+    const next = drawingsRef.current.map((row) => (row.id === nextDraw.id ? nextDraw : row));
+    liveRef.current = next;
+    onDrawingsRef.current(next, "move");
+  }
+
+  function finishCreate(drag: { kind: DrawKind; start: DataPoint; now: DataPoint }, now: DataPoint) {
+    placeRef.current = null;
+    const row = { ...draftFrom(drag.kind, drag.start, now, penRef.current), id: crypto.randomUUID() };
+    onDrawingsRef.current([...drawingsRef.current.filter((item) => item.id !== "draft"), row], "commit");
+    openGesture.current = false;
+    onSelect(row.id);
+    setDraft(null);
+    if (!keepRef.current) onFinishedRef.current?.();
   }
 
   function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
@@ -552,7 +679,9 @@ export function LedgerChart({
     dragRef.current = null;
     if (!drag) return;
     if (drag.mode === "move") {
-      onDrawings(drawingsRef.current, "commit");
+      onDrawingsRef.current(liveRef.current || drawingsRef.current, "commit");
+      liveRef.current = null;
+      openGesture.current = false;
       return;
     }
     const hitPoint = eventPoint(e);
@@ -560,21 +689,34 @@ export function LedgerChart({
     if (drag.kind === "text") {
       const at = project(now.t, now.p);
       setTextAt(at ? { t: now.t, p: now.p, x: at.x, y: at.y } : null);
-      onDrawings(drawingsRef.current, "cancel");
       setDraft(null);
+      placeRef.current = null;
       return;
     }
-    const min = drag.kind === "hline" || drag.kind === "vline" ? 0 : 4;
-    if (drag.px < min && drag.kind !== "hline" && drag.kind !== "vline") {
-      onDrawings(drawingsRef.current, "cancel");
-      setDraft(null);
+    const onePoint = drag.kind === "hline" || drag.kind === "vline";
+    if (!drag.second && !onePoint && drag.px < 5) {
+      placeRef.current = { kind: drag.kind, start: drag.start };
+      setDraft(draftFrom(drag.kind, drag.start, now, penRef.current));
       return;
     }
-    const row = { ...draftFrom(drag.kind, drag.start, now, penRef.current), id: crypto.randomUUID() };
-    onDrawings([...drawingsRef.current.filter((item) => item.id !== "draft"), row], "commit");
-    onSelect(row.id);
+    finishCreate(drag, now);
+  }
+
+  function onPointerCancel() {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (!drag) return;
+    if (drag.mode === "move") {
+      const restored = drawingsRef.current.map((row) => (row.id === drag.origin.id ? drag.origin : row));
+      onDrawingsRef.current(restored, "move");
+      onDrawingsRef.current(restored, "cancel");
+      openGesture.current = false;
+      return;
+    }
+    placeRef.current = null;
     setDraft(null);
-    onFinished?.();
+    openGesture.current = false;
+    onDrawingsRef.current(drawingsRef.current, "cancel");
   }
 
   const box = paneBox();
@@ -588,11 +730,26 @@ export function LedgerChart({
       className="lt-chart"
       data-ledger-chart
       data-bars={bars.length}
+      data-tool={tool}
+      data-drawing={tool !== "cursor" && tool !== "crosshair" ? "1" : "0"}
       data-chart-bg={chrome.background}
       style={{ background: chrome.background }}
       onContextMenuCapture={(e) => {
         e.preventDefault();
         const hitPoint = eventPoint(e);
+        let hitId: string | null = null;
+        if (hitPoint && !hiddenRef.current) {
+          const width = svgRef.current?.clientWidth || 0;
+          const height = svgRef.current?.clientHeight || 0;
+          for (let i = drawingsRef.current.length - 1; i >= 0; i--) {
+            const draw = drawingsRef.current[i];
+            if (hitDraw(draw, hitPoint.x, hitPoint.y, project, width, height)) {
+              hitId = draw.id;
+              break;
+            }
+          }
+        }
+        if (hitId) onSelect(hitId);
         onContext({ x: e.clientX, y: e.clientY, price: hitPoint?.data.p ?? null, time: hitPoint?.data.t ?? null });
       }}
     >
@@ -607,8 +764,17 @@ export function LedgerChart({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
       >
-        {tool !== "cursor" && tool !== "crosshair" ? <rect x="0" y="0" width="100%" height="100%" fill="transparent" pointerEvents="all" /> : null}
+        {tool !== "cursor" && tool !== "crosshair" ? (
+          <rect x="0" y="0" width="100%" height="100%" fill="transparent" pointerEvents="all" style={{ cursor: "crosshair" }} />
+        ) : null}
+        {guide && tool !== "cursor" && tool !== "crosshair" ? (
+          <g pointerEvents="none" stroke={chrome.text} strokeOpacity={0.45}>
+            <line x1={guide.x} y1={0} x2={guide.x} y2="100%" />
+            <line x1={0} y1={guide.y} x2="100%" y2={guide.y} />
+          </g>
+        ) : null}
         {painted.map((draw) => (
           <DrawShape
             key={draw.id}
@@ -618,6 +784,8 @@ export function LedgerChart({
             height={alive ? box.height : 0}
             selected={draw.id === selectedId}
             activeTool={tool}
+            hot={draw.id === hotId}
+            onHot={(id) => setHotId(id)}
             surface={chrome.background}
             ink={chrome.text}
           />
@@ -632,11 +800,12 @@ export function LedgerChart({
             const text = new FormData(e.currentTarget).get("note");
             const note = String(text || "").trim().slice(0, 80);
             if (note) {
+              const id = crypto.randomUUID();
               onDrawings(
                 [
                   ...drawingsRef.current,
                   {
-                    id: crypto.randomUUID(),
+                    id,
                     kind: "text",
                     t0: textAt.t,
                     p0: textAt.p,
@@ -650,9 +819,23 @@ export function LedgerChart({
                 ],
                 "commit",
               );
-              onFinished?.();
-            } else onDrawings(drawingsRef.current, "cancel");
+              onSelect(id);
+              openGesture.current = false;
+              if (!keepRef.current) onFinishedRef.current?.();
+            } else {
+              openGesture.current = false;
+              onDrawings(drawingsRef.current, "cancel");
+            }
             setTextAt(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") return;
+            e.preventDefault();
+            e.stopPropagation();
+            openGesture.current = false;
+            onDrawings(drawingsRef.current, "cancel");
+            setTextAt(null);
+            if (!keepRef.current) onFinishedRef.current?.();
           }}
         >
           <input name="note" aria-label="Annotation text" autoFocus placeholder="Note" maxLength={80} />
@@ -728,6 +911,8 @@ function DrawShape({
   height,
   selected,
   activeTool,
+  hot,
+  onHot,
   surface,
   ink,
 }: {
@@ -737,6 +922,8 @@ function DrawShape({
   height: number;
   selected: boolean;
   activeTool: LedgerTool;
+  hot: boolean;
+  onHot: (id: string | null) => void;
   surface: string;
   ink: string;
 }) {
@@ -747,32 +934,42 @@ function DrawShape({
   const events = pickable ? "stroke" : "none";
   const widthPx = Math.min(6, Math.max(1, draw.width || 1.5));
   const dash = draw.dash === "dashed" ? "7 4" : draw.dash === "dotted" ? "1.5 3.5" : undefined;
+  const showHandles = selected || (hot && pickable);
   const common = {
     stroke: draw.color,
     fill: "none" as const,
     strokeWidth: selected ? widthPx + 0.6 : widthPx,
     strokeDasharray: dash,
-    pointerEvents: events as "stroke",
+    pointerEvents: events as "stroke" | "none",
   };
+  const hover = pickable
+    ? {
+        onPointerEnter: () => onHot(draw.id),
+        onPointerLeave: () => onHot(null),
+        style: { cursor: draw.locked ? "not-allowed" : "move" },
+      }
+    : {};
   if (draw.kind === "hline") {
     return (
-      <g>
+      <g {...hover}>
+        {pickable ? <line x1={0} y1={a.y} x2={width} y2={a.y} stroke="transparent" strokeWidth={28} pointerEvents="stroke" /> : null}
         <line x1={0} y1={a.y} x2={width} y2={a.y} {...common} />
-        {selected ? <Handle x={8} y={a.y} fill={surface} /> : null}
+        {showHandles ? <Handle x={8} y={a.y} fill={surface} /> : null}
       </g>
     );
   }
   if (draw.kind === "vline") {
     return (
-      <g>
+      <g {...hover}>
+        {pickable ? <line x1={a.x} y1={0} x2={a.x} y2={height || 800} stroke="transparent" strokeWidth={28} pointerEvents="stroke" /> : null}
         <line x1={a.x} y1={0} x2={a.x} y2={height || 800} {...common} />
-        {selected ? <Handle x={a.x} y={12} fill={surface} /> : null}
+        {showHandles ? <Handle x={a.x} y={12} fill={surface} /> : null}
       </g>
     );
   }
   if (draw.kind === "text") {
     return (
-      <g pointerEvents={pickable ? "all" : "none"}>
+      <g {...hover} pointerEvents={pickable ? "all" : "none"}>
         <text x={a.x + 4} y={a.y} fill={draw.color} fontSize={11 + ((draw.width || 1) - 1) * 2}>
           {draw.text || "Note"}
         </text>
@@ -780,13 +977,15 @@ function DrawShape({
     );
   }
   if (!b) return null;
+  const dot = Math.hypot(a.x - b.x, a.y - b.y) < 2;
   if (draw.kind === "rect") {
     const x = Math.min(a.x, b.x);
     const y = Math.min(a.y, b.y);
     return (
-      <g>
+      <g {...hover}>
         <rect x={x} y={y} width={Math.abs(b.x - a.x)} height={Math.abs(b.y - a.y)} {...common} fill={draw.color} fillOpacity={0.12} pointerEvents={pickable ? "all" : "none"} />
-        {selected ? (
+        {dot ? <circle cx={a.x} cy={a.y} r={5} fill={draw.color} pointerEvents="none" /> : null}
+        {showHandles ? (
           <>
             <Handle x={a.x} y={a.y} fill={surface} />
             <Handle x={b.x} y={b.y} fill={surface} />
@@ -799,20 +998,21 @@ function DrawShape({
     const left = Math.min(a.x, b.x);
     const right = Math.max(a.x, b.x);
     return (
-      <g>
+      <g {...hover}>
         {FIB_RATIOS.map((ratio) => {
           const y = project(draw.t0, fibPrice(draw.p0, draw.p1 as number, ratio))?.y;
           if (y == null) return null;
           return (
             <g key={ratio}>
-              <line x1={left} y1={y} x2={right} y2={y} stroke={draw.color} strokeWidth={widthPx} strokeDasharray={dash} pointerEvents={events} />
-              <text x={right + 4} y={y + 3} fill={draw.color} fontSize="10">
+              {pickable ? <line x1={left} y1={y} x2={right} y2={y} stroke="transparent" strokeWidth={18} pointerEvents="stroke" /> : null}
+              <line x1={left} y1={y} x2={right} y2={y} stroke={draw.color} strokeWidth={widthPx} strokeDasharray={dash} pointerEvents="none" />
+              <text x={Math.min(right + 4, width - 36)} y={y - 2} fill={ink} fontSize="10">
                 {ratio.toFixed(3)}
               </text>
             </g>
           );
         })}
-        {selected ? (
+        {showHandles ? (
           <>
             <Handle x={a.x} y={a.y} fill={surface} />
             <Handle x={b.x} y={b.y} fill={surface} />
@@ -829,14 +1029,16 @@ function DrawShape({
       ? `${(draw.p1! - draw.p0 >= 0 ? "+" : "") + (draw.p1! - draw.p0).toFixed(2)} (${draw.p0 ? (((draw.p1! - draw.p0) / draw.p0) * 100).toFixed(2) : "—"}%)`
       : "";
   return (
-    <g>
-      <line x1={a.x} y1={a.y} x2={end.x} y2={end.y} {...common} />
+    <g {...hover}>
+      {pickable ? <line x1={a.x} y1={a.y} x2={end.x} y2={end.y} stroke="transparent" strokeWidth={28} pointerEvents="stroke" /> : null}
+      <line x1={a.x} y1={a.y} x2={end.x} y2={end.y} {...common} pointerEvents="none" />
+      {dot ? <circle cx={a.x} cy={a.y} r={5} fill={draw.color} pointerEvents="none" /> : null}
       {measure ? (
-        <text x={midX} y={midY - 6} fill={ink} fontSize="11">
+        <text x={midX} y={midY - 6} fill={ink} fontSize="11" pointerEvents="none">
           {measure}
         </text>
       ) : null}
-      {selected ? (
+      {showHandles ? (
         <>
           <Handle x={a.x} y={a.y} fill={surface} />
           <Handle x={b.x} y={b.y} fill={surface} />
@@ -847,5 +1049,5 @@ function DrawShape({
 }
 
 function Handle({ x, y, fill }: { x: number; y: number; fill: string }) {
-  return <rect x={x - 4} y={y - 4} width={8} height={8} fill={fill} stroke="#4c8dff" pointerEvents="all" />;
+  return <rect x={x - 6} y={y - 6} width={12} height={12} rx={2} fill={fill} stroke="#4c8dff" strokeWidth={1.5} pointerEvents="all" style={{ cursor: "grab" }} />;
 }

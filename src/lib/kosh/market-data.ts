@@ -97,6 +97,26 @@ export function classifyFreshness(input: {
   };
 }
 
+/** Compact status for overview and heatmap. Does not treat a refresh as proof the print is live. */
+export function shortFresh(state: Freshness): string {
+  if (state === "live") return "Live";
+  if (state === "delayed") return "Delayed";
+  if (state === "stale") return "Stale";
+  if (state === "last") return "Last available";
+  if (state === "unverified") return "Unverified";
+  return "Unavailable";
+}
+
+/**
+ * Poll interval while this tab is visible. A hidden tab returns false so the
+ * query does not keep fetching. Open and closed intervals stay with the caller.
+ */
+export function visiblePoll(whenOpen: number, whenClosed: number, session: boolean, hidden?: boolean): number | false {
+  const gone = hidden ?? (typeof document !== "undefined" && document.visibilityState === "hidden");
+  if (gone) return false;
+  return session ? whenOpen : whenClosed;
+}
+
 export function freshestPrint<T extends { price?: number; marketTime?: number | null; retrievedAt?: number | null }>(
   rows: T[] | undefined | null,
 ): T | null {

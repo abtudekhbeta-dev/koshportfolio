@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { OhlcBar } from "./types.ts";
 import { cleanBars, indicatorLegend, istBusinessDay, ohlcCollapsed, sessionVwap } from "./ledger-bars.ts";
-import { distToSeg, fibPrice, hitDraw } from "./ledger-draw.ts";
+import { distToSeg, fibPrice, hitDraw, logicalFromTime, timeFromLogical } from "./ledger-draw.ts";
 import { addIndicator, drawScope, loadLedgerLayout, sanitizeLayout } from "./ledger-layout.ts";
 import { clampRange, intervalSpec, rangesFor } from "./ledger-spec.ts";
 
@@ -86,6 +86,7 @@ describe("ledger drawings", () => {
       hidden: false,
     };
     assert.equal(hitDraw(line, 80, 60, project, 200, 120), "body");
+    assert.equal(hitDraw(line, 80, 70, project, 200, 120), "body");
     assert.equal(hitDraw(line, 80, 20, project, 200, 120), null);
     assert.ok(distToSeg(0, 0, 0, 0, 10, 0) < distToSeg(0, 5, 0, 0, 10, 0));
   });
@@ -107,6 +108,15 @@ describe("ledger drawings", () => {
       assert.ok(hitDraw(row.draw, row.x, row.y, project, 200, 200), row.draw.kind);
       assert.equal(hitDraw({ ...row.draw, hidden: true }, row.x, row.y, project, 200, 200), null);
     }
+  });
+
+  it("keeps a timestamp attached to the same logical bar when the series is panned in index space", () => {
+    const times = [100, 200, 300, 400];
+    assert.equal(logicalFromTime(times, 200), 1);
+    assert.equal(timeFromLogical(times, 1), 200);
+    assert.equal(timeFromLogical(times, 1.5), 250);
+    assert.equal(logicalFromTime(times, 250), 1.5);
+    assert.ok(timeFromLogical(times, 5) > 400);
   });
 });
 

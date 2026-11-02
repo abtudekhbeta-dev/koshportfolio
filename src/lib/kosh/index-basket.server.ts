@@ -314,7 +314,8 @@ async function resolve(row: CatalogueIndex, note: string | null): Promise<IndexB
   );
 }
 
-export async function loadIndexBasket(row: CatalogueIndex): Promise<IndexBasket> {
+export async function loadIndexBasket(row: CatalogueIndex, fresh = false): Promise<IndexBasket> {
+  if (fresh) cache.delete(row.symbol);
   const hit = cache.get(row.symbol);
   if (hit && Date.now() - hit.at < hit.ttl) return hit.data;
   const overlay = OVERLAY[row.symbol];

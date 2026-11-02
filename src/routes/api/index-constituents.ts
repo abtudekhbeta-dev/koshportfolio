@@ -6,11 +6,13 @@ export const Route = createFileRoute("/api/index-constituents")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const symbol = new URL(request.url).searchParams.get("symbol") || "";
+        const url = new URL(request.url);
+        const symbol = url.searchParams.get("symbol") || "";
+        const fresh = url.searchParams.get("fresh") === "1";
         const row = NIFTY_CATALOGUE.find((item) => item.symbol === symbol);
         if (!row) return Response.json({ unavailable: "Unknown index." }, { status: 404 });
         try {
-          const basket = await loadIndexBasket(row);
+          const basket = await loadIndexBasket(row, fresh);
           return Response.json(basket);
         } catch {
           return Response.json({

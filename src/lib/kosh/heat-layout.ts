@@ -1,3 +1,5 @@
+import { performancePaint } from "./heat-contrast.ts";
+
 /** Readable weight mosaic. Area follows index share; height grows so every name fits. */
 
 export type PxBox = { i: number; x: number; y: number; w: number; h: number };
@@ -64,17 +66,7 @@ export function packWeightRows(
   return { height: y, tiles, floored };
 }
 
-/** Green, red, or neutral. Null is missing data, not a real zero. */
+/** Light green, light red, or neutral. Ink is always near-black. Null is missing data, not a real zero. */
 export function heatPaint(pct: number | null): { background: string; color: string } {
-  if (pct == null || !Number.isFinite(pct)) return { background: "#3c434a", color: "#d5dbe2" };
-  if (Math.abs(pct) < 0.05) return { background: "#4c545c", color: "#eef1f4" };
-  const t = Math.max(-1, Math.min(1, pct / 2.5));
-  if (t > 0) {
-    const g = Math.round(48 + t * 112);
-    const r = Math.round(16 + (1 - t) * 20);
-    return { background: `rgb(${r}, ${g}, ${Math.round(38 + t * 26)})`, color: "#f4fff7" };
-  }
-  const mag = -t;
-  const r = Math.round(78 + mag * 124);
-  return { background: `rgb(${r}, ${Math.round(30 + (1 - mag) * 18)}, 38)`, color: "#fff6f6" };
+  return performancePaint(pct, { strong: 1.25, mid: 0.4 });
 }

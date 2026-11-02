@@ -7,6 +7,7 @@ import {
   Eye,
   EyeOff,
   Lock,
+  Magnet,
   Maximize2,
   Minus,
   MousePointer2,
@@ -119,6 +120,7 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
   const navigate = useNavigate();
   const loaded = useMemo(() => loadLedgerLayout(), []);
   const [layout, setLayout] = useState<LedgerLayout>(loaded.layout);
+  const skipSave = useRef(loaded.unreadable === true);
   const [viewNonce, setViewNonce] = useState(0);
   const [tool, setTool] = useState<LedgerTool>("cursor");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -185,6 +187,10 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
   }, []);
 
   useEffect(() => {
+    if (skipSave.current) {
+      skipSave.current = false;
+      return;
+    }
     const timer = window.setTimeout(() => {
       setSave("saving");
       setSave(saveLedgerLayout(layout).ok ? "saved" : "failed");
@@ -798,7 +804,17 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
         <aside className="lt-draw" aria-label="Drawing tools">
           {TOOLS.map((item) => (
             <Tip key={item.id} text={item.label}>
-              <button type="button" className="lt-tool" aria-label={item.label} aria-pressed={tool === item.id} onClick={() => setTool(item.id)}>
+              <button
+                type="button"
+                className="lt-tool"
+                aria-label={item.label}
+                aria-pressed={tool === item.id}
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
+                  setTool(item.id);
+                }}
+                onClick={() => setTool(item.id)}
+              >
                 {toolIcon(item.id)}
               </button>
             </Tip>
@@ -839,6 +855,34 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
               <span style={{ fontSize: 10, fontWeight: 650 }}>Obj</span>
             </button>
           </Tip>
+          <Tip text={layout.keepDrawing ? "Keep drawing is on" : "Keep drawing is off"}>
+            <button
+              type="button"
+              className="lt-tool"
+              aria-label="Keep drawing"
+              aria-pressed={layout.keepDrawing}
+              onClick={() => setLayout((prev) => ({ ...prev, keepDrawing: !prev.keepDrawing }))}
+            >
+              <span style={{ fontSize: 10, fontWeight: 650 }}>Keep</span>
+            </button>
+          </Tip>
+          <Tip text={layout.magnet === "off" ? "Magnet off" : layout.magnet === "weak" ? "Magnet weak" : "Magnet strong"}>
+            <button
+              type="button"
+              className="lt-tool"
+              aria-label={`Magnet ${layout.magnet}`}
+              data-magnet={layout.magnet}
+              aria-pressed={layout.magnet !== "off"}
+              onClick={() =>
+                setLayout((prev) => ({
+                  ...prev,
+                  magnet: prev.magnet === "off" ? "weak" : prev.magnet === "weak" ? "strong" : "off",
+                }))
+              }
+            >
+              {layout.magnet === "off" ? <Magnet size={15} /> : <span style={{ fontSize: 10, fontWeight: 750 }}>{layout.magnet === "weak" ? "Wk" : "St"}</span>}
+            </button>
+          </Tip>
         </aside>
         <section className="lt-stage">
           <div style={{ position: "relative", minHeight: 0, flex: 1, display: "flex", flexDirection: "column" }}>
@@ -859,6 +903,8 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
                 onDrawings={onDrawings}
                 onContext={(info) => setContext({ ...info, source: "chart", symbol, name })}
                 onFinished={() => setTool("crosshair")}
+                keepDrawing={layout.keepDrawing}
+                magnet={layout.magnet}
                 theme={theme}
                 pen={pen}
               />
@@ -959,6 +1005,13 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
                     aria-label="Annotation text"
                     defaultValue={selected.text || ""}
                     maxLength={80}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Escape") return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.currentTarget.value = selected.text || "";
+                      e.currentTarget.blur();
+                    }}
                     onBlur={(e) => {
                       const text = e.target.value.trim().slice(0, 80);
                       if (text && text !== (selected.text || "")) {
@@ -1065,6 +1118,49 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
                 Open {context.symbol || symbol}
               </button>
             )}
+            {context.source === "chart" && selected ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    commitDrawings(drawings.map((row) => (row.id === selected.id ? { ...row, locked: !row.locked } : row)));
+                    setContext(null);
+                  }}
+                >
+                  {selected.locked ? "Unlock drawing" : "Lock drawing"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    commitDrawings(drawings.map((row) => (row.id === selected.id ? { ...row, hidden: !row.hidden } : row)));
+                    setContext(null);
+                  }}
+                >
+                  {selected.hidden ? "Show drawing" : "Hide drawing"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const copy: LedgerDraw = { ...selected, id: crypto.randomUUID(), p0: selected.p0 * 1.002, locked: false, hidden: false };
+                    commitDrawings([...drawings, copy]);
+                    setSelectedId(copy.id);
+                    setContext(null);
+                  }}
+                >
+                  Duplicate drawing
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    commitDrawings(drawings.filter((row) => row.id !== selected.id));
+                    setSelectedId(null);
+                    setContext(null);
+                  }}
+                >
+                  Delete drawing
+                </button>
+              </>
+            ) : null}
             {context.source === "chart" && context.price != null ? (
               <button
                 type="button"
@@ -1154,11 +1250,7 @@ export function LedgerTerminal({ host = "overlay" }: { host?: "overlay" | "embed
 }
 
 function Tip({ text, children }: { text: string; children: ReactElement }) {
-  return (
-    <Tooltip content={<span>{text}</span>}>
-      <span className="lt-tip">{children}</span>
-    </Tooltip>
-  );
+  return <Tooltip content={<span>{text}</span>}>{children}</Tooltip>;
 }
 
 function AnchoredMenu({
