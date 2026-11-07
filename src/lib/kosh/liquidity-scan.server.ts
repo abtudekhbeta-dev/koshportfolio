@@ -16,6 +16,7 @@ import {
 } from "./liquidity";
 import { listedEquities } from "./master.server";
 import { NIFTY_CATALOGUE } from "./nifty-catalogue";
+import { deleteRun, liquidityCacheKey, loadFreshRun, mergeRun, type StoredRun } from "./liquidity-run.server";
 import { fetchOhlc } from "./yahoo.server";
 
 export type ScanUniverse = "nifty50" | "nifty100" | "nifty200" | "nifty500" | "nse" | "watch";
@@ -79,7 +80,7 @@ async function universeBook(kind: ScanUniverse, explicit: string[]): Promise<{ s
       .filter((row) => row.series === "EQ" || row.series === "BE" || row.series === "SM" || row.series === "ST")
       .map((row) => ({ symbol: row.symbol, name: row.name }));
     const note = symbols.length
-      ? `NSE equity master, ${symbols.length} names. This is not a BSE list. BSE listings are scanned only from a watchlist symbol that already ends in .BO. Duplicate NSE rows are one listing.`
+      ? `NSE equity master, ${symbols.length} names. This is the full listed book we can read, scanned in batches and kept for 10 bars of the chosen timeframe. It is not a BSE list. BSE names are scanned only from a watchlist symbol that already ends in .BO.`
       : "The NSE master did not answer, so this scan has no names.";
     const book = { at: Date.now(), symbols, note };
     if (symbols.length) books.set(kind, book);
@@ -185,5 +186,95 @@ export async function scanLiquidityPage(input: {
     timeframeNote: spec.note,
     adjusted,
     asOf: Date.now(),
+  };
+}
+
+export type RecallPage = ScanPage & {
+  cached: boolean;
+  partial: boolean;
+  keptUntil: number | null;
+  newerCandle: boolean;
+  saved: boolean;
+  skippedN: number;
+};
+
+function fromStored(run: StoredRun): RecallPage {
+  return {
+    hits: run.hits as ScanHit[],
+    stats: run.stats,
+    scanned: [],
+    skipped: run.skipped,
+    cursor: run.done ? null : run.cursorAt,
+    universeSize: run.universeSize,
+    universeNote: run.universeNote,
+    timeframeNote: run.timeframeNote,
+    adjusted: run.adjusted,
+    asOf: run.asOf,
+    cached: true,
+    partial: !run.done,
+    keptUntil: run.validUntil,
+    newerCandle: run.newerCandle,
+    saved: true,
+    skippedN: run.skippedN,
+  };
+}
+
+function emptyRecall(): RecallPage {
+  return {
+    hits: [],
+    stats: [],
+    scanned: [],
+    skipped: [],
+    cursor: null,
+    universeSize: 0,
+    universeNote: "",
+    timeframeNote: "",
+    adjusted: false,
+    asOf: 0,
+    cached: false,
+    partial: false,
+    keptUntil: null,
+    newerCandle: false,
+    saved: false,
+    skippedN: 0,
+  };
+}
+
+/** Read a saved run, or scan the next batch and store it. A finished run is reused until 10 bars of that timeframe have passed. */
+export async function scanOrRecall(input: {
+  timeframe: LiqTimeframe;
+  universe: ScanUniverse;
+  symbols?: string[];
+  cursor?: number;
+  fresh?: boolean;
+  mode?: "read" | "scan";
+}): Promise<RecallPage> {
+  const symbols = input.universe === "watch" ? input.symbols || [] : [];
+  const key = liquidityCacheKey(input.timeframe, input.universe, symbols);
+  if (input.mode === "read") {
+    const saved = await loadFreshRun(key, input.timeframe);
+    return saved ? fromStored(saved) : emptyRecall();
+  }
+  const cursor = Math.max(0, input.cursor || 0);
+  if (input.fresh && cursor === 0) await deleteRun(key);
+  else if (!input.fresh && cursor === 0) {
+    const saved = await loadFreshRun(key, input.timeframe);
+    if (saved?.done) return fromStored(saved);
+  }
+  const page = await scanLiquidityPage({
+    timeframe: input.timeframe,
+    universe: input.universe,
+    symbols: input.symbols,
+    cursor,
+  });
+  const stored = await mergeRun(key, input.timeframe, page, cursor);
+  return {
+    ...page,
+    cached: false,
+    partial: page.cursor != null,
+    keptUntil: stored.validUntil,
+    newerCandle: false,
+    saved: stored.ok,
+    skippedN: page.skipped.length,
   };
 }

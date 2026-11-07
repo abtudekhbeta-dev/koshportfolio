@@ -136,29 +136,45 @@ function ScreenPage() {
     );
   }
 
-  if (lane === "liquidity") {
-    return (
-      <AppShell>
-        <div className="kosh-page">
-          <LiquidityDesk onBack={() => setLane("quality")} />
-        </div>
-      </AppShell>
-    );
-  }
-
   return (
     <AppShell>
       <div className="kosh-page">
         <h1 className="text-[28px] font-semibold tracking-tight">Screener</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
+        <div className="mt-3 grid gap-2 sm:grid-cols-2" role="tablist" aria-label="Screener kind">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={lane === "quality"}
+            onClick={() => setLane("quality")}
+            className={cn("rounded-lg bg-surface p-3 text-left shadow-[var(--shadow-border)]", lane === "quality" && "ring-1 ring-accent")}
+          >
+            <div className="text-[10px] tracking-[0.08em] text-subtle uppercase">Fundamentals</div>
+            <div className="mt-0.5 text-[15px] font-semibold">Quality screens</div>
+            <p className="mt-1 text-[12px] text-muted">PE, ROE, growth, and screens you build. A blank cell is missing, not a pass.</p>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={lane === "liquidity"}
+            onClick={() => setLane("liquidity")}
+            className={cn("rounded-lg bg-surface p-3 text-left shadow-[var(--shadow-border)]", lane === "liquidity" && "ring-1 ring-accent")}
+          >
+            <div className="text-[10px] tracking-[0.08em] text-subtle uppercase">Price structure</div>
+            <div className="mt-0.5 text-[15px] font-semibold">Liquidity and failed breaks</div>
+            <p className="mt-1 text-[12px] text-muted">Swings that break and close back. No AI. A finished scan stays for 10 bars of that timeframe.</p>
+          </button>
+        </div>
+        {lane === "liquidity" ? (
+          <LiquidityDesk onBack={() => setLane("quality")} />
+        ) : (
+        <>
+        <p className="mt-4 max-w-2xl text-sm text-muted">
           Every NSE equity we can list. A blank cell is missing, not a pass — and never a guess.
           One completion pass reads filings, calculates what it can, then asks for a source on what is still blank.
           The screen is applied again to the filled numbers.{" "}
           <Link to="/value" className="text-chart hover:underline">Undervalued Growth</Link>
           {" · "}
           <Link to="/results" className="text-chart hover:underline">Results calendar</Link>
-          {" · "}
-          <button type="button" className="text-chart hover:underline" onClick={() => setLane("liquidity")}>Liquidity & reversal</button>
         </p>
         <div className="mt-3">
           <CompleteMissing
@@ -562,6 +578,8 @@ function ScreenPage() {
             </section>
           ) : null}
           </>
+        )}
+        </>
         )}
       </div>
     </AppShell>

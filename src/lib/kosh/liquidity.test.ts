@@ -8,7 +8,9 @@ import {
   foldSession4h,
   forwardStats,
   lastBarForming,
+  laterCandleLikely,
   prepareBars,
+  runValidityMs,
   type LiqConfig,
   type ScanBar,
 } from "./liquidity.ts";
@@ -106,6 +108,18 @@ describe("liquidity bars", () => {
     const afternoon = ist(2026, 11, 6, 14, 0);
     assert.equal(lastBarForming("4H", Math.floor(morning / 1000), afternoon), false);
     assert.equal(lastBarForming("4H", Math.floor(afternoon / 1000), afternoon), true);
+  });
+
+  it("keeps a 100-bar swing window and a 10-bar call life", () => {
+    assert.equal(DEFAULT_LIQ.maxLookback, 100);
+    assert.equal(DEFAULT_LIQ.expiry, 10);
+    assert.equal(runValidityMs("1W"), 10 * 7 * 24 * 60 * 60 * 1000);
+    assert.equal(runValidityMs("15m"), 10 * 15 * 60 * 1000);
+    const friday = Date.UTC(2026, 10, 6, 10, 0) - 19800 * 1000;
+    const saturday = Date.UTC(2026, 10, 7, 10, 0);
+    assert.equal(laterCandleLikely("1D", Math.floor(friday / 1000), saturday), false);
+    const nextMonday = Date.UTC(2026, 10, 9, 10, 0);
+    assert.equal(laterCandleLikely("1W", Math.floor(friday / 1000), nextMonday), true);
   });
 });
 

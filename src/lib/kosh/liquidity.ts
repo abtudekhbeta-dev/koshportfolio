@@ -38,7 +38,7 @@ export const DEFAULT_LIQ: LiqConfig = {
   equalAtr: 0.2,
   strongScore: 75,
   potentialScore: 55,
-  expiry: 30,
+  expiry: 10,
 };
 
 export type ScanBar = { t: number; o: number; h: number; l: number; c: number; v: number | null };
@@ -107,6 +107,44 @@ function istParts(t: number) {
   const shifted = t + IST;
   const day = Math.floor(shifted / 86400);
   return { day, sod: shifted - day * 86400 };
+}
+
+/** A listed call stays for this many closed bars after the close back through the level. */
+export const RECLAIM_LIFE = 10;
+
+/** How long a saved scan is worth keeping: one reclaim life of this timeframe. */
+export function runValidityMs(tf: LiqTimeframe): number {
+  const bar =
+    tf === "15m" ? 15 * 60_000
+    : tf === "1H" ? 60 * 60_000
+    : tf === "4H" ? 4 * 60 * 60_000
+    : tf === "1D" ? 24 * 60 * 60_000
+    : tf === "1W" ? 7 * 24 * 60 * 60_000
+    : 30 * 24 * 60 * 60_000;
+  return RECLAIM_LIFE * bar;
+}
+
+/** True when a later candle of this timeframe may have started since `barT`. Weekends are not a new daily candle. */
+export function laterCandleLikely(tf: LiqTimeframe, barT: number | null, now = Date.now()): boolean {
+  if (barT == null || !Number.isFinite(barT)) return false;
+  const nowSec = Math.floor(now / 1000);
+  const bar = istParts(barT);
+  const cur = istParts(nowSec);
+  if (tf === "1M") {
+    const a = new Date((barT + IST) * 1000);
+    const b = new Date((nowSec + IST) * 1000);
+    return b.getUTCFullYear() > a.getUTCFullYear() || (b.getUTCFullYear() === a.getUTCFullYear() && b.getUTCMonth() > a.getUTCMonth());
+  }
+  if (tf === "1W") return Math.floor((cur.day + 3) / 7) > Math.floor((bar.day + 3) / 7);
+  if (tf === "1D") {
+    if (cur.day <= bar.day) return false;
+    const weekday = new Date((nowSec + IST) * 1000).getUTCDay();
+    if (weekday === 0 || weekday === 6) return cur.day - bar.day >= 3;
+    return cur.sod >= OPEN || cur.day - bar.day >= 2;
+  }
+  if (tf === "4H") return nowSec - barT >= 3 * 60 * 60;
+  if (tf === "1H") return nowSec - barT >= 60 * 60;
+  return nowSec - barT >= 15 * 60;
 }
 
 /** The last candle is still forming when its period contains now. A closed session is not treated as live. */
