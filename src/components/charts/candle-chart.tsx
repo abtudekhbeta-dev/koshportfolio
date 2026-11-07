@@ -923,6 +923,7 @@ export function CandleChart({
   high52,
   low52,
   prevClose,
+  focus = null,
 }: {
   bars: OhlcBar[];
   intra?: boolean;
@@ -932,6 +933,7 @@ export function CandleChart({
   high52?: number;
   low52?: number;
   prevClose?: number;
+  focus?: { t: number; marks: ChartMark[]; note: string } | null;
 }) {
   const prefs = useKosh((s) => s.chartPrefs);
   const patchChartPrefs = useKosh((s) => s.patchChartPrefs);
@@ -1093,14 +1095,28 @@ export function CandleChart({
 
   useEffect(() => {
     const vis = Math.min(TF_VIEW[intervalId] || 252, nAll || 0);
-    setView({ start: Math.max(0, (nAll || 0) - vis), count: vis });
+    if (focus?.t && full.length) {
+      let best = 0;
+      let gap = Infinity;
+      for (let i = 0; i < full.length; i++) {
+        const dist = Math.abs(full[i].t - focus.t);
+        if (dist < gap) {
+          gap = dist;
+          best = i;
+        }
+      }
+      const start = Math.max(0, Math.min(Math.max(0, (nAll || 0) - vis), best - Math.floor(vis * 0.62)));
+      setView({ start, count: vis });
+    } else {
+      setView({ start: Math.max(0, (nAll || 0) - vis), count: vis });
+    }
     setMeasure(null);
     setPending(null);
     setDraft(null);
     setReplayOn(false);
     setPlaying(false);
     setReplayEnd(nAll);
-  }, [barSig, nAll, intervalId]);
+  }, [barSig, nAll, intervalId, focus?.t]);
 
   useEffect(() => {
     if (!playing || !replayOn) return;
@@ -2055,10 +2071,13 @@ export function CandleChart({
               : undefined
           }
         />
-        {L && ((chartMode === "price" && (shapes.length || draft)) || structure?.marks.length || patternsOn) ? (
+        {L && ((chartMode === "price" && (shapes.length || draft || (focus?.marks.length || 0) > 0)) || structure?.marks.length || patternsOn) ? (
           <svg viewBox={`0 0 ${VW} ${vh}`} width="100%" height={vh} preserveAspectRatio="none" className="pointer-events-none absolute inset-0 z-[3]">
             {structure?.marks.length ? (
               <MarksSvg marks={structure.marks} src={src} xOf={L.xOf} yOf={L.yOf} right={L.right} />
+            ) : null}
+            {chartMode === "price" && focus?.marks.length ? (
+              <MarksSvg marks={focus.marks} src={src} xOf={L.xOf} yOf={L.yOf} right={L.right} />
             ) : null}
             {patternsOn ? (
               <PatternSvg hits={patterns} src={src} xOf={L.xOf} yOf={L.yOf} intervalId={intervalId} />

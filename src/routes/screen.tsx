@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { CompleteMissing } from "@/components/complete-missing";
+import { LiquidityDesk } from "@/components/liquidity-desk";
 import { Button } from "@/components/ui/button";
 import { AIButton } from "@/components/ui/ai-button";
 import { apiScreenBuild, apiScreener, apiScreenerDeep } from "@/lib/kosh/api";
@@ -57,6 +58,7 @@ function ScreenPage() {
   const [cols, setCols] = useState<Record<string, boolean>>({});
   const [marketRows, setMarketRows] = useState<Record<string, ScreenRow>>({});
   const [marketChecked, setMarketChecked] = useState<Record<string, string[]>>({});
+  const [lane, setLane] = useState<"quality" | "liquidity">("quality");
   const saved = useKosh((s) => s.customScreens);
   const saveCustomScreen = useKosh((s) => s.saveCustomScreen);
   const removeCustomScreen = useKosh((s) => s.removeCustomScreen);
@@ -134,6 +136,16 @@ function ScreenPage() {
     );
   }
 
+  if (lane === "liquidity") {
+    return (
+      <AppShell>
+        <div className="kosh-page">
+          <LiquidityDesk onBack={() => setLane("quality")} />
+        </div>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
       <div className="kosh-page">
@@ -145,6 +157,8 @@ function ScreenPage() {
           <Link to="/value" className="text-chart hover:underline">Undervalued Growth</Link>
           {" · "}
           <Link to="/results" className="text-chart hover:underline">Results calendar</Link>
+          {" · "}
+          <button type="button" className="text-chart hover:underline" onClick={() => setLane("liquidity")}>Liquidity & reversal</button>
         </p>
         <div className="mt-3">
           <CompleteMissing

@@ -1,0 +1,1334 @@
+KOSH — ADVANCED LIQUIDITY SWEEP & FAILED BREAKOUT SCREENER
+
+Complete product, technical, detection-engine and implementation specification
+
+0. Project objective
+
+Build a specialised technical-analysis screening system inside the existing Kosh application.
+
+The feature must identify stocks exhibiting two related but distinct price-action patterns:
+
+1. Liquidity Sweep & Reclaim: Price penetrates a significant historical swing high or low, fails to sustain the breakout/breakdown, and reclaims the original level.
+2. Failed Breakdown / Breakout Reversal: Price breaks an important support or resistance area, demonstrates rejection or indecision, and subsequently reverses through that area.
+
+Both patterns must support bullish and bearish setups.
+
+The screeners must work across all supported NSE and BSE stocks and provide selectable timeframes:
+
+- Monthly
+- Weekly
+- Daily
+- 4-hour
+- 1-hour
+- 15-minute
+
+The system should identify strong setups without excluding potentially interesting borderline setups.
+
+The objective is not to produce the smallest possible list. It is to identify genuine opportunities, distinguish their quality, and allow the user to decide which deserve attention.
+
+This must be implemented as a functional feature inside Kosh, not as a standalone demo, static HTML prototype or disconnected screening engine.
+
+---
+
+PART 1 — MANDATORY CODEBASE AND DATA AUDIT
+
+Before implementation, inspect the existing Kosh codebase.
+
+Do not assume architecture, API behaviour, historical data depth or instrument mappings.
+
+1.1 Inspect existing chart and market-data infrastructure
+
+Kosh already has:
+
+- Market Terminal.
+- TradingView Lightweight Charts 5.2.1.
+- Stock-specific charting.
+- Existing NSE/BSE instrument identity handling.
+- Historical OHLCV retrieval.
+- Multiple timeframe chart functionality.
+- Existing market-data caching and API infrastructure.
+
+Reuse these capabilities.
+
+Inspect:
+
+- Market Terminal data-fetching functions.
+- Company chart data-fetching functions.
+- Existing historical OHLCV providers.
+- Existing timeframe conversion and aggregation logic.
+- Caching and request deduplication.
+- NSE/BSE symbol resolution.
+- Historical data adjustment logic.
+- Volume availability.
+- Chart date/time handling.
+- Existing stock universe and index constituent lists.
+
+Do not introduce a completely separate market-data system unless a specific technical limitation requires it.
+
+1.2 Verify data availability by timeframe
+
+The fact that a chart can display a timeframe does not automatically guarantee that sufficient historical data exists for scanning.
+
+Audit actual usable OHLCV history for:
+
+Timeframe| Required information
+Monthly| Long-term historical candles
+Weekly| Multiple years wherever available
+Daily| Multiple years wherever available
+4-hour| Available historical intraday data
+1-hour| Available historical intraday data
+15-minute| Available historical intraday data
+
+For every timeframe, establish:
+
+- Number of historical candles available.
+- Data freshness.
+- Missing candles.
+- Volume availability.
+- Supported instrument coverage.
+- Provider limits.
+- Whether data is directly supplied or aggregated.
+- Whether historical data can be retrieved in batches.
+
+Use existing aggregation logic where appropriate.
+
+If 4-hour candles are constructed from lower timeframes, verify session boundaries and correct Indian market trading hours.
+
+Do not aggregate candles across trading sessions incorrectly.
+
+Do not assume a 4-hour candle is a standard continuous 4-hour interval if the exchange session creates a shorter final interval.
+
+1.3 Data integrity
+
+Every candle must have valid OHLC relationships:
+
+- High must be greater than or equal to Open, Low and Close.
+- Low must be less than or equal to Open, High and Close.
+- Volume must be non-negative where available.
+- Timestamps must be correctly ordered.
+- Duplicate timestamps must be handled.
+- Missing or stale data must be detected.
+
+Use Asia/Kolkata exchange-local session boundaries for Indian equities.
+
+Do not silently treat missing candles as zero-volume candles.
+
+1.4 Corporate-action adjustment
+
+Inspect whether Kosh chart data is adjusted for:
+
+- Stock splits.
+- Bonus issues.
+- Other relevant corporate actions.
+
+Swing-level comparisons must use internally consistent price series.
+
+Do not compare an adjusted historical swing low against an unadjusted current price.
+
+If adjusted and unadjusted datasets are both available, use a consistent series for detection and clearly identify the series used.
+
+1.5 Universe coverage
+
+The default universe must include all supported stocks across NSE and BSE.
+
+Use existing instrument identity and exchange mappings.
+
+Support:
+
+- NSE-only listings.
+- BSE-only listings.
+- Dual-listed companies.
+- Large-cap.
+- Mid-cap.
+- Small-cap.
+- Micro-cap.
+- SME stocks where usable data exists.
+
+Avoid duplicate company results when the same company is listed on both exchanges.
+
+However, preserve the exchange-specific listing identity and allow users to inspect either listing.
+
+Do not fabricate unsupported instruments.
+
+1.6 Audit report
+
+Before implementation, record the actual capabilities and limitations of the existing data layer.
+
+Do not stop after producing the audit. Proceed with implementation using the best reliable coverage available.
+
+If one timeframe has less history than another, implement it with appropriate coverage indicators rather than disabling the entire feature.
+
+---
+
+PART 2 — PRODUCT STRUCTURE
+
+Create a dedicated section inside the existing Kosh Screener.
+
+Name:
+
+Liquidity & Reversal
+
+It must contain two separate screeners.
+
+Screener 1 — Liquidity Sweep & Reclaim
+
+Detects a meaningful historical swing high/low being penetrated and subsequently reclaimed.
+
+Screener 2 — Failed Breakdown / Breakout
+
+Detects broader failed moves through important historical support/resistance areas, including structures that do not qualify as a precise swing-level liquidity sweep.
+
+Both screeners share the same underlying detection engine.
+
+Do not implement two unrelated codebases.
+
+2.1 Direction
+
+Both screeners must support:
+
+- Bullish.
+- Bearish.
+- Both.
+
+Bullish and bearish rules must be mathematically symmetrical where appropriate.
+
+2.2 Timeframe selector
+
+Provide a prominent timeframe selector:
+
+- 15m
+- 1H
+- 4H
+- 1D
+- 1W
+- 1M
+
+Default timeframe: Weekly.
+
+Preserve the selected timeframe when switching between the two screeners unless the user changes it.
+
+2.3 Signal status selector
+
+Provide:
+
+- Developing.
+- Confirmed.
+- Potential.
+- All.
+
+Definitions:
+
+Developing: The current candle is still forming and a valid setup may be developing.
+
+Confirmed: The required reclaim condition has been satisfied on a completed candle.
+
+Potential: The structure is interesting but one or more supporting characteristics are weaker or incomplete.
+
+All: Display the applicable categories together, but keep their visual identities distinct.
+
+---
+
+PART 3 — SHARED SWING DETECTION ENGINE
+
+This is one of the most important components.
+
+Do not detect every local high or low as a meaningful liquidity level.
+
+3.1 Individual swing lows
+
+A swing low is a candle whose low is lower than the lows of the specified surrounding candles.
+
+Use configurable left/right pivot confirmation.
+
+Initial defaults:
+
+- Left candles: 5.
+- Right candles: 3.
+- Minimum swing age: 8 candles.
+- Maximum lookback: 100 candles.
+
+These are starting values, not hard-coded universal rules.
+
+A swing low must not become available to the confirmed detection engine until the required right-side candles have closed.
+
+This prevents look-ahead bias.
+
+3.2 Individual swing highs
+
+Apply the inverse logic.
+
+A swing high must be higher than the highs of the specified surrounding candles.
+
+3.3 Equal lows and equal highs
+
+Identify repeated swing levels.
+
+For equal lows:
+
+- Identify two or more separate swing lows.
+- Compare their price levels.
+- Allow a configurable tolerance.
+- Group them into a liquidity zone.
+
+For equal highs, use the inverse.
+
+Use percentage and ATR-normalised tolerance.
+
+Initial suggested tolerance:
+
+- 0.15% to 0.35%, subject to ATR and price behaviour.
+
+Do not merge unrelated levels merely because they are close.
+
+Record:
+
+- Number of touches.
+- First touch date.
+- Latest touch date.
+- Average level.
+- Zone boundaries.
+- Age of the level.
+- Whether it has already been swept.
+
+3.4 Swing significance
+
+Not all pivots deserve equal importance.
+
+Assess:
+
+- Swing age.
+- Price movement away from the swing.
+- Relative distance to surrounding swings.
+- Number of retests.
+- Whether it is an isolated pivot or repeated level.
+- ATR-normalised prominence.
+
+Use this information for quality ranking.
+
+Do not automatically discard a relatively recent swing if it is otherwise structurally meaningful.
+
+3.5 Swing-level history
+
+Maintain an internal record of detected swing levels.
+
+A level should have:
+
+- Unique identity.
+- Price or zone.
+- Creation date.
+- Confirmation date.
+- Level type.
+- Touch count.
+- Previous sweep history.
+- Current status.
+
+Do not repeatedly recreate the same level on every scan.
+
+---
+
+PART 4 — SCREENER 1: LIQUIDITY SWEEP & RECLAIM
+
+4.1 Bullish liquidity sweep
+
+The basic pattern:
+
+1. A meaningful historical swing low exists.
+2. Price has moved away from that low.
+3. Price revisits the area.
+4. Price penetrates below the swing low or equal-low zone.
+5. Price subsequently reclaims the level.
+
+The penetration may happen through:
+
+- An intraperiod wick.
+- A candle close below the level.
+- A deeper intraperiod sweep followed by a close above the level.
+
+The scanner must distinguish these variations.
+
+A simple touch of support without penetration is not automatically a liquidity sweep.
+
+4.2 Bearish liquidity sweep
+
+Apply the inverse:
+
+1. Meaningful historical swing high exists.
+2. Price moves away.
+3. Price revisits the level.
+4. Price penetrates above it.
+5. Price subsequently reclaims the level from below by closing back under it.
+
+4.3 Sweep-depth calculation
+
+Bullish:
+
+Sweep Depth % = (Swing Low − Sweep Low) / Swing Low × 100
+
+Sweep Depth ATR = (Swing Low − Sweep Low) / ATR
+
+Bearish:
+
+Sweep Depth % = (Sweep High − Swing High) / Swing High × 100
+
+Sweep Depth ATR = (Sweep High − Swing High) / ATR
+
+Store both measurements.
+
+Initial configurable defaults:
+
+- Minimum sweep depth: 0.05 ATR.
+- Maximum sweep depth: 1.5 ATR.
+
+Do not apply these as rigid exclusion thresholds to all stocks and timeframes.
+
+Use a tolerance band around the minimum and maximum.
+
+For example:
+
+- Clearly inside the range: normal classification.
+- Slightly below the minimum: possible weak sweep, retain as Potential where other conditions support it.
+- Slightly above the maximum: inspect whether the move is a structural breakdown rather than a sweep.
+
+Do not classify a massive breakdown as a strong liquidity sweep merely because price eventually bounces.
+
+4.4 Reclaim windows
+
+Support the following variations.
+
+Type| Bullish sequence
+Same-candle reclaim| Price sweeps and closes above the old low in the same candle
+Immediate reclaim| One candle sweeps below, the next closes above
+Two-candle reclaim| Sweep, indecision/doji, bullish reclaim
+Three-candle reclaim| Sweep, consolidation/rejection, bullish reclaim
+
+Default maximum reclaim window: 3 completed candles.
+
+Allow users to adjust the reclaim window.
+
+The bearish version is the exact inverse.
+
+Record:
+
+- Sweep candle.
+- Reclaim candle.
+- Number of candles taken.
+- Reclaim close.
+- Original swing level.
+- Penetration extreme.
+- Reclaim distance.
+
+4.5 Important distinction: developing sweeps
+
+A candle currently trading below a historical swing low but not yet closed must not be classified as a confirmed sweep-and-reclaim.
+
+It can appear as a Developing candidate.
+
+If price moves back above the level before candle close, update the developing status accordingly.
+
+At candle close:
+
+- Re-evaluate the complete candle.
+- Promote or remove the developing signal as appropriate.
+
+Never present intrabar conditions as completed-candle confirmation.
+
+---
+
+PART 5 — SCREENER 2: FAILED BREAKDOWN / BREAKOUT REVERSAL
+
+This screener must be broader than the precise liquidity-sweep screener.
+
+It should detect rejection around meaningful support/resistance zones even when the price action does not meet the exact swing-level sweep definition.
+
+5.1 Bullish failed breakdown
+
+1. Identify historically meaningful support.
+2. Price breaks below support.
+3. Price fails to sustain downside continuation.
+4. Rejection, indecision or consolidation develops.
+5. Price reclaims the support area.
+6. Optional subsequent price confirmation occurs.
+
+5.2 Bearish failed breakout
+
+1. Identify meaningful resistance.
+2. Price breaks above resistance.
+3. Price fails to sustain the breakout.
+4. Rejection or indecision develops.
+5. Price returns below resistance.
+6. Optional subsequent downside confirmation occurs.
+
+5.3 Support/resistance zones
+
+Do not require an exact single-price level in this screener.
+
+Construct zones from:
+
+- Historical swing clusters.
+- Repeated highs/lows.
+- Consolidation boundaries.
+- Previously tested price areas.
+
+Use ATR and percentage tolerances to define zone boundaries.
+
+The zone must be sufficiently grounded in historical price action.
+
+Do not create arbitrary support/resistance lines from every small candle.
+
+5.4 Rejection sequences
+
+Detect:
+
+- Immediate reversal.
+- Breakdown followed by bullish engulfing/recovery.
+- Breakdown followed by doji and bullish candle.
+- Multi-candle recovery.
+- Bearish equivalents.
+
+Candlestick formations are supporting evidence, not the sole basis of classification.
+
+An evening-star-like sequence can be recognised where appropriate, but do not rely on the pattern name alone.
+
+Use actual OHLC relationships.
+
+5.5 Distinguish reclaim from confirmation
+
+For bullish patterns:
+
+- Reclaim: close back above the support zone.
+- Stronger confirmation: subsequent break above the reclaim candle's high or nearby local swing high.
+
+For bearish patterns:
+
+- Reclaim: close back below resistance.
+- Stronger confirmation: subsequent break below the reclaim candle's low or nearby local swing low.
+
+Display these stages separately.
+
+---
+
+PART 6 — THE MOST IMPORTANT REQUIREMENT: TWO-TIER SIGNAL CLASSIFICATION
+
+Do not build an excessively restrictive screener.
+
+Do not build an excessively loose screener.
+
+The user explicitly wants a balance between the two.
+
+If 10 setups are clearly strong and 5 are borderline but interesting, the scanner should show all 15 with separate classifications.
+
+It must not discard the five borderline setups.
+
+It must also not mix them with the ten strong setups as though their quality were equal.
+
+6.1 Core pattern validity versus supporting quality
+
+Separate the engine into three independent assessments.
+
+A. Core structural validity
+
+Determines whether the price-action pattern exists.
+
+For a confirmed bullish liquidity sweep:
+
+- Valid historical swing low or equal-low zone.
+- Actual penetration below the reference level.
+- Subsequent completed-candle reclaim above the reference level.
+- No invalidating data or structural condition.
+
+The bearish version is the inverse.
+
+For failed breakdowns/breakouts, use the equivalent support/resistance rejection and reclaim requirements.
+
+B. Supporting characteristics
+
+These affect ranking, not basic eligibility:
+
+- Swing significance.
+- Swing age.
+- Equal-level touch count.
+- Sweep depth.
+- ATR-normalised sweep.
+- Reclaim speed.
+- Reclaim candle body.
+- Close position.
+- Wick characteristics.
+- Relative volume.
+- Trend context.
+- Subsequent confirmation.
+- Distance from reclaimed level.
+
+A weak volume reading should not automatically eliminate an otherwise structurally valid pattern.
+
+A relatively shallow but legitimate sweep should not be discarded merely because it is not ideal.
+
+C. Hard invalidation conditions
+
+These can prevent or terminate a signal:
+
+- No genuine historical level.
+- No actual penetration for a liquidity-sweep signal.
+- No reclaim for a completed reclaim signal.
+- Sustained continuation through the broken level.
+- Reclaim failure.
+- Invalid or stale market data.
+- Unusable OHLC relationships.
+- Signal expiry.
+
+Keep these distinct from merely weak quality characteristics.
+
+6.2 Signal tiers
+
+Implement these categories:
+
+<badge color="success">Strong match</badge>
+
+Strong setup
+
+- Core structural conditions satisfied.
+- Supporting evidence is convincing.
+- No major weakness.
+- Reclaim is completed.
+
+<badge color="warning">Potential</badge>
+
+Potential setup
+
+- The structural pattern is present or developing.
+- One or more supporting characteristics are weaker.
+- Or the reclaim is still developing.
+- The setup remains worth monitoring.
+
+<badge color="info">Developing</badge>
+
+Developing
+
+- Current candle has not closed.
+- Intrabar conditions suggest a possible sweep/reclaim.
+- Status may change before candle close.
+
+<badge color="danger">Invalidated</badge>
+
+Invalidated
+
+- Price has failed the reclaimed level.
+- The original pattern is no longer active.
+
+Do not display invalidated signals in the default active-results view. Allow users to inspect them through history.
+
+Important distinction
+
+A Potential signal must not be a random stock that happens to be near support.
+
+It must have a recognisable structural relationship to the pattern.
+
+A stock with no valid swing level, no meaningful penetration and no reversal behaviour must not be added merely to increase the result count.
+
+6.3 Avoid overly restrictive filters
+
+Do not require every supporting condition to be satisfied.
+
+Examples:
+
+- Relative volume below average: reduce ranking, not automatic rejection.
+- Reclaim takes three candles instead of one: reduce ranking, not automatic rejection.
+- Reclaim candle has a moderate rather than exceptional body: reduce ranking.
+- Equal-low cluster has only two touches rather than three: retain if otherwise valid.
+- Swing age is slightly below the default: Potential if the structure is still meaningful.
+
+Expose these characteristics in the results so users can judge them.
+
+6.4 Avoid excessive false positives
+
+Do not:
+
+- Treat ordinary support bounces as liquidity sweeps.
+- Treat every lower wick as a stop hunt.
+- Treat every bullish engulfing candle as a failed breakdown.
+- Treat a close below support as a reclaim.
+- Treat a current unclosed candle as a confirmed signal.
+- Repeatedly report the same swing event on every scan.
+- Keep presenting invalidated setups as active.
+- Use arbitrary score thresholds to hide structurally valid signals.
+
+---
+
+PART 7 — QUALITY RANKING
+
+Implement a transparent 100-point quality score.
+
+Initial proposed weighting:
+
+Component| Weight
+Swing significance and age| 20
+Sweep quality and ATR penetration| 20
+Reclaim strength| 20
+Relative volume| 15
+Candle structure| 15
+Subsequent price confirmation| 10
+Total| 100
+
+For Screener 2, adapt the same framework to support/resistance significance and rejection quality.
+
+The score is a ranking mechanism, not a probability of profit.
+
+Do not describe an 85-point score as an 85% success probability.
+
+Score interpretation
+
+Suggested initial bands:
+
+- 75–100: Strong.
+- 55–74: Potential.
+- Below 55: Do not automatically discard if the core structural pattern exists. Show only if the user enables a broader/low-quality filter, and clearly identify its weaknesses.
+
+These bands are starting points and must be calibrated against historical samples.
+
+A score must never override a hard invalidation condition.
+
+7.1 Explain the score
+
+When a user opens a result, show:
+
+- Swing quality.
+- Sweep depth.
+- Reclaim quality.
+- Volume.
+- Candle structure.
+- Confirmation.
+- Weaknesses or missing evidence.
+
+The user should understand why a stock is Strong or Potential.
+
+---
+
+PART 8 — TIMEFRAMES AND SCAN UNIVERSE
+
+8.1 Timeframes
+
+Support:
+
+- 15-minute.
+- 1-hour.
+- 4-hour.
+- Daily.
+- Weekly.
+- Monthly.
+
+Weekly is the default.
+
+All calculations must use the selected timeframe's candles.
+
+Do not use weekly swing levels with daily confirmation candles unless the user explicitly selects a multi-timeframe mode in a future version.
+
+8.2 Market universe
+
+Default: All supported NSE and BSE stocks.
+
+Additional filters:
+
+- NSE.
+- BSE.
+- Both.
+- Nifty 50.
+- Nifty 100.
+- Nifty 200.
+- Nifty 500.
+- Large-cap.
+- Mid-cap.
+- Small-cap.
+- Micro-cap.
+- Custom watchlist.
+
+These are filters, not restrictions on the default universe.
+
+8.3 Exchange identity
+
+Preserve the existing Kosh instrument identity rules.
+
+- NSE and BSE listings must not be confused.
+- Use verified exchange-specific symbols.
+- Preserve BSE ".BO" identity where required by existing data integrations.
+- Avoid duplicate company results by default.
+- Allow the user to inspect the relevant exchange listing.
+
+---
+
+PART 9 — USER INTERFACE
+
+9.1 Screener navigation
+
+Add a dedicated Liquidity & Reversal category inside the existing Screener.
+
+Two tabs:
+
+1. Liquidity Sweep & Reclaim.
+2. Failed Breakdown / Breakout.
+
+Do not build an entirely separate application section with a disconnected navigation system.
+
+Use Kosh's established visual design:
+
+- White and light-blue surfaces.
+- Existing cobalt accents.
+- Clean typography.
+- Compact filters.
+- Professional financial-table presentation.
+- Existing light/dark theme support.
+
+9.2 Filter controls
+
+Provide:
+
+Direction
+
+- Bullish.
+- Bearish.
+- Both.
+
+Timeframe
+
+- 15m.
+- 1H.
+- 4H.
+- 1D.
+- 1W.
+- 1M.
+
+Signal status
+
+- Developing.
+- Confirmed.
+- Potential.
+- All.
+
+Swing type
+
+- Individual.
+- Equal/repeated.
+- Both.
+
+Reclaim type
+
+- Same candle.
+- One candle.
+- Two candles.
+- Three candles.
+- All.
+
+Universe
+
+- All.
+- NSE.
+- BSE.
+- Nifty indices.
+- Market cap.
+- Watchlist.
+
+Additional filters
+
+- Minimum swing age.
+- Maximum swing age.
+- Minimum sweep depth.
+- Maximum sweep depth.
+- ATR normalisation.
+- Relative volume.
+- Minimum quality score.
+- Minimum price.
+- Minimum traded value/liquidity, where reliable data exists.
+
+Keep advanced filters in an expandable section.
+
+Do not overwhelm the default view with every parameter.
+
+9.3 Results presentation
+
+Display Strong and Potential results in separate sections or clearly separated table groups.
+
+Developing signals must be visibly marked.
+
+Do not mix them indiscriminately.
+
+Suggested columns:
+
+Column| Description
+Stock| Company name and exchange
+Price| Latest price
+Direction| Bullish/Bearish
+Pattern| Sweep/Reversal
+Timeframe| Selected timeframe
+Swing level| Original level or zone
+Sweep extreme| Lowest/highest penetration
+Sweep depth| Percentage and ATR
+Reclaim candles| Number of candles
+Relative volume| Volume versus average
+Signal date| Relevant candle date
+Status| Developing/Confirmed/Potential
+Quality| Score and tier
+
+Allow:
+
+- Sorting.
+- Filtering.
+- Search.
+- Pagination or virtualisation.
+- Export of results if supported by existing Kosh conventions.
+
+Show last scan time and data freshness.
+
+Do not show fake real-time timestamps.
+
+9.4 Result interactions
+
+Clicking a result should open the correct Kosh stock chart.
+
+It must:
+
+- Use the selected timeframe.
+- Navigate near the detected setup.
+- Highlight the original swing level/zone.
+- Highlight the sweep candle.
+- Highlight the reclaim candle.
+- Highlight the confirmation candle if applicable.
+- Show the invalidation level.
+- Display a concise pattern explanation.
+
+Do not simply open the stock's latest chart without positioning the user near the detected signal.
+
+Use the existing drawing/annotation architecture where practical.
+
+Do not permanently alter user drawings or overwrite saved chart layouts.
+
+---
+
+PART 10 — SIGNAL LIFECYCLE AND DUPLICATE PREVENTION
+
+This is essential for reliable results.
+
+Each signal must have a stable identity.
+
+Use a combination of:
+
+- Instrument identity.
+- Exchange.
+- Timeframe.
+- Pattern type.
+- Direction.
+- Swing-level identity.
+- Sweep event candle.
+
+The same underlying event must not appear as a new independent signal on every refresh.
+
+Lifecycle
+
+1. Level identified.
+2. Sweep developing.
+3. Sweep confirmed.
+4. Reclaim developing.
+5. Reclaimed.
+6. Reversal confirmed.
+7. Invalidated or expired.
+
+Not every event will pass through every state.
+
+Store signal creation time and last update time.
+
+Invalidation
+
+Bullish:
+
+- Reclaim level is subsequently lost according to the selected invalidation rule.
+
+Bearish:
+
+- Reclaim resistance is subsequently regained.
+
+Distinguish an intrabar breach from a confirmed closing invalidation.
+
+Expiry
+
+Signals must expire when:
+
+- The setup is no longer relevant.
+- The level has been invalidated.
+- A maximum age has been exceeded.
+- A new independent structure replaces the original event.
+
+Preserve history for review.
+
+---
+
+PART 11 — SCANNING AND PERFORMANCE ARCHITECTURE
+
+Do not issue one independent browser request per stock.
+
+The system must scale to the supported NSE/BSE universe.
+
+Prefer:
+
+- Server-side or batch scanning where infrastructure supports it.
+- Shared OHLCV retrieval.
+- Cached historical candles.
+- Incremental updates.
+- Deduplicated requests.
+- Shared calculations between screeners.
+- Scan results cached by timeframe, universe and scan configuration.
+- Efficient pagination and sorting.
+
+11.1 Completed candles
+
+Confirmed signals should be recalculated when a candle closes.
+
+Do not continuously rescan years of history on every page render.
+
+For completed candles:
+
+- Process new data incrementally.
+- Preserve previously validated signals.
+- Recalculate only when necessary.
+
+11.2 Developing signals
+
+Developing signals may update more frequently depending on source refresh availability.
+
+Clearly distinguish:
+
+- Actual live/intraday data.
+- Delayed data.
+- Cached data.
+- Last completed candle.
+
+Never imply a live scan if the underlying feed is delayed.
+
+11.3 Failure handling
+
+If a particular stock has insufficient data:
+
+- Skip that instrument for that scan.
+- Record the reason internally.
+- Do not fabricate results.
+- Do not fail the entire scan.
+
+If one exchange or timeframe data source fails, continue scanning other supported instruments where possible.
+
+Show an accurate coverage indicator.
+
+---
+
+PART 12 — HISTORICAL VALIDATION AND BACKTESTING
+
+This must be included in the implementation, not postponed indefinitely.
+
+The scanner should be validated using historical OHLCV already accessible through Kosh's existing data infrastructure.
+
+No user-supplied CSV should be required for normal operation.
+
+12.1 Historical signal replay
+
+Run the detection engine through historical candles in chronological order.
+
+Important:
+
+- Do not use future candles to identify a swing before it was confirmed.
+- Do not use future candles to confirm a reclaim.
+- Developing and confirmed signals must be evaluated separately.
+- Do not use today's constituent universe as though it were historically unchanged where point-in-time universe data is available.
+- Account for corporate actions.
+- Avoid counting repeated scans of the same setup as multiple signals.
+
+12.2 Forward-performance analysis
+
+For every valid signal, calculate:
+
+- Forward return after 1 candle.
+- Forward return after 3 candles.
+- Forward return after 5 candles.
+- Forward return after 8 candles.
+- Maximum favourable excursion.
+- Maximum adverse excursion.
+- Invalidation frequency.
+- Time to reach predefined movement thresholds.
+
+Run bullish and bearish analysis separately.
+
+Run each timeframe separately.
+
+12.3 Avoid misleading performance claims
+
+Do not claim that the pattern guarantees a sharp price move.
+
+Report actual measured historical performance.
+
+Show sample sizes.
+
+If historical data is insufficient, state that clearly.
+
+Do not optimise thresholds on one stock and present the resulting performance as generalisable.
+
+Use separate calibration and validation samples where sufficient data exists.
+
+12.4 Test both precision and coverage
+
+Measure:
+
+- Strong-match precision.
+- Potential-setup precision.
+- Overall pattern coverage.
+- Missed valid setups in manually reviewed samples.
+- False-positive rate.
+- Duplicate rate.
+- Signal stability under small parameter changes.
+
+The objective is balanced detection, not maximising precision by discarding every borderline opportunity.
+
+---
+
+PART 13 — DEFAULT DETECTION CONFIGURATION
+
+Use these as initial defaults, with configurable controls:
+
+Parameter| Initial value
+Default timeframe| Weekly
+Pivot left candles| 5
+Pivot right candles| 3
+Minimum swing age| 8 candles
+Maximum lookback| 100 candles
+Maximum reclaim window| 3 candles
+Minimum sweep depth| 0.05 ATR
+Maximum sweep depth| 1.5 ATR
+Equal-level tolerance| 0.15–0.35% starting range
+Strong quality score| 75+
+Potential score| 55–74
+
+These parameters are not rigid universal truths.
+
+The engine must allow reasonable variation and classify borderline structures as Potential where their underlying pattern remains valid.
+
+Do not make volume, exceptional candle-body strength or a particular trend condition mandatory.
+
+Do not allow the quality score to override hard structural validity.
+
+---
+
+PART 14 — TESTING REQUIREMENTS
+
+Build automated tests for all core logic.
+
+Swing tests
+
+- Valid swing low.
+- Valid swing high.
+- Unconfirmed pivot.
+- Equal lows.
+- Equal highs.
+- Repeated levels.
+- Closely spaced but distinct levels.
+- Swing expiry.
+
+Liquidity sweep tests
+
+- Same-candle sweep and reclaim.
+- One-candle reclaim.
+- Two-candle doji/reclaim.
+- Three-candle reclaim.
+- Wick-only sweep.
+- Closing penetration.
+- Shallow sweep.
+- Deep breakdown.
+- Failed reclaim.
+- Repeated sweep of the same level.
+
+Failed-breakout tests
+
+- Bullish failed breakdown.
+- Bearish failed breakout.
+- Support-zone reclaim.
+- Resistance-zone rejection.
+- Doji reversal.
+- Engulfing reversal.
+- Multi-candle reversal.
+- Ordinary bounce without a breakdown.
+- Ordinary breakdown continuation.
+
+Signal-state tests
+
+- Developing.
+- Confirmed.
+- Potential.
+- Reversal confirmed.
+- Invalidated.
+- Expired.
+- Duplicate prevention.
+
+Data tests
+
+- Missing volume.
+- Stale candles.
+- Missing intervals.
+- Duplicate timestamps.
+- Incorrect OHLC values.
+- NSE/BSE instrument identity.
+- Adjusted/unadjusted series consistency.
+- Intraday session boundaries.
+
+Look-ahead tests
+
+Explicitly verify that:
+
+- Swing levels only become available after right-side confirmation.
+- Confirmed signals cannot use future candles.
+- Developing signals are not recorded as completed confirmations.
+- Historical replay produces the same signal state that would have been available at that historical point.
+
+---
+
+PART 15 — USER EXPERIENCE AND DESIGN QUALITY
+
+This must feel like a premium Kosh analytical tool.
+
+Do not create a cluttered page.
+
+Prioritise:
+
+- Quick scan execution.
+- Clear filters.
+- Separate Strong and Potential results.
+- Clear Developing and Confirmed states.
+- Compact professional tables.
+- Chart navigation.
+- Transparent signal explanations.
+
+Use restrained green and red treatments for bullish and bearish directions.
+
+Do not use bright colour everywhere.
+
+Support existing Kosh light and dark themes.
+
+Make the page responsive.
+
+Do not modify unrelated screener functionality.
+
+---
+
+PART 16 — IMPLEMENTATION ORDER
+
+Follow this order.
+
+Phase 1: Audit
+
+Inspect Kosh architecture and actual OHLCV data coverage.
+
+Phase 2: Shared detection engine
+
+Implement:
+
+- Swing detection.
+- Equal-level detection.
+- ATR.
+- Sweep calculations.
+- Reclaim calculations.
+- Candle analysis.
+- Signal lifecycle.
+
+Phase 3: Screener 1
+
+Implement Liquidity Sweep & Reclaim, bullish and bearish.
+
+Phase 4: Screener 2
+
+Implement Failed Breakdown / Breakout, bullish and bearish.
+
+Phase 5: Classification
+
+Implement Strong, Potential, Developing and Invalidated states.
+
+Phase 6: UI
+
+Implement filters, result tables, sorting, search and chart navigation.
+
+Phase 7: Historical validation
+
+Run historical replay and forward-performance analysis.
+
+Phase 8: Optimisation
+
+Optimise full-universe scans and incremental refresh.
+
+Phase 9: Regression and production
+
+Run tests, typecheck and production build.
+
+Do not build a decorative UI first and postpone the actual detection engine.
+
+---
+
+PART 17 — ACCEPTANCE CRITERIA
+
+The work is complete only when:
+
+1. Both screeners work independently.
+2. Both bullish and bearish versions work.
+3. All supported NSE/BSE instruments are scanned where data permits.
+4. Monthly, weekly, daily, 4H, 1H and 15m are supported where data exists.
+5. Individual and repeated swing levels are supported.
+6. Immediate and multi-candle reclaim patterns are detected.
+7. Developing and confirmed signals are distinct.
+8. Strong and Potential signals are separated.
+9. Borderline structurally valid setups are not automatically discarded.
+10. Ordinary bounces are not misclassified as liquidity sweeps.
+11. Ordinary breakdowns are not misclassified as failed breakdowns.
+12. Signals are not duplicated.
+13. Invalidated signals are not shown as active.
+14. No look-ahead bias is present.
+15. Chart navigation and annotations work.
+16. Historical validation produces genuine measured results.
+17. Performance is tested across the actual supported stock universe.
+18. Data limitations are handled transparently.
+19. Existing Kosh features are not broken.
+
+---
+
+PART 18 — FINAL IMPLEMENTATION REPORT
+
+Provide the following:
+
+1. Existing data infrastructure reused.
+2. Actual timeframe coverage and historical depth.
+3. Actual instrument coverage.
+4. Detection-engine architecture.
+5. Exact rules implemented.
+6. How Strong and Potential are classified.
+7. How Developing and Confirmed are classified.
+8. How invalidation and expiry work.
+9. How duplicate signals are prevented.
+10. How results are opened and annotated on charts.
+11. Historical validation sample sizes.
+12. Forward-performance metrics by timeframe and direction.
+13. Performance of full-universe scanning.
+14. Automated test results.
+15. Typecheck and production build results.
+16. Remaining data limitations.
+
+Clearly distinguish:
+
+- Fully implemented.
+- Partially implemented.
+- Unsupported because of data limitations.
+
+Do not claim that all timeframes or all instruments are fully covered unless verified.
+
+Do not fabricate test results, performance metrics, historical success rates or signal counts.
+
+FINAL PRODUCT PRINCIPLE
+
+Kosh must identify structurally meaningful liquidity sweeps and failed breakouts without becoming excessively restrictive.
+
+Strong setups must remain easy to find.
+
+Potential setups must not disappear merely because one supporting characteristic is weaker.
+
+Developing setups must not be confused with confirmed setups.
+
+The user must be able to inspect every signal on the actual chart and understand precisely why it was detected.
+
+Build a reliable, explainable, balanced screening system — not a collection of arbitrary technical filters.

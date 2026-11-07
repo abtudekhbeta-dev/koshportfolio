@@ -33,6 +33,7 @@ import { Route as ApiHistoriesRouteImport } from './routes/api/histories'
 import { Route as ApiHistoryRouteImport } from './routes/api/history'
 import { Route as ApiIndexConstituentsRouteImport } from './routes/api/index-constituents'
 import { Route as ApiIngestRouteImport } from './routes/api/ingest'
+import { Route as ApiLiquidityScanRouteImport } from './routes/api/liquidity-scan'
 import { Route as ApiMacroRouteImport } from './routes/api/macro'
 import { Route as ApiMarketFlowsRouteImport } from './routes/api/market-flows'
 import { Route as ApiNewsRouteImport } from './routes/api/news'
@@ -181,6 +182,11 @@ const ApiIndexConstituentsRoute = ApiIndexConstituentsRouteImport.update({
 const ApiIngestRoute = ApiIngestRouteImport.update({
   id: '/api/ingest',
   path: '/api/ingest',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiLiquidityScanRoute = ApiLiquidityScanRouteImport.update({
+  id: '/api/liquidity-scan',
+  path: '/api/liquidity-scan',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMacroRoute = ApiMacroRouteImport.update({
@@ -354,6 +360,7 @@ export interface FileRoutesByFullPath {
   '/api/history': typeof ApiHistoryRoute
   '/api/index-constituents': typeof ApiIndexConstituentsRoute
   '/api/ingest': typeof ApiIngestRoute
+  '/api/liquidity-scan': typeof ApiLiquidityScanRoute
   '/api/macro': typeof ApiMacroRoute
   '/api/market-flows': typeof ApiMarketFlowsRoute
   '/api/news': typeof ApiNewsRoute
@@ -409,6 +416,7 @@ export interface FileRoutesByTo {
   '/api/history': typeof ApiHistoryRoute
   '/api/index-constituents': typeof ApiIndexConstituentsRoute
   '/api/ingest': typeof ApiIngestRoute
+  '/api/liquidity-scan': typeof ApiLiquidityScanRoute
   '/api/macro': typeof ApiMacroRoute
   '/api/market-flows': typeof ApiMarketFlowsRoute
   '/api/news': typeof ApiNewsRoute
@@ -464,6 +472,7 @@ export interface FileRoutesById {
   '/api/history': typeof ApiHistoryRoute
   '/api/index-constituents': typeof ApiIndexConstituentsRoute
   '/api/ingest': typeof ApiIngestRoute
+  '/api/liquidity-scan': typeof ApiLiquidityScanRoute
   '/api/macro': typeof ApiMacroRoute
   '/api/market-flows': typeof ApiMarketFlowsRoute
   '/api/news': typeof ApiNewsRoute
@@ -521,6 +530,7 @@ export interface FileRouteTypes {
     | '/api/history'
     | '/api/index-constituents'
     | '/api/ingest'
+    | '/api/liquidity-scan'
     | '/api/macro'
     | '/api/market-flows'
     | '/api/news'
@@ -576,6 +586,7 @@ export interface FileRouteTypes {
     | '/api/history'
     | '/api/index-constituents'
     | '/api/ingest'
+    | '/api/liquidity-scan'
     | '/api/macro'
     | '/api/market-flows'
     | '/api/news'
@@ -630,6 +641,7 @@ export interface FileRouteTypes {
     | '/api/history'
     | '/api/index-constituents'
     | '/api/ingest'
+    | '/api/liquidity-scan'
     | '/api/macro'
     | '/api/market-flows'
     | '/api/news'
@@ -686,6 +698,7 @@ export interface RootRouteChildren {
   ApiHistoryRoute: typeof ApiHistoryRoute
   ApiIndexConstituentsRoute: typeof ApiIndexConstituentsRoute
   ApiIngestRoute: typeof ApiIngestRoute
+  ApiLiquidityScanRoute: typeof ApiLiquidityScanRoute
   ApiMacroRoute: typeof ApiMacroRoute
   ApiMarketFlowsRoute: typeof ApiMarketFlowsRoute
   ApiNewsRoute: typeof ApiNewsRoute
@@ -875,6 +888,13 @@ declare module '@tanstack/react-router' {
       path: '/api/ingest'
       fullPath: '/api/ingest'
       preLoaderRoute: typeof ApiIngestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/liquidity-scan': {
+      id: '/api/liquidity-scan'
+      path: '/api/liquidity-scan'
+      fullPath: '/api/liquidity-scan'
+      preLoaderRoute: typeof ApiLiquidityScanRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/macro': {
@@ -1145,6 +1165,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHistoryRoute: ApiHistoryRoute,
   ApiIndexConstituentsRoute: ApiIndexConstituentsRoute,
   ApiIngestRoute: ApiIngestRoute,
+  ApiLiquidityScanRoute: ApiLiquidityScanRoute,
   ApiMacroRoute: ApiMacroRoute,
   ApiMarketFlowsRoute: ApiMarketFlowsRoute,
   ApiNewsRoute: ApiNewsRoute,

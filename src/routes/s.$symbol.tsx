@@ -39,6 +39,7 @@ import { seedCompletion } from "@/lib/kosh/complete";
 import { buildValuationModels, earningsQualityRead } from "@/lib/kosh/valuation";
 import { buildCoverage, peDiscrepancy } from "@/lib/kosh/coverage";
 import { bareSymbol, isWatched, useKosh, type AlertKind } from "@/lib/store";
+import { LIQ_FOCUS_KEY, type LiqFocus } from "@/lib/kosh/liquidity";
 import { listingExchange, listingId, listingLabel } from "@/lib/kosh/listing";
 import { terminalSearch } from "@/lib/kosh/instrument-nav";
 
@@ -50,6 +51,8 @@ export const Route = createFileRoute("/s/$symbol")({ component: StockPage });
 function StockPage() {
   const { symbol } = Route.useParams();
   const pushRecent = useKosh((s) => s.pushRecent);
+  const patchChartPrefs = useKosh((s) => s.patchChartPrefs);
+  const [liqFocus, setLiqFocus] = useState<LiqFocus | null>(null);
 
   const ohlc = useQuery({
     queryKey: ["ohlc", symbol, "5y", "1d"],
@@ -63,12 +66,33 @@ function StockPage() {
     pushRecent({ symbol, name });
   }, [symbol, ohlc.data?.name, pushRecent]);
 
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(LIQ_FOCUS_KEY);
+      if (!raw) {
+        setLiqFocus(null);
+        return;
+      }
+      const parsed = JSON.parse(raw) as LiqFocus;
+      const wanted = parsed.symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
+      const here = symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
+      if (wanted !== here) {
+        setLiqFocus(null);
+        return;
+      }
+      setLiqFocus(parsed);
+      patchChartPrefs({ interval: parsed.interval, lookback: parsed.lookback });
+    } catch {
+      setLiqFocus(null);
+    }
+  }, [symbol, patchChartPrefs]);
+
   return (
     <AppShell>
       {ohlc.data?.missing ? (
         <p className="text-sm text-muted">No price series for {symbol}.</p>
       ) : ohlc.data ? (
-        <StockBody symbol={symbol} pack={ohlc.data} />
+        <StockBody symbol={symbol} pack={ohlc.data} liqFocus={liqFocus} />
       ) : ohlc.isError ? (
         <p className="text-sm text-muted">
           No prices for {symbol}. {ohlc.error.message}
@@ -88,9 +112,11 @@ function StockPage() {
 function StockBody({
   symbol,
   pack,
+  liqFocus,
 }: {
   symbol: string;
   pack: OhlcPack;
+  liqFocus: LiqFocus | null;
 }) {
   const watch = useKosh((s) => s.watch);
   const toggleWatch = useKosh((s) => s.toggleWatch);
@@ -480,6 +506,7 @@ function StockBody({
           </div>
         </div>
         <Suspense fallback={<div className="grid h-80 place-items-center rounded-lg bg-surface text-sm text-muted shadow-[var(--shadow-border)]">Loading chart…</div>}>
+          {liqFocus ? <p className="mb-2 text-[12px] text-muted">{liqFocus.note} The marks are not saved into your drawings.</p> : null}
           <CandleChart
             symbol={symbol}
             bars={bars}
@@ -489,6 +516,7 @@ function StockBody({
             high52={pack.high52}
             low52={pack.low52}
             prevClose={pack.previousClose}
+            focus={liqFocus ? { t: liqFocus.t, marks: liqFocus.marks, note: liqFocus.note } : null}
           />
         </Suspense>
         <p className="mt-2 text-[12px] text-muted">
