@@ -19,7 +19,8 @@ import { listedEquities } from "./master.server";
 import { bseEquities } from "./bse-book.server";
 import { composeListedBook } from "./liquidity-universe";
 import { NIFTY_CATALOGUE } from "./nifty-catalogue";
-import { deleteRun, liquidityCacheKey, loadFreshRun, mergeRun, tryScanLock, unlockScan, type StoredRun } from "./liquidity-run.server";
+import { beginScanRenewal, deleteRun, liquidityCacheKey, loadFreshRun, mergeRun, tryScanLock, unlockScan, type ScanAdmission, type StoredRun } from "./liquidity-run.server";
+import { scanLockDiagnostic } from "./liquidity-lock";
 import { fetchOhlc } from "./yahoo.server";
 
 export type ScanUniverse = "nifty50" | "nifty100" | "nifty200" | "nifty500" | "all" | "nse" | "bse" | "watch";
@@ -275,6 +276,14 @@ function emptyRecall(): RecallPage {
   };
 }
 
+async function lostPage(key: string, tf: LiqTimeframe): Promise<RecallPage> {
+  console.warn(scanLockDiagnostic("lock-lost"));
+  const saved = await loadFreshRun(key, tf);
+  return saved
+    ? { ...fromStored(saved), locked: true }
+    : { ...emptyRecall(), locked: true, universeNote: "Another scan of this book is still running." };
+}
+
 /** Read a saved run, or scan the next batch and store it. A finished run is reused until 10 bars of that timeframe have passed, and is marked when a newer candle may have started. */
 export async function scanOrRecall(input: {
   timeframe: LiqTimeframe;
@@ -292,17 +301,19 @@ export async function scanOrRecall(input: {
     return saved ? fromStored(saved) : emptyRecall();
   }
   return scanGate(key, async () => {
-    const lock = await tryScanLock(key);
-    if (lock === "busy") {
+    const admission = await tryScanLock(key);
+    if (admission === "busy") {
       const saved = await loadFreshRun(key, input.timeframe);
       return saved
         ? { ...fromStored(saved), locked: true }
         : { ...emptyRecall(), locked: true, universeNote: "Another scan of this book is still running." };
     }
+    const renewal = admission === "database-coordinated" ? beginScanRenewal(key) : null;
     try {
-      return await scanBody(input, key);
+      return await scanBody(input, key, admission, () => renewal?.lost() ?? false);
     } finally {
-      if (lock === "acquired") await unlockScan(key);
+      renewal?.stop();
+      if (admission === "database-coordinated") await unlockScan(key);
     }
   });
 }
@@ -310,13 +321,16 @@ export async function scanOrRecall(input: {
 async function scanBody(
   input: { timeframe: LiqTimeframe; universe: ScanUniverse; symbols?: string[]; cursor?: number; fresh?: boolean },
   key: string,
+  admission: ScanAdmission,
+  lost: () => boolean,
 ): Promise<RecallPage> {
   let cursor = Math.max(0, input.cursor || 0);
   const saved = !input.fresh || cursor !== 0 ? await loadFreshRun(key, input.timeframe) : null;
   const plan = planScanCursor(saved, cursor, input.fresh === true);
   if (plan.action === "use-saved") return saved ? fromStored(saved) : emptyRecall();
   if (plan.action === "replace-with-saved") return saved ? { ...fromStored(saved), replace: true } : emptyRecall();
-  if (input.fresh && cursor === 0) await deleteRun(key);
+  if (lost()) return lostPage(key, input.timeframe);
+  if (input.fresh && cursor === 0) await deleteRun(key, admission);
   cursor = plan.cursor;
   const page = await scanLiquidityPage({
     timeframe: input.timeframe,
@@ -324,7 +338,9 @@ async function scanBody(
     symbols: input.symbols,
     cursor,
   });
-  const stored = await mergeRun(key, input.timeframe, page, cursor);
+  if (lost()) return lostPage(key, input.timeframe);
+  const stored = await mergeRun(key, input.timeframe, page, cursor, admission);
+  if (stored.lost) return lostPage(key, input.timeframe);
   return {
     ...page,
     cached: false,

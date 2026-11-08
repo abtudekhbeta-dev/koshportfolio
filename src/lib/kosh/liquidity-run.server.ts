@@ -2,7 +2,7 @@
 
 import { getSql } from "@/lib/db";
 import { laterCandleLikely, mergeStats, reduceScanState, runValidityMs, type ForwardStats, type LiqTimeframe } from "./liquidity";
-import { claimScanLock, releaseScanLock, SCAN_LOCK_TTL_MS } from "./liquidity-lock";
+import { claimScanLock, coordinationFromClaim, releaseScanLock, renewScanLock, saveRunIfOwned, saveRunLocal, scanLockDiagnostic, watchScanLock, SCAN_LOCK_TTL_MS, SCAN_LOCK_RENEW_MS, type RunSnapshot } from "./liquidity-lock";
 
 export type StoredHit = Record<string, unknown> & { id: string };
 
@@ -149,15 +149,37 @@ export async function loadFreshRun(key: string, tf: LiqTimeframe): Promise<Store
 
 const scanOwner = `scan-${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
 
-/** One key across processes. Busy means another instance holds it. Unavailable means the database itself failed. */
-export async function tryScanLock(key: string): Promise<"acquired" | "busy" | "unavailable"> {
+export type ScanAdmission = "database-coordinated" | "process-local-only" | "busy";
+
+let notedLocal = false;
+
+function noteProcessLocal() {
+  if (notedLocal) return;
+  notedLocal = true;
+  console.warn(scanLockDiagnostic("process-local-only"));
+}
+
+/** One key across processes. Busy means another instance holds it. Process-local means the database itself failed. */
+export async function tryScanLock(key: string): Promise<ScanAdmission> {
   try {
     await ensureTable();
     const sql = await getSql();
-    return await claimScanLock(sql, key, scanOwner, Date.now(), SCAN_LOCK_TTL_MS);
+    const result = await claimScanLock(sql, key, scanOwner, Date.now(), SCAN_LOCK_TTL_MS);
+    return coordinationFromClaim(result);
   } catch {
-    return "unavailable";
+    noteProcessLocal();
+    return "process-local-only";
   }
+}
+
+/** Extend the lease before it expires. Lost means this process must not write the batch. */
+export async function renewHeldLock(key: string, now = Date.now()): Promise<"renewed" | "lost"> {
+  const sql = await getSql();
+  return renewScanLock(sql, key, scanOwner, now, SCAN_LOCK_TTL_MS);
+}
+
+export function beginScanRenewal(key: string): { lost: () => boolean; stop: () => void } {
+  return watchScanLock(() => renewHeldLock(key), SCAN_LOCK_RENEW_MS);
 }
 
 export async function unlockScan(key: string): Promise<void> {
@@ -169,15 +191,52 @@ export async function unlockScan(key: string): Promise<void> {
   }
 }
 
-export async function deleteRun(key: string) {
+export async function deleteRun(key: string, admission?: ScanAdmission) {
   memory.delete(key);
+  if (admission === "process-local-only") return;
   try {
     await ensureTable();
     const sql = await getSql();
+    if (admission === "database-coordinated") {
+      await sql.query(
+        `delete from liquidity_runs
+         where cache_key = $1
+           and exists (
+             select 1 from liquidity_locks
+             where cache_key = $1 and owner = $2 and expires_at > $3
+           )`,
+        [key, scanOwner, Date.now()],
+      );
+      return;
+    }
     await sql.query(`delete from liquidity_runs where cache_key = $1`, [key]);
   } catch {
     /* memory already cleared */
   }
+}
+
+function cloneRun(run: StoredRun): StoredRun {
+  return { ...run, hits: run.hits.slice(), stats: run.stats.slice(), skipped: run.skipped.slice() };
+}
+
+function snapshotOf(key: string, run: StoredRun): RunSnapshot {
+  return {
+    key,
+    cursorAt: run.cursorAt,
+    universeSize: run.universeSize,
+    done: run.done ? 1 : 0,
+    hits: JSON.stringify(run.hits),
+    stats: JSON.stringify(run.stats),
+    skipped: JSON.stringify(run.skipped),
+    skippedN: run.skippedN,
+    scannedN: run.scannedN,
+    universeNote: run.universeNote,
+    timeframeNote: run.timeframeNote,
+    adjusted: run.adjusted ? 1 : 0,
+    newestBar: run.newestBar,
+    asOf: run.asOf,
+    validUntil: run.validUntil,
+  };
 }
 
 export async function mergeRun(
@@ -195,8 +254,10 @@ export async function mergeRun(
     adjusted: boolean;
   },
   fromCursor: number,
-): Promise<{ ok: boolean; validUntil: number; skippedN: number; scannedN: number; done: boolean }> {
-  const prev = (await loadFreshRun(key, tf)) || {
+  admission: ScanAdmission,
+): Promise<{ ok: boolean; lost: boolean; validUntil: number; skippedN: number; scannedN: number; done: boolean }> {
+  const loaded = await loadFreshRun(key, tf);
+  const prev = loaded ? cloneRun(loaded) : {
     cursorAt: 0,
     universeSize: page.universeSize,
     done: false,
@@ -253,50 +314,39 @@ export async function mergeRun(
     validUntil: now + runValidityMs(tf),
     newerCandle: false,
   };
+  const counts = { validUntil: next.validUntil, skippedN: next.skippedN, scannedN: next.scannedN, done: next.done };
+  const snap = snapshotOf(key, next);
+  if (admission === "busy") {
+    return { ok: false, lost: true, validUntil: loaded?.validUntil ?? 0, skippedN: loaded?.skippedN ?? 0, scannedN: loaded?.scannedN ?? 0, done: loaded?.done ?? false };
+  }
+  if (admission === "database-coordinated") {
+    try {
+      await ensureTable();
+      const sql = await getSql();
+      const wrote = await saveRunIfOwned(sql, scanOwner, now, snap);
+      if (wrote === "lost") {
+        return { ok: false, lost: true, validUntil: loaded?.validUntil ?? 0, skippedN: loaded?.skippedN ?? 0, scannedN: loaded?.scannedN ?? 0, done: loaded?.done ?? false };
+      }
+      memory.set(key, next);
+      return { ok: true, lost: false, ...counts };
+    } catch {
+      noteProcessLocal();
+      memory.set(key, next);
+      return { ok: false, lost: false, ...counts };
+    }
+  }
   memory.set(key, next);
   try {
     await ensureTable();
     const sql = await getSql();
-    await sql.query(
-      `insert into liquidity_runs (
-         cache_key, cursor_at, universe_size, done, hits, stats, skipped, skipped_n, scanned_n,
-         universe_note, timeframe_note, adjusted, newest_bar, as_of, valid_until
-       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-       on conflict (cache_key) do update set
-         cursor_at = excluded.cursor_at,
-         universe_size = excluded.universe_size,
-         done = excluded.done,
-         hits = excluded.hits,
-         stats = excluded.stats,
-         skipped = excluded.skipped,
-         skipped_n = excluded.skipped_n,
-         scanned_n = excluded.scanned_n,
-         universe_note = excluded.universe_note,
-         timeframe_note = excluded.timeframe_note,
-         adjusted = excluded.adjusted,
-         newest_bar = excluded.newest_bar,
-         as_of = excluded.as_of,
-         valid_until = excluded.valid_until`,
-      [
-        key,
-        next.cursorAt,
-        next.universeSize,
-        next.done ? 1 : 0,
-        JSON.stringify(next.hits),
-        JSON.stringify(next.stats),
-        JSON.stringify(next.skipped),
-        next.skippedN,
-        next.scannedN,
-        next.universeNote,
-        next.timeframeNote,
-        next.adjusted ? 1 : 0,
-        next.newestBar,
-        next.asOf,
-        next.validUntil,
-      ],
-    );
-    return { ok: true, validUntil: next.validUntil, skippedN: next.skippedN, scannedN: next.scannedN, done: next.done };
+    const wrote = await saveRunLocal(sql, scanOwner, now, snap);
+    if (wrote === "blocked") {
+      memory.delete(key);
+      const fresh = await loadFreshRun(key, tf);
+      return { ok: false, lost: true, validUntil: fresh?.validUntil ?? 0, skippedN: fresh?.skippedN ?? 0, scannedN: fresh?.scannedN ?? 0, done: fresh?.done ?? false };
+    }
+    return { ok: true, lost: false, ...counts };
   } catch {
-    return { ok: false, validUntil: next.validUntil, skippedN: next.skippedN, scannedN: next.scannedN, done: next.done };
+    return { ok: false, lost: false, ...counts };
   }
 }
