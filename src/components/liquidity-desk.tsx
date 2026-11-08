@@ -5,6 +5,7 @@ import { LIQ_FOCUS_KEY, mergeStats, type ForwardStats, type LiqEvent, type LiqFo
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import type { ChartMark, OhlcBar } from "@/lib/kosh/types";
+import { LiquidityTape } from "@/components/liquidity-tape";
 
 const CandleChart = lazy(() => import("@/components/charts/candle-chart").then((m) => ({ default: m.CandleChart })));
 
@@ -26,16 +27,20 @@ type Page = {
   newerCandle?: boolean;
   saved?: boolean;
   skippedN?: number;
+  scannedN?: number;
+  replace?: boolean;
   error?: string;
 };
 
 const TFS: LiqTimeframe[] = ["15m", "1H", "4H", "1D", "1W", "1M"];
 const UNIVERSES = [
+  ["all", "All listed"],
+  ["nse", "NSE"],
+  ["bse", "BSE"],
   ["nifty50", "Nifty 50"],
   ["nifty100", "Nifty 100"],
   ["nifty200", "Nifty 200"],
   ["nifty500", "Nifty 500"],
-  ["nse", "All NSE"],
   ["watch", "Watchlist"],
 ] as const;
 
@@ -73,7 +78,7 @@ function volPct(ratio: number | null) {
 function chartFrame(tf: LiqTimeframe): { interval: string; lookback: string; extra: string } {
   if (tf === "15m") return { interval: "15m", lookback: "1M", extra: "" };
   if (tf === "1H") return { interval: "1H", lookback: "1Y", extra: "" };
-  if (tf === "4H") return { interval: "1H", lookback: "1Y", extra: " The chart uses 1-hour because Kosh has no 4-hour frame. The prices are from the 4-hour scan." };
+  if (tf === "4H") return { interval: "1H", lookback: "1Y", extra: " The stock page has no 4-hour frame. The panel beside this list draws the folded 4-hour candles the scan used." };
   if (tf === "1D") return { interval: "1D", lookback: "5Y", extra: "" };
   if (tf === "1M") return { interval: "1M", lookback: "MAX", extra: "" };
   return { interval: "1W", lookback: "10Y", extra: "" };
@@ -90,6 +95,12 @@ function marksFor(hit: Hit): ChartMark[] {
   return marks;
 }
 
+function stageLabel(hit: Hit) {
+  if (hit.status === "developing" || !hit.reclaimClosed) return "Developing";
+  if (hit.followThrough) return "Follow-through";
+  return "Reclaimed";
+}
+
 export function LiquidityDesk({ onBack }: { onBack: () => void }) {
   const navigate = useNavigate();
   const lists = useKosh((s) => s.watchlists);
@@ -97,7 +108,7 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
   const [pattern, setPattern] = useState<"sweep" | "failed">("sweep");
   const [tf, setTf] = useState<LiqTimeframe>("1W");
   const [direction, setDirection] = useState<"bull" | "bear" | "both">("both");
-  const [status, setStatus] = useState<"developing" | "confirmed" | "potential" | "all">("all");
+  const [status, setStatus] = useState<"developing" | "confirmed" | "potential" | "follow" | "all">("all");
   const [swing, setSwing] = useState<"both" | "single" | "equal">("both");
   const [reclaim, setReclaim] = useState<"all" | "same" | "one" | "two" | "three">("all");
   const [universe, setUniverse] = useState<(typeof UNIVERSES)[number][0]>("nifty50");
@@ -249,7 +260,7 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
           take(page, "replace");
           break;
         }
-        take(page, "add");
+        take(page, page.replace ? "replace" : "add");
         if (page.cursor == null) break;
         cursor = page.cursor;
         first = false;
@@ -273,7 +284,8 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
     if (hit.lowQuality && !weak) return false;
     if (Number.isFinite(floor) && floor > 0 && hit.reclaimClose != null && hit.reclaimClose < floor && hit.level < floor) return false;
     if (status === "developing" && hit.status !== "developing") return false;
-    if (status === "confirmed" && hit.status !== "confirmed") return false;
+    if (status === "confirmed" && !(hit.status === "confirmed" && hit.reclaimClosed)) return false;
+    if (status === "follow" && !hit.followThrough) return false;
     if (status === "potential" && hit.tier !== "potential") return false;
     if (needle && !hit.symbol.toLowerCase().includes(needle) && !hit.name.toLowerCase().includes(needle)) return false;
     return true;
@@ -294,12 +306,14 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
   }
 
   function openSide(hit: Hit) {
-    const frame = chartFrame(tf);
-    if (!savedPrefs.current) {
-      const prefs = useKosh.getState().chartPrefs;
-      savedPrefs.current = { interval: prefs.interval, lookback: prefs.lookback };
+    if (tf !== "4H") {
+      const frame = chartFrame(tf);
+      if (!savedPrefs.current) {
+        const prefs = useKosh.getState().chartPrefs;
+        savedPrefs.current = { interval: prefs.interval, lookback: prefs.lookback };
+      }
+      patchChartPrefs({ interval: frame.interval, lookback: frame.lookback });
     }
-    patchChartPrefs({ interval: frame.interval, lookback: frame.lookback });
     setSide(hit);
   }
 
@@ -382,7 +396,8 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
           </select>
           <select aria-label="Signal status" value={status} onChange={(e) => setStatus(e.target.value as typeof status)} className="h-8 rounded-sm bg-surface px-2 text-[12px] shadow-[var(--shadow-border)]">
             <option value="all">All statuses</option>
-            <option value="confirmed">Confirmed</option>
+            <option value="confirmed">Reclaimed</option>
+            <option value="follow">Follow-through</option>
             <option value="potential">Potential</option>
             <option value="developing">Developing</option>
           </select>
@@ -445,15 +460,16 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
         {error ? <p className="mt-3 text-[13px] text-muted">{error}</p> : null}
         {progress ? (
           <p className="mt-3 text-[12px] text-subtle">
-            {progress.done} of {progress.size} names.
-            {savedKind === "partial" ? " Saved so far. Continue finishes the book." : savedKind === "done" ? " This run is saved." : ""}
+            {progress.done} of {progress.size} listed.
+            {meta?.universeNote ? ` ${meta.universeNote}` : ""}
+            {savedKind === "partial" ? " This pass has not finished the book. What finished is saved. Continue picks up the rest." : savedKind === "done" ? " This pass finished the book that was listed." : ""}
             {meta?.keptUntil ? ` Kept until ${new Date(meta.keptUntil).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} IST (${LIFE[tf]}).` : ""}
             {meta?.newerCandle ? " A newer candle may have started since this save. Scan again to refresh." : ""}
             {meta?.timeframeNote ? ` ${meta.timeframeNote}` : ""}
           </p>
         ) : (
           <p className="mt-3 text-[12px] text-subtle">
-            Nothing is scanned until you ask. Weekly is the default. Nifty lists use the published constituent file. All NSE is every equity in the master, kept for {LIFE[tf]} once it finishes. There is no separate BSE book.
+            Nothing is scanned until you ask. Weekly is the default. All listed is the NSE master plus BSE-only names from Yahoo's BSE screener. NSE and BSE are separate books. Nifty lists use the published constituent file. A name is counted only after its history answers, and skipped names stay listed. Kept for {LIFE[tf]} once a pass finishes.
           </p>
         )}
 
@@ -473,10 +489,10 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
             <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[12px] tabular sm:grid-cols-3">
               <dt className="text-subtle">Swing</dt><dd>{open.parts.swing}/20</dd>
               <dt className="text-subtle">Break</dt><dd>{open.parts.sweep}/20</dd>
-              <dt className="text-subtle">Closed back</dt><dd>{open.parts.reclaim}/20</dd>
-              <dt className="text-subtle">Volume</dt><dd>{open.parts.volume}/15</dd>
+              <dt className="text-subtle">Closed back</dt><dd>{open.reclaimClosed ? "Yes" : "Not closed"} · {open.parts.reclaim}/20</dd>
+              <dt className="text-subtle">Volume</dt><dd>{open.volumeKnown ? `${open.parts.volume}/15` : "Not on the tape"}</dd>
               <dt className="text-subtle">Candle</dt><dd>{open.parts.candle}/15</dd>
-              <dt className="text-subtle">Follow-through</dt><dd>{open.parts.confirm}/10</dd>
+              <dt className="text-subtle">Follow-through</dt><dd>{open.followThrough ? "Yes" : "No"} · {open.parts.confirm}/10</dd>
             </dl>
             {open.weaknesses.length ? <ul className="mt-2 list-disc pl-4 text-[12px] text-muted">{open.weaknesses.map((w) => <li key={w}>{w}</li>)}</ul> : null}
             <button type="button" className="mt-2 text-[12px] text-chart hover:underline" onClick={() => openSide(open)}>Show the chart beside the list</button>
@@ -486,7 +502,7 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
         {shownStats.length ? (
           <div className="mt-4">
             <h3 className="text-[13px] font-semibold">Measured after the close back, on this scan only</h3>
-            <p className="mt-1 max-w-2xl text-[12px] text-muted">Later candles in the history that was loaded. Lost within 8 means a later close back through the level inside that window. Not a success rate and not a forecast. Averages are weighted by how many signals had a later close. The median columns are medians of each name’s median.</p>
+            <p className="mt-1 max-w-2xl text-[12px] text-muted">Later candles in the history that was loaded, measured from the close back, not from follow-through. Each horizon has its own sample size. The median is the median of those observations pooled across names, not a median of medians. Not a success rate and not a forecast.</p>
             <div className="mt-2 overflow-x-auto">
               <table className="w-full min-w-[640px] text-left text-[12px]">
                 <thead className="text-[10px] tracking-[0.06em] text-subtle uppercase">
@@ -509,10 +525,10 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
                       <td className="py-1 pr-3">{row.direction === "bull" ? "Bullish" : "Bearish"}</td>
                       <td className="py-1 pr-3">{row.n}</td>
                       <td className="py-1 pr-3">{row.withForward}</td>
-                      <td className="py-1 pr-3">{num(row.avg.c1)}</td>
-                      <td className="py-1 pr-3">{num(row.avg.c3)}</td>
-                      <td className="py-1 pr-3">{num(row.avg.c5)}</td>
-                      <td className="py-1 pr-3">{num(row.avg.c8)}</td>
+                      <td className="py-1 pr-3">{num(row.avg.c1)} <span className="text-subtle">n={row.samples?.c1 ?? row.withForward}</span></td>
+                      <td className="py-1 pr-3">{num(row.avg.c3)} <span className="text-subtle">n={row.samples?.c3 ?? "—"}</span></td>
+                      <td className="py-1 pr-3">{num(row.avg.c5)} <span className="text-subtle">n={row.samples?.c5 ?? "—"}</span></td>
+                      <td className="py-1 pr-3">{num(row.avg.c8)} <span className="text-subtle">n={row.samples?.c8 ?? "—"}</span></td>
                       <td className="py-1 pr-3">{num(row.medianMfe)}</td>
                       <td className="py-1 pr-3">{num(row.medianMae)}</td>
                       <td className="py-1">{row.invalidated}</td>
@@ -526,7 +542,7 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
 
         {meta?.asOf ? (
           <p className="mt-3 text-[11px] text-subtle">
-            {meta.universeNote} {meta.adjusted ? "Prices use Yahoo’s adjusted close when it differs from the raw close, so the whole candle stays on one series." : "No adjustment was needed on the candles that loaded."} {skippedN ? `${skippedN} names skipped.` : ""} {meta.cached ? "Opened from the saved run." : ""}
+            {meta.universeNote} {skippedN ? `${skippedN} names had no usable history and were not treated as scanned.` : "No names were skipped in what has loaded."} {savedKind !== "done" && progress ? "The book is not finished." : ""} {meta.adjusted ? "Prices use Yahoo’s adjusted close when it differs from the raw close, so the whole candle stays on one series." : "No adjustment was needed on the candles that loaded."} {meta.cached ? "Opened from the saved run." : ""} {meta.newerCandle ? "A newer candle may have started, so this save is not the current bar." : ""}
           </p>
         ) : null}
         {skipped.length ? (
@@ -549,7 +565,7 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
           <div className="flex items-start justify-between gap-2 border-b border-border px-3 py-2">
             <div className="min-w-0">
               <h2 className="truncate text-[16px] font-semibold">{side.name}</h2>
-              <p className="text-[11px] text-subtle">{side.symbol} · {side.exchange} · {tf === "4H" ? "1H chart" : tf}</p>
+              <p className="text-[11px] text-subtle">{side.symbol} · {side.exchange} · {tf === "4H" ? "4H folded from 1H" : tf} · {stageLabel(side)}</p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
               <button type="button" className="h-8 px-2 text-[11px] text-muted hover:text-fg" onClick={() => openFull(side)}>
@@ -560,16 +576,20 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
               </button>
             </div>
           </div>
-          <p className="px-3 py-2 text-[12px] text-muted">{side.explanation}{frame.extra} The marks are not saved into your drawings.</p>
+          <p className="px-3 py-2 text-[12px] text-muted">{side.explanation}{tf === "4H" ? "" : frame.extra} The marks are not saved into your drawings.</p>
           <div className="min-h-0 flex-1 overflow-auto px-2 pb-3">
-            <Suspense fallback={<p className="p-4 text-[13px] text-muted">Loading the chart…</p>}>
-              <CandleChart
-                key={`${side.symbol}-${frame.interval}`}
-                symbol={side.symbol}
-                bars={[] as OhlcBar[]}
-                focus={{ t: side.sweepT, marks: marksFor(side), note: side.explanation }}
-              />
-            </Suspense>
+            {tf === "4H" ? (
+              <LiquidityTape symbol={side.symbol} hit={side} />
+            ) : (
+              <Suspense fallback={<p className="p-4 text-[13px] text-muted">Loading the chart…</p>}>
+                <CandleChart
+                  key={`${side.symbol}-${frame.interval}`}
+                  symbol={side.symbol}
+                  bars={[] as OhlcBar[]}
+                  focus={{ t: side.sweepT, marks: marksFor(side), note: side.explanation }}
+                />
+              </Suspense>
+            )}
           </div>
         </aside>
       ) : null}
@@ -630,7 +650,7 @@ function Group({
                   <td className="py-1.5 pr-2">{closedBack(hit.reclaimCandles)}</td>
                   <td className="py-1.5 pr-2 font-mono tabular" title="Versus the previous 20 bars">{volPct(hit.volumeRatio)}</td>
                   <td className="py-1.5 pr-2">{when(hit.sweepT)}</td>
-                  <td className="py-1.5 pr-2">{hit.status === "developing" ? "Developing" : hit.tier === "strong" ? "Confirmed" : "Potential"}</td>
+                  <td className="py-1.5 pr-2">{stageLabel(hit)}</td>
                   <td className="py-1.5">
                     <button type="button" className="font-mono tabular hover:underline" onClick={() => onInspect(hit)}>{hit.score}</button>
                   </td>

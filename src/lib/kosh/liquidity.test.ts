@@ -9,8 +9,11 @@ import {
   forwardStats,
   lastBarForming,
   laterCandleLikely,
+  mergeStats,
   prepareBars,
+  replayNoLookahead,
   runValidityMs,
+  session4hTailOpen,
   type LiqConfig,
   type ScanBar,
 } from "./liquidity.ts";
@@ -93,6 +96,23 @@ describe("liquidity bars", () => {
     assert.equal(folded[1].o, 13);
     assert.equal(folded[1].c, 15);
     assert.equal(folded[2].o, 15);
+    const quiet = foldSession4h([
+      { t: at(9, 15), o: 10, h: 11, l: 9, c: 10, v: 0 },
+      { t: at(10, 15), o: 10, h: 11, l: 9, c: 10, v: 0 },
+      { t: at(13, 15), o: 10, h: 12, l: 9, c: 11, v: 4 },
+      { t: at(14, 15), o: 11, h: 12, l: 10, c: 11, v: 0 },
+    ]);
+    const quietBars = prepareBars(quiet, true).bars;
+    assert.equal(quietBars[0].v, null);
+    assert.equal(quietBars[1].v, 4);
+    const nextDay = Date.UTC(2024, 0, 16, 12, 0);
+    const finished = raw.filter((bar) => bar.t < at(9, 15, 1));
+    assert.equal(session4hTailOpen(finished, nextDay), false);
+    const stopped = [
+      { t: at(9, 15), o: 10, h: 11, l: 9, c: 10, v: 1 },
+      { t: at(10, 15), o: 10, h: 11, l: 9, c: 10, v: 1 },
+    ];
+    assert.equal(session4hTailOpen(stopped, nextDay), true);
   });
 
   it("does not treat a closed Friday week or a finished morning 4h bar as still forming", () => {
@@ -108,6 +128,11 @@ describe("liquidity bars", () => {
     const afternoon = ist(2026, 11, 6, 14, 0);
     assert.equal(lastBarForming("4H", Math.floor(morning / 1000), afternoon), false);
     assert.equal(lastBarForming("4H", Math.floor(afternoon / 1000), afternoon), true);
+    const quarter = ist(2026, 11, 6, 10, 0);
+    const tenMinLater = ist(2026, 11, 6, 10, 10);
+    const twentyMinLater = ist(2026, 11, 6, 10, 20);
+    assert.equal(lastBarForming("15m", Math.floor(quarter / 1000), tenMinLater), true);
+    assert.equal(lastBarForming("15m", Math.floor(quarter / 1000), twentyMinLater), false);
   });
 
   it("keeps a 100-bar swing window and a 10-bar call life", () => {
@@ -128,8 +153,6 @@ describe("liquidity detection", () => {
     const full = withLow(8, 90, 8);
     const early = detectLiquidity(full.slice(0, 10), cfg, false);
     assert.equal(early.some((e) => e.swingIndex === 8), false);
-    const ready = detectLiquidity(full, cfg, false);
-    assert.equal(ready.some((e) => e.swingIndex === 8) || full[8].l === 90, true);
   });
 
   it("detects a same-candle bullish sweep and not a mere touch", () => {
@@ -143,7 +166,14 @@ describe("liquidity detection", () => {
     assert.ok(hit.length >= 1);
     assert.equal(hit[0].reclaimKind, "same");
     assert.equal(hit[0].status, "confirmed");
+    assert.equal(hit[0].reclaimClosed, true);
+    assert.equal(hit[0].followThrough, false);
     assert.equal(none.length, 0);
+    const followed = series.concat([{ t: series[series.length - 1].t + 86400, o: 95, h: 110, l: 94, c: 108, v: 1000 }]);
+    const later = activeSignals(detectLiquidity(followed, cfg, false), "sweep").find((e) => e.direction === "bull");
+    assert.equal(later?.reclaimClosed, true);
+    assert.equal(later?.followThrough, true);
+    assert.notEqual(later?.status, "developing");
   });
 
   it("detects a two-candle reclaim and keeps a forming reclaim unconfirmed", () => {
@@ -269,5 +299,60 @@ describe("liquidity detection", () => {
     assert.ok(bull);
     assert.equal(bull?.n, events.filter((e) => e.direction === "bull" && e.status !== "developing").length);
     assert.ok((bull?.withForward || 0) >= 1);
+    assert.ok((bull?.samples.c1 || 0) >= 1);
+    assert.ok((bull?.samples.c8 || 0) <= (bull?.samples.c1 || 0));
+    const replay = replayNoLookahead(series, cfg);
+    assert.equal(replay.leaks.length, 0);
+    assert.ok(replay.checked >= 1);
+  });
+
+  it("does not award volume points when volume is missing, and does not call a shallow sweep Strong", () => {
+    const base = withLow(8, 90, 10).map((bar) => ({ ...bar, v: null }));
+    const series = base.concat([{ t: base[base.length - 1].t + 86400, o: 101, h: 103, l: 88, c: 95, v: null }]);
+    const missing = activeSignals(detectLiquidity(series, cfg, false), "sweep").find((e) => e.direction === "bull");
+    assert.ok(missing);
+    assert.equal(missing?.volumeKnown, false);
+    assert.equal(missing?.parts.volume, 0);
+    const withVol = activeSignals(
+      detectLiquidity(series.map((bar, i) => ({ ...bar, v: i === series.length - 1 ? 5000 : 1000 })), cfg, false),
+      "sweep",
+    ).find((e) => e.direction === "bull");
+    assert.ok((withVol?.parts.volume || 0) > 0);
+    assert.ok((withVol?.score || 0) > (missing?.score || 0));
+    const shallow = activeSignals(detectLiquidity(series, { ...cfg, strongScore: 1, minDepthAtr: 50 }, false), "sweep");
+    assert.ok(shallow.length >= 1);
+    assert.equal(shallow.some((e) => e.tier === "strong"), false);
+  });
+
+  it("pools forward observations instead of taking a median of medians", () => {
+    const one = forwardStats([], []);
+    void one;
+    const left = {
+      pattern: "sweep" as const,
+      direction: "bull" as const,
+      n: 2,
+      samples: { c1: 2, c3: 0, c5: 0, c8: 0, mfe: 0, mae: 0 },
+      avg: { c1: 50.5, c3: null, c5: null, c8: null },
+      median: { c1: 50.5, c3: null, c5: null, c8: null, mfe: null, mae: null },
+      withForward: 2,
+      medianMfe: null,
+      medianMae: null,
+      invalidated: 0,
+      capped: false,
+      obs: { c1: [1, 100], c3: [], c5: [], c8: [], mfe: [1, 9], mae: [-4, -1] },
+    };
+    const right = {
+      ...left,
+      n: 1,
+      samples: { ...left.samples, c1: 1, mfe: 1, mae: 1 },
+      withForward: 1,
+      obs: { c1: [2], c3: [], c5: [], c8: [], mfe: [3], mae: [-2] },
+    };
+    const merged = mergeStats([left, right]).find((row) => row.direction === "bull");
+    assert.equal(merged?.samples.c1, 3);
+    assert.equal(merged?.median.c1, 2);
+    assert.notEqual(merged?.median.c1, 26.25);
+    assert.equal(merged?.samples.mfe, 3);
+    assert.equal(merged?.n, 3);
   });
 });

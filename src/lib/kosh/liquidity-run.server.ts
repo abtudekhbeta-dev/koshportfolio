@@ -103,7 +103,7 @@ function rowToRun(row: {
 
 export function liquidityCacheKey(tf: string, universe: string, symbols: string[]) {
   const list = [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))].sort().join(",");
-  return `${tf}|${universe}|${list}`;
+  return `v2|${tf}|${universe}|${list}`;
 }
 
 export async function loadFreshRun(key: string, tf: LiqTimeframe): Promise<StoredRun | null> {
@@ -167,7 +167,7 @@ export async function mergeRun(
     adjusted: boolean;
   },
   fromCursor: number,
-): Promise<{ ok: boolean; validUntil: number }> {
+): Promise<{ ok: boolean; validUntil: number; skippedN: number; scannedN: number }> {
   const prev = (await loadFreshRun(key, tf)) || {
     cursorAt: 0,
     universeSize: page.universeSize,
@@ -262,8 +262,8 @@ export async function mergeRun(
         next.validUntil,
       ],
     );
-    return { ok: true, validUntil: next.validUntil };
+    return { ok: true, validUntil: next.validUntil, skippedN: next.skippedN, scannedN: next.scannedN };
   } catch {
-    return { ok: false, validUntil: next.validUntil };
+    return { ok: false, validUntil: next.validUntil, skippedN: next.skippedN, scannedN: next.scannedN };
   }
 }

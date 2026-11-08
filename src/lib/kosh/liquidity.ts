@@ -67,10 +67,17 @@ export type LiqEvent = {
   reclaimCandles: number | null;
   reclaimKind: ReclaimKind | null;
   volumeRatio: number | null;
+  /** False when the tape had no volume. The score then gives volume 0, it does not invent a midpoint. */
+  volumeKnown: boolean;
   score: number;
   parts: { swing: number; sweep: number; reclaim: number; volume: number; candle: number; confirm: number };
   weaknesses: string[];
+  /** A later candle traded beyond the reclaim candle. This is not the reclaim itself. */
+  followThrough: boolean;
+  /** The reclaim candle has closed back through the level. */
+  reclaimClosed: boolean;
   confirmIndex: number | null;
+  confirmT: number | null;
   invalidIndex: number | null;
   explanation: string;
   levelId: string;
@@ -90,13 +97,29 @@ export type LiqFocus = {
 export type ForwardStats = {
   pattern: LiqPattern;
   direction: LiqDirection;
+  /** Signals in this pattern and direction, including ones with no later candle. */
   n: number;
-  withForward: number;
+  /** How many observations exist at each horizon. These counts are not interchangeable. */
+  samples: { c1: number; c3: number; c5: number; c8: number; mfe: number; mae: number };
   avg: { c1: number | null; c3: number | null; c5: number | null; c8: number | null };
+  median: { c1: number | null; c3: number | null; c5: number | null; c8: number | null; mfe: number | null; mae: number | null };
+  /** Same as samples.c1. Kept so older readers still see a sample size. */
+  withForward: number;
   medianMfe: number | null;
   medianMae: number | null;
   invalidated: number;
+  /** True when a horizon was cut at OBS_CAP. The median is then pooled only up to that cap. */
+  capped: boolean;
+  obs: ForwardObs;
 };
+
+export type ForwardObs = { c1: number[]; c3: number[]; c5: number[]; c8: number[]; mfe: number[]; mae: number[] };
+
+export const OBS_CAP = 12000;
+
+export function emptyObs(): ForwardObs {
+  return { c1: [], c3: [], c5: [], c8: [], mfe: [], mae: [] };
+}
 
 const IST = 19800;
 const OPEN = 9 * 3600 + 15 * 60;
@@ -229,12 +252,42 @@ export function foldSession4h(input: OhlcBar[]): OhlcBar[] {
       cur.h = Math.max(cur.h, bar.h);
       cur.l = Math.min(cur.l, bar.l);
       cur.c = bar.c;
-      if (bar.v != null) cur.v = (cur.v || 0) + bar.v;
+      if (bar.v != null) cur.v = (cur.v ?? 0) + bar.v;
     }
   }
   return [...groups.values()]
     .sort((a, b) => a.t - b.t)
-    .map((b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v || 0 }));
+    .map((b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v == null ? 0 : b.v }));
+}
+
+const MORNING_LAST = 12 * 3600 + 15 * 60;
+const AFTER_LAST = 15 * 3600 + 15 * 60;
+
+/** The last 4-hour slot is unfinished when the clock is still inside it, or the tape stopped before that slot's last hour and nothing followed. */
+export function session4hTailOpen(input: OhlcBar[], now = Date.now()): boolean {
+  const prepared = prepareBars(input, true).bars.filter((bar) => {
+    const { sod } = istParts(bar.t);
+    return sod >= OPEN && sod <= CLOSE;
+  });
+  if (!prepared.length) return false;
+  const last = prepared[prepared.length - 1];
+  const { day, sod } = istParts(last.t);
+  const morning = sod < SPLIT;
+  const slotEnd = morning ? SPLIT : CLOSE;
+  const nowIst = istParts(Math.floor(now / 1000));
+  if (nowIst.day === day && nowIst.sod >= OPEN && nowIst.sod <= slotEnd) return true;
+  const need = morning ? MORNING_LAST : AFTER_LAST;
+  const reached = prepared.some((bar) => {
+    const part = istParts(bar.t);
+    if (part.day !== day) return false;
+    return morning ? part.sod >= need && part.sod < SPLIT : part.sod >= need && part.sod <= CLOSE;
+  });
+  if (reached) return false;
+  const later = prepared.some((bar) => {
+    const part = istParts(bar.t);
+    return part.day > day || (morning && part.day === day && part.sod >= SPLIT);
+  });
+  return !later;
 }
 
 /** Keep prints inside the cash session. Does not invent the missing ones. */
@@ -368,7 +421,7 @@ function scoreEvent(input: {
   body: number;
   closePos: number;
   volRatio: number | null;
-  confirmed: boolean;
+  followThrough: boolean;
   cfg: LiqConfig;
 }): { score: number; parts: LiqEvent["parts"]; weaknesses: string[] } {
   const weaknesses: string[] = [];
@@ -400,9 +453,9 @@ function scoreEvent(input: {
   if (input.candles >= 3) weaknesses.push("The reclaim took several candles.");
   if (input.body < 0.4) weaknesses.push("The reclaim candle body is modest.");
 
-  let volume = 8;
+  let volume = 0;
   if (input.volRatio == null) {
-    weaknesses.push("Volume was not on this series, so it was not used as a reason to drop the setup.");
+    weaknesses.push("Volume was missing, so it scored 0 and was not used as a reason to drop the setup.");
   } else if (input.volRatio >= 1.4) volume = 15;
   else if (input.volRatio >= 1) volume = 12;
   else if (input.volRatio >= 0.7) {
@@ -414,8 +467,8 @@ function scoreEvent(input: {
   }
 
   const candle = Math.round(15 * (0.5 * clamp(input.body, 0, 1) + 0.5 * clamp(input.closePos, 0, 1)));
-  const confirm = input.confirmed ? 10 : 0;
-  if (!input.confirmed) weaknesses.push("Price has not yet broken the reclaim candle.");
+  const confirm = input.followThrough ? 10 : 0;
+  if (!input.followThrough) weaknesses.push("No later candle has traded through the reclaim candle. That is follow-through, separate from the close back.");
   const parts = { swing, sweep, reclaim, volume, candle, confirm };
   const score = swing + sweep + reclaim + volume + candle + confirm;
   return { score, parts, weaknesses };
@@ -432,6 +485,8 @@ function explain(event: {
   reclaimCandles: number | null;
   status: LiqStatus;
   tier: LiqTier;
+  reclaimClosed: boolean;
+  followThrough: boolean;
 }): string {
   const side = event.direction === "bull" ? "low" : "high";
   const verb = event.direction === "bull" ? "under" : "over";
@@ -439,27 +494,34 @@ function explain(event: {
   const kind = event.pattern === "sweep" ? "liquidity sweep" : "failed break";
   const depth = event.depthAtr != null ? `${event.depthPct.toFixed(2)}% (${event.depthAtr.toFixed(2)} ATR)` : `${event.depthPct.toFixed(2)}%`;
   const reclaim =
-    event.status === "developing"
-      ? "The reclaim is not confirmed because that candle has not closed."
+    !event.reclaimClosed
+      ? "The close back is not confirmed because that candle has not closed."
       : event.reclaimCandles == null
-        ? "No completed reclaim."
+        ? "No completed close back."
         : event.reclaimCandles === 0
-          ? "The same candle reclaimed the level."
-          : `Reclaim took ${event.reclaimCandles} candle${event.reclaimCandles === 1 ? "" : "s"}.`;
-  return `${event.touches} swing ${side}${event.touches === 1 ? "" : "s"} near ${event.level.toFixed(2)}. Price went ${verb} it to ${event.extreme.toFixed(2)} (${depth}) and then ${event.status === "developing" ? "is trading back through it" : `closed ${back}`}. ${reclaim} Classed as a ${event.tier} ${kind}. This score ranks the evidence. It is not a probability of profit.`;
+          ? "The same candle closed back through the level."
+          : `The close back took ${event.reclaimCandles} candle${event.reclaimCandles === 1 ? "" : "s"}.`;
+  const follow = event.followThrough
+    ? "A later candle then traded through that reclaim candle. That follow-through is separate from the close back."
+    : "No later candle has traded through the reclaim candle yet.";
+  return `${event.touches} swing ${side}${event.touches === 1 ? "" : "s"} near ${event.level.toFixed(2)}. Price went ${verb} it to ${event.extreme.toFixed(2)} (${depth}) and then ${event.reclaimClosed ? `closed ${back}` : "is trading back through it"}. ${reclaim} ${follow} Classed as a ${event.tier} ${kind}. This score ranks the evidence. It is not a probability of profit.`;
 }
 
 type Built = Omit<LiqEvent, "tier" | "lowQuality" | "explanation" | "status"> & { status: LiqStatus };
 
 function classify(row: Built, cfg: LiqConfig): LiqEvent {
-  const shallow = row.weaknesses.some((w) => w.startsWith("The sweep is shallower"));
-  const deep = row.weaknesses.some((w) => w.includes("breakdown"));
+  const depth = row.depthAtr;
+  const shallow = depth != null && depth < cfg.minDepthAtr;
+  const deep = depth != null && depth > cfg.maxDepthAtr * 1.25;
   let tier: LiqTier = "potential";
   let lowQuality = false;
-  if (row.status === "developing") tier = "developing";
-  else if (row.status === "confirmed" && row.score >= cfg.strongScore && !deep) tier = "strong";
-  else if (row.score >= cfg.potentialScore || (shallow && row.score >= 40 && !deep)) tier = "potential";
-  else {
+  const reclaimed = row.status === "confirmed" && row.reclaimClosed;
+  if (row.status === "invalidated" || row.status === "expired") {
+    tier = "potential";
+    lowQuality = true;
+  } else if (row.status === "developing" || !row.reclaimClosed) tier = "developing";
+  else if (reclaimed && row.score >= cfg.strongScore && depth != null && !shallow && !deep) tier = "strong";
+  else if (row.score < cfg.potentialScore && !shallow) {
     tier = "potential";
     lowQuality = true;
   }
@@ -474,6 +536,8 @@ function classify(row: Built, cfg: LiqConfig): LiqEvent {
     reclaimCandles: row.reclaimCandles,
     status: row.status,
     tier,
+    reclaimClosed: row.reclaimClosed,
+    followThrough: row.followThrough,
   });
   return { ...row, tier, lowQuality, explanation };
 }
@@ -516,6 +580,7 @@ function buildAt(args: {
   const avg = volAvg(bars, sweepIndex);
   const volNow = reclaim?.v ?? sweep.v;
   const volumeRatio = avg && volNow != null ? volNow / avg : null;
+  const volumeKnown = volumeRatio != null;
   const range = reclaim ? Math.max(1e-9, reclaim.h - reclaim.l) : 1;
   const body = reclaim ? Math.abs(reclaim.c - reclaim.o) / range : 0;
   const closePos = reclaim
@@ -524,16 +589,19 @@ function buildAt(args: {
       : (reclaim.h - reclaim.c) / range
     : 0;
   let confirmIndex: number | null = null;
+  let confirmT: number | null = null;
   if (closedReclaim && reclaimIndex != null) {
     const gate = direction === "bull" ? bars[reclaimIndex].h : bars[reclaimIndex].l;
     for (let k = reclaimIndex + 1; k <= upto; k++) {
       if (forming && k === bars.length - 1) break;
       if (direction === "bull" && bars[k].h > gate) {
         confirmIndex = k;
+        confirmT = bars[k].t;
         break;
       }
       if (direction === "bear" && bars[k].l < gate) {
         confirmIndex = k;
+        confirmT = bars[k].t;
         break;
       }
     }
@@ -562,7 +630,7 @@ function buildAt(args: {
     body,
     closePos,
     volRatio: volumeRatio,
-    confirmed: confirmIndex != null,
+    followThrough: confirmIndex != null,
     cfg,
   });
   let status: LiqStatus = developing ? "developing" : "confirmed";
@@ -591,10 +659,14 @@ function buildAt(args: {
     reclaimCandles: candles,
     reclaimKind: candles == null ? null : reclaimKind(candles),
     volumeRatio,
+    volumeKnown,
     score: scored.score,
     parts: scored.parts,
     weaknesses: scored.weaknesses,
+    followThrough: confirmIndex != null,
+    reclaimClosed: closedReclaim,
     confirmIndex,
+    confirmT,
     invalidIndex,
     levelId: level.id,
   };
@@ -719,11 +791,52 @@ function avg(values: number[]): number | null {
   return values.reduce((s, n) => s + n, 0) / values.length;
 }
 
-/** Forward excursion uses only candles after the reclaim. It is a measurement, not a forecast. */
+function pushObs(bucket: number[], value: number, capped: { on: boolean }) {
+  if (bucket.length >= OBS_CAP) {
+    capped.on = true;
+    return;
+  }
+  bucket.push(value);
+}
+
+function packStats(pattern: LiqPattern, direction: LiqDirection, n: number, invalidated: number, obs: ForwardObs, capped: boolean): ForwardStats {
+  const samples = {
+    c1: obs.c1.length,
+    c3: obs.c3.length,
+    c5: obs.c5.length,
+    c8: obs.c8.length,
+    mfe: obs.mfe.length,
+    mae: obs.mae.length,
+  };
+  const medianRow = {
+    c1: median(obs.c1),
+    c3: median(obs.c3),
+    c5: median(obs.c5),
+    c8: median(obs.c8),
+    mfe: median(obs.mfe),
+    mae: median(obs.mae),
+  };
+  return {
+    pattern,
+    direction,
+    n,
+    samples,
+    avg: { c1: avg(obs.c1), c3: avg(obs.c3), c5: avg(obs.c5), c8: avg(obs.c8) },
+    median: medianRow,
+    withForward: samples.c1,
+    medianMfe: medianRow.mfe,
+    medianMae: medianRow.mae,
+    invalidated,
+    capped,
+    obs,
+  };
+}
+
+/** Forward excursion uses only candles after the reclaim. Each horizon keeps its own sample. */
 export function forwardStats(events: LiqEvent[], bars: ScanBar[]): ForwardStats[] {
   const groups = new Map<string, LiqEvent[]>();
   for (const event of events) {
-    if (event.status === "developing" || event.reclaimIndex == null) continue;
+    if (event.status === "developing" || event.reclaimIndex == null || !event.reclaimClosed) continue;
     const key = `${event.pattern}|${event.direction}`;
     const list = groups.get(key) || [];
     list.push(event);
@@ -732,12 +845,8 @@ export function forwardStats(events: LiqEvent[], bars: ScanBar[]): ForwardStats[
   const out: ForwardStats[] = [];
   for (const [key, list] of groups) {
     const [pattern, direction] = key.split("|") as [LiqPattern, LiqDirection];
-    const c1: number[] = [];
-    const c3: number[] = [];
-    const c5: number[] = [];
-    const c8: number[] = [];
-    const mfe: number[] = [];
-    const mae: number[] = [];
+    const obs = emptyObs();
+    const capped = { on: false };
     let invalidated = 0;
     for (const event of list) {
       if (event.invalidIndex != null && event.reclaimIndex != null && event.invalidIndex - event.reclaimIndex <= 8) invalidated += 1;
@@ -748,12 +857,12 @@ export function forwardStats(events: LiqEvent[], bars: ScanBar[]): ForwardStats[
       const take = (step: number, bucket: number[]) => {
         const bar = bars[i + step];
         if (!bar) return;
-        bucket.push(sign * ((bar.c / base - 1) * 100));
+        pushObs(bucket, sign * ((bar.c / base - 1) * 100), capped);
       };
-      take(1, c1);
-      take(3, c3);
-      take(5, c5);
-      take(8, c8);
+      take(1, obs.c1);
+      take(3, obs.c3);
+      take(5, obs.c5);
+      take(8, obs.c8);
       let fav = 0;
       let adv = 0;
       let any = false;
@@ -765,54 +874,79 @@ export function forwardStats(events: LiqEvent[], bars: ScanBar[]): ForwardStats[
         adv = Math.min(adv, up, dn);
       }
       if (any) {
-        mfe.push(fav);
-        mae.push(adv);
+        pushObs(obs.mfe, fav, capped);
+        pushObs(obs.mae, adv, capped);
       }
     }
-    out.push({
-      pattern,
-      direction,
-      n: list.length,
-      withForward: c1.length,
-      avg: { c1: avg(c1), c3: avg(c3), c5: avg(c5), c8: avg(c8) },
-      medianMfe: median(mfe),
-      medianMae: median(mae),
-      invalidated,
-    });
+    out.push(packStats(pattern, direction, list.length, invalidated, obs, capped.on));
   }
   return out;
 }
 
+function concatObs(parts: ForwardObs[]): ForwardObs {
+  const out = emptyObs();
+  const capped = { on: false };
+  for (const part of parts) {
+    for (const key of ["c1", "c3", "c5", "c8", "mfe", "mae"] as const) {
+      for (const value of part[key] || []) pushObs(out[key], value, capped);
+    }
+  }
+  return out;
+}
+
+/** Pools the individual observations. A median of per-name medians is not used. */
 export function mergeStats(parts: ForwardStats[]): ForwardStats[] {
-  const map = new Map<string, { pattern: LiqPattern; direction: LiqDirection; n: number; withForward: number; invalidated: number; c1: number; c1n: number; c3: number; c3n: number; c5: number; c5n: number; c8: number; c8n: number; mfe: number[]; mae: number[] }>();
+  const map = new Map<string, { pattern: LiqPattern; direction: LiqDirection; n: number; invalidated: number; obs: ForwardObs[]; capped: boolean }>();
   for (const row of parts) {
     const key = `${row.pattern}|${row.direction}`;
-    const cur = map.get(key) || { pattern: row.pattern, direction: row.direction, n: 0, withForward: 0, invalidated: 0, c1: 0, c1n: 0, c3: 0, c3n: 0, c5: 0, c5n: 0, c8: 0, c8n: 0, mfe: [], mae: [] };
+    const cur = map.get(key) || { pattern: row.pattern, direction: row.direction, n: 0, invalidated: 0, obs: [], capped: false };
     cur.n += row.n;
-    cur.withForward += row.withForward;
     cur.invalidated += row.invalidated;
-    const w = Math.max(1, row.withForward);
-    if (row.avg.c1 != null) { cur.c1 += row.avg.c1 * w; cur.c1n += w; }
-    if (row.avg.c3 != null) { cur.c3 += row.avg.c3 * w; cur.c3n += w; }
-    if (row.avg.c5 != null) { cur.c5 += row.avg.c5 * w; cur.c5n += w; }
-    if (row.avg.c8 != null) { cur.c8 += row.avg.c8 * w; cur.c8n += w; }
-    if (row.medianMfe != null) cur.mfe.push(row.medianMfe);
-    if (row.medianMae != null) cur.mae.push(row.medianMae);
+    cur.capped = cur.capped || row.capped === true;
+    if (row.obs) cur.obs.push(row.obs);
     map.set(key, cur);
   }
-  return [...map.values()].map((row) => ({
-    pattern: row.pattern,
-    direction: row.direction,
-    n: row.n,
-    withForward: row.withForward,
-    invalidated: row.invalidated,
-    avg: {
-      c1: row.c1n ? row.c1 / row.c1n : null,
-      c3: row.c3n ? row.c3 / row.c3n : null,
-      c5: row.c5n ? row.c5 / row.c5n : null,
-      c8: row.c8n ? row.c8 / row.c8n : null,
-    },
-    medianMfe: median(row.mfe),
-    medianMae: median(row.mae),
-  }));
+  return [...map.values()].map((row) => {
+    const obs = concatObs(row.obs);
+    const capped = row.capped || Object.values(obs).some((bucket) => bucket.length >= OBS_CAP);
+    return packStats(row.pattern, row.direction, row.n, row.invalidated, obs, capped);
+  });
+}
+
+export type ReplayLeak = { id: string; reason: string };
+
+/**
+ * Walk the tape forward. A swing, a closed reclaim, and a follow-through may each appear
+ * only on a prefix that already contains the candle that made them true.
+ */
+export function replayNoLookahead(bars: ScanBar[], cfg: LiqConfig = DEFAULT_LIQ): { checked: number; leaks: ReplayLeak[] } {
+  const leaks: ReplayLeak[] = [];
+  const full = detectLiquidity(bars, cfg, false);
+  let checked = 0;
+  for (const event of full) {
+    if (event.reclaimIndex == null) continue;
+    checked += 1;
+    const beforeSwing = detectLiquidity(bars.slice(0, event.swingIndex + cfg.right), cfg, false);
+    if (beforeSwing.some((row) => row.id === event.id)) {
+      leaks.push({ id: event.id, reason: "signal appeared before the swing's right-hand candles closed" });
+    }
+    const beforeReclaim = detectLiquidity(bars.slice(0, event.reclaimIndex), cfg, false);
+    if (beforeReclaim.some((row) => row.id === event.id && row.reclaimClosed)) {
+      leaks.push({ id: event.id, reason: "closed reclaim appeared before the reclaim candle" });
+    }
+    if (event.confirmIndex != null) {
+      const beforeFollow = detectLiquidity(bars.slice(0, event.confirmIndex), cfg, false);
+      const row = beforeFollow.find((item) => item.id === event.id);
+      if (row?.followThrough) leaks.push({ id: event.id, reason: "follow-through appeared before its candle" });
+      const atFollow = detectLiquidity(bars.slice(0, event.confirmIndex + 1), cfg, false).find((item) => item.id === event.id);
+      if (event.followThrough && atFollow && !atFollow.followThrough) {
+        leaks.push({ id: event.id, reason: "follow-through missing on the candle that should have produced it" });
+      }
+    }
+    const atReclaim = detectLiquidity(bars.slice(0, event.reclaimIndex + 1), cfg, false).find((row) => row.id === event.id);
+    if (event.reclaimClosed && event.status !== "developing" && atReclaim && !atReclaim.reclaimClosed && event.confirmIndex == null) {
+      leaks.push({ id: event.id, reason: "reclaim did not close on its own candle" });
+    }
+  }
+  return { checked, leaks };
 }

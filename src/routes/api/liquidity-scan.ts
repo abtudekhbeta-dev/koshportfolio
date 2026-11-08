@@ -4,7 +4,7 @@ import { scanOrRecall, type ScanUniverse } from "@/lib/kosh/liquidity-scan.serve
 import type { LiqTimeframe } from "@/lib/kosh/liquidity";
 
 const TF = new Set(["15m", "1H", "4H", "1D", "1W", "1M"]);
-const UNI = new Set(["nifty50", "nifty100", "nifty200", "nifty500", "nse", "watch"]);
+const UNI = new Set(["nifty50", "nifty100", "nifty200", "nifty500", "all", "nse", "bse", "watch"]);
 
 export const Route = createFileRoute("/api/liquidity-scan")({
   server: {
