@@ -19,11 +19,13 @@ import { listedEquities } from "./master.server";
 import { bseEquities } from "./bse-book.server";
 import { composeListedBook } from "./liquidity-universe";
 import { NIFTY_CATALOGUE } from "./nifty-catalogue";
-import { beginScanRenewal, deleteRun, liquidityCacheKey, loadFreshRun, mergeRun, tryScanLock, unlockScan, type ScanAdmission, type StoredRun } from "./liquidity-run.server";
+import { deleteRun, liquidityCacheKey, loadFreshRun, mergeRun, tryScanLock, unlockScan, beginScanRenewal, type ScanAdmission, type StoredRun } from "./liquidity-run.server";
 import { scanLockDiagnostic } from "./liquidity-lock";
+import { EMPTY_MCAP, mcapActive, mcapCacheToken, selectByMcap, type CapObservation, type McapSpec } from "./liquidity-book";
+import { cachedCaps, fillListingCaps } from "./liquidity-mcap.server";
 import { fetchOhlc } from "./yahoo.server";
 
-export type ScanUniverse = "nifty50" | "nifty100" | "nifty200" | "nifty500" | "all" | "nse" | "bse" | "watch";
+export type ScanUniverse = "nifty50" | "nifty100" | "nifty200" | "nifty500" | "all" | "nse" | "bse" | "watch" | "portfolio";
 
 const INDEX: Record<string, string> = {
   nifty50: "^NSEI",
@@ -41,7 +43,7 @@ export const TF_SPEC: Record<LiqTimeframe, { range: string; interval: string; no
   "1M": { range: "max", interval: "1mo", note: "Monthly bars across the Yahoo max range. The current month stays Developing until it closes." },
 };
 
-export type ScanHit = LiqEvent & { symbol: string; name: string; exchange: "NSE" | "BSE" };
+export type ScanHit = LiqEvent & { symbol: string; name: string; exchange: "NSE" | "BSE"; mcapCr?: number | null; mcapAsOf?: number | null };
 
 export type ScanPage = {
   hits: ScanHit[];
@@ -81,17 +83,21 @@ async function listedBook(mode: "all" | "nse" | "bse") {
 }
 
 async function universeBook(kind: ScanUniverse, explicit: string[]): Promise<{ symbols: { symbol: string; name: string; exchange: "NSE" | "BSE" }[]; note: string; fingerprint: string }> {
-  if (kind === "watch") {
-    const symbols = [...new Set(explicit.map((s) => s.trim().toUpperCase()).filter(Boolean))].slice(0, 80);
+  if (kind === "watch" || kind === "portfolio") {
+    const cap = kind === "portfolio" ? 400 : 80;
+    const symbols = [...new Set(explicit.map((s) => s.trim().toUpperCase()).filter(Boolean))].slice(0, cap);
     const rows = symbols.map((symbol) => ({
       symbol: symbol.endsWith(".BO") ? symbol : symbol.replace(/\.NS$/, ""),
       name: symbol.replace(/\.(NS|BO)$/i, ""),
       exchange: symbol.endsWith(".BO") ? "BSE" as const : "NSE" as const,
     }));
+    const note = kind === "portfolio"
+      ? (rows.length ? `${rows.length} holdings from the portfolios you selected. A name is scanned only if the price history answers. NSE and BSE stay separate.` : "Those portfolios have no listed holdings to scan.")
+      : (symbols.length ? "Watchlist symbols you selected. A name is scanned only if the price history answers. A .BO symbol stays on BSE." : "This watchlist has no symbols.");
     return {
       symbols: rows,
-      note: symbols.length ? "Watchlist symbols you selected. A name is scanned only if the price history answers. A .BO symbol stays on BSE." : "This watchlist has no symbols.",
-      fingerprint: rows.map((row) => row.symbol).sort().join(","),
+      note,
+      fingerprint: kind === "portfolio" ? rows.map((row) => `${row.exchange}:${row.symbol}`).sort().join(",") : rows.map((row) => row.symbol).sort().join(","),
     };
   }
   const cached = books.get(kind);
@@ -123,15 +129,21 @@ function barsFor(tf: LiqTimeframe, raw: { t: number; o: number; h: number; l: nu
   return barsForTimeframe(tf, raw);
 }
 
-export async function scanLiquidityPage(input: {
-  timeframe: LiqTimeframe;
-  universe: ScanUniverse;
-  symbols?: string[];
-  cursor?: number;
-  batch?: number;
-}): Promise<ScanPage> {
+type ResolvedBook = { symbols: { symbol: string; name: string; exchange: "NSE" | "BSE" }[]; note: string; fingerprint: string };
+
+export async function scanLiquidityPage(
+  input: {
+    timeframe: LiqTimeframe;
+    universe: ScanUniverse;
+    symbols?: string[];
+    cursor?: number;
+    batch?: number;
+  },
+  resolved?: ResolvedBook,
+  caps?: Map<string, CapObservation>,
+): Promise<ScanPage> {
   const spec = TF_SPEC[input.timeframe];
-  const book = await universeBook(input.universe, input.symbols || []);
+  const book = resolved || (await universeBook(input.universe, input.symbols || []));
   const cursor = Math.max(0, input.cursor || 0);
   const batch = Math.min(8, Math.max(1, input.batch || 8));
   const slice = book.symbols.slice(cursor, cursor + batch);
@@ -169,6 +181,8 @@ export async function scanLiquidityPage(input: {
       const active = activeSignals(events, "both");
       const id = row.exchange === "BSE" ? row.symbol.replace(/\.NS$/i, "") : row.symbol.replace(/\.(NS|BO)$/i, "");
       const storedId = row.exchange === "BSE" && !id.endsWith(".BO") ? `${id}.BO` : id;
+      const pin = pinned(row.symbol, row.exchange);
+      const obs = caps?.get(pin);
       for (const event of active) {
         hits.push({
           ...event,
@@ -176,6 +190,8 @@ export async function scanLiquidityPage(input: {
           symbol: storedId,
           name: pack.name || row.name,
           exchange: row.exchange,
+          mcapCr: obs?.state === "known" ? obs.mcapCr : null,
+          mcapAsOf: obs?.asOf ?? null,
         });
       }
       stats.push(...forwardStats(events.filter((event) => event.status !== "developing"), prepared.bars, { symbol: storedId, bench }));
@@ -228,6 +244,16 @@ export type RecallPage = ScanPage & {
   replace?: boolean;
   /** Another instance holds this scan key. The saved partial run is unchanged. */
   locked?: boolean;
+  /** Market-cap quotes are still loading. Candle history has not been requested. */
+  preparing?: boolean;
+  mcapPending?: number;
+  /** Original book, before the market-cap gate. Candle history is not fetched for names outside `eligible`. */
+  listed?: number;
+  eligible?: number;
+  mcapExcluded?: number;
+  mcapMissing?: number;
+  mcapUnavailable?: number;
+  mcapAsOf?: number | null;
 };
 
 function fromStored(run: StoredRun): RecallPage {
@@ -292,25 +318,66 @@ export async function scanOrRecall(input: {
   cursor?: number;
   fresh?: boolean;
   mode?: "read" | "scan";
+  mcap?: McapSpec;
 }): Promise<RecallPage> {
-  const symbols = input.universe === "watch" ? input.symbols || [] : [];
-  const book = await universeBook(input.universe, symbols);
-  const key = liquidityCacheKey(input.timeframe, input.universe, symbols, book.fingerprint);
+  const symbols = input.universe === "watch" || input.universe === "portfolio" ? input.symbols || [] : [];
+  const raw = await universeBook(input.universe, symbols);
+  const spec = input.mcap || EMPTY_MCAP;
+  let book = raw;
+  let token = "";
+  let caps: Map<string, CapObservation> | undefined;
+  const census = {
+    listed: raw.symbols.length,
+    eligible: raw.symbols.length,
+    mcapExcluded: 0,
+    mcapMissing: 0,
+    mcapUnavailable: 0,
+    mcapAsOf: null as number | null,
+  };
+  if (mcapActive(spec)) {
+    const pins = raw.symbols.map((row) => pinned(row.symbol, row.exchange));
+    const filled = input.mode === "read" ? cachedCaps(pins) : await fillListingCaps(pins);
+    if (!filled.ready) {
+      return {
+        ...emptyRecall(),
+        preparing: true,
+        listed: raw.symbols.length,
+        mcapPending: filled.pending,
+        universeNote: `Market cap loaded for ${pins.length - filled.pending} of ${pins.length}. Candle history has not been requested yet.`,
+      };
+    }
+    const picked = selectByMcap(raw.symbols, filled.rows, spec, (row) => pinned(row.symbol, row.exchange));
+    caps = filled.rows;
+    census.eligible = picked.eligible.length;
+    census.mcapExcluded = picked.excluded;
+    census.mcapMissing = picked.missing;
+    census.mcapUnavailable = picked.unavailable;
+    census.mcapAsOf = picked.asOf;
+    token = mcapCacheToken(spec, picked.eligible.map((row) => pinned(row.symbol, row.exchange)));
+    const asOf = picked.asOf ? new Date(picked.asOf).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" }) : "an unknown date";
+    book = {
+      symbols: picked.eligible,
+      fingerprint: raw.fingerprint,
+      note: `${raw.note} Market cap is the latest Yahoo quote in ₹ crore, cached for 12 hours and not treated as zero when missing. These bands are Kosh working cuts, not a SEBI classification. ${raw.symbols.length} listed, ${picked.eligible.length} eligible, ${picked.excluded} outside the filter, ${picked.missing} without a cap, ${picked.unavailable} whose quote did not answer. As of ${asOf}.`,
+    };
+  }
+  const stamp = (page: RecallPage): RecallPage => ({ ...page, ...census });
+  const key = liquidityCacheKey(input.timeframe, input.universe, symbols, book.fingerprint, token);
   if (input.mode === "read") {
     const saved = await loadFreshRun(key, input.timeframe);
-    return saved ? fromStored(saved) : emptyRecall();
+    return stamp(saved ? fromStored(saved) : emptyRecall());
   }
   return scanGate(key, async () => {
     const admission = await tryScanLock(key);
     if (admission === "busy") {
       const saved = await loadFreshRun(key, input.timeframe);
-      return saved
+      return stamp(saved
         ? { ...fromStored(saved), locked: true }
-        : { ...emptyRecall(), locked: true, universeNote: "Another scan of this book is still running." };
+        : { ...emptyRecall(), locked: true, universeNote: "Another scan of this book is still running." });
     }
     const renewal = admission === "database-coordinated" ? beginScanRenewal(key) : null;
     try {
-      return await scanBody(input, key, admission, () => renewal?.lost() ?? false);
+      return stamp(await scanBody(input, key, admission, () => renewal?.lost() ?? false, book, caps));
     } finally {
       renewal?.stop();
       if (admission === "database-coordinated") await unlockScan(key);
@@ -323,6 +390,8 @@ async function scanBody(
   key: string,
   admission: ScanAdmission,
   lost: () => boolean,
+  book: ResolvedBook,
+  caps?: Map<string, CapObservation>,
 ): Promise<RecallPage> {
   let cursor = Math.max(0, input.cursor || 0);
   const saved = !input.fresh || cursor !== 0 ? await loadFreshRun(key, input.timeframe) : null;
@@ -337,7 +406,7 @@ async function scanBody(
     universe: input.universe,
     symbols: input.symbols,
     cursor,
-  });
+  }, book, caps);
   if (lost()) return lostPage(key, input.timeframe);
   const stored = await mergeRun(key, input.timeframe, page, cursor, admission);
   if (stored.lost) return lostPage(key, input.timeframe);

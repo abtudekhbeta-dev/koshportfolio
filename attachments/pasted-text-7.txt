@@ -1,0 +1,474 @@
+Kosh Liquidity Screener — Advanced Filtering, Portfolio Integration & Table Enhancements
+
+Upgrade the existing Liquidity & Reversal screener in Kosh.
+
+This is an enhancement to the existing implementation, not a new screener. First inspect the current repository, data architecture, screener components, portfolio store, watchlist implementation, market-cap data availability and scan APIs. Then implement the changes using the existing architecture.
+
+Preserve all existing functionality. Do not rewrite the detection engine, alter signal scoring, change the replay logic, or compromise the scan lease and persistence safeguards.
+
+1. Make the results table sortable and filterable
+
+The screener's result tables should behave like a professional financial terminal.
+
+Sorting
+
+Allow sorting by clicking the column headers.
+
+Support ascending and descending sorting for all applicable columns, including:
+
+- Stock name / symbol
+- Exchange
+- Market capitalisation
+- Signal score
+- Signal strength (Strong / Potential / Developing)
+- Pattern type
+- Direction (Bullish / Bearish)
+- Price
+- Liquidity level
+- Distance from the liquidity level
+- Sweep depth
+- Reclaim percentage / reclaim quality
+- Volume ratio
+- Number of touches
+- Signal date
+- Follow-through status
+
+Requirements:
+
+- Show a clear ascending/descending indicator on the active column.
+- Numeric values must sort numerically, not alphabetically.
+- Null or unavailable values should remain consistently at the bottom.
+- Sorting must be stable when multiple rows have identical values.
+- Default sorting should prioritise the strongest signals and highest scores.
+- Sorting should work independently within Strong, Potential and Developing sections, or across all results when the user selects a combined view.
+
+Column filters
+
+Add practical column-level filters wherever relevant.
+
+Examples:
+
+- Exchange: NSE / BSE
+- Signal strength: Strong / Potential / Developing
+- Direction: Bullish / Bearish
+- Pattern: Liquidity Sweep / Failed Breakdown / Failed Breakout
+- Follow-through: Yes / No
+- Market-cap category
+- Reclaim type
+- Minimum score
+- Minimum / maximum price
+
+Add a compact filter icon in the relevant column headers. Clicking it should open a small popover with the applicable filter controls.
+
+Also provide:
+
+- Clear all filters
+- Active-filter indicators
+- Number of results after filtering
+- Search by company name or ticker
+- Filter state should not reset when the user changes sorting.
+
+Table usability
+
+- Sticky table header while scrolling.
+- Keep the stock name/symbol visible when horizontally scrolling, where practical.
+- Right-align numeric columns.
+- Consistent decimal and percentage formatting.
+- Compact row height without sacrificing readability.
+- Responsive layout for smaller screens.
+- Allow the user to choose visible columns through a column-visibility menu.
+- Remember column preferences and sorting preferences across sessions using the existing persistence approach.
+
+Do not overload the default view with every possible metric. Use a sensible default set and let users reveal additional columns.
+
+2. Add Portfolio selection as a scan universe
+
+Currently, the screener supports Watchlist selection. Add Portfolio as another universe option.
+
+The universe selector should include:
+
+- Nifty 50
+- Nifty 100
+- Nifty 200
+- Nifty 500
+- All listed
+- NSE
+- BSE
+- Watchlist
+- Portfolio
+
+When the user selects Portfolio, show a portfolio selector populated dynamically from the portfolios already created in Kosh.
+
+Portfolio selection behaviour
+
+- Display portfolio names, not internal IDs.
+- Allow the user to select one or multiple portfolios.
+- Provide a convenient Select All option.
+- Combine the holdings of selected portfolios into one scan universe.
+- Deduplicate the same exchange-specific security appearing in multiple portfolios.
+- Preserve NSE/BSE identity. Do not merge two listings solely because their ticker names are similar.
+- Include only securities with valid supported market symbols.
+- Clearly identify holdings that cannot be mapped to a supported exchange symbol.
+- Show the number of unique securities selected.
+- If a portfolio is empty, show a clear message.
+- Refresh the available portfolio list when portfolios are added, renamed or deleted.
+
+Important
+
+Use Kosh's existing portfolio data and state management. Do not create a separate portfolio database or duplicate holdings.
+
+Use the actual holdings in the selected portfolio as the scan universe, not the current watchlist or all listed stocks.
+
+Portfolio selection should work with all existing timeframes, signal types, directions and filters.
+
+3. Add market-cap filtering
+
+This is one of the most important additions.
+
+Scanning the entire NSE/BSE universe is expensive and produces a very large result set. Give users the ability to narrow the universe by market capitalisation.
+
+Market-cap controls
+
+Add a Market Cap filter near the universe selector.
+
+Provide two ways to filter:
+
+A. Market-cap categories
+
+- Large Cap
+- Mid Cap
+- Small Cap
+- Micro Cap
+- Nano Cap
+- All Market Caps
+
+Use an existing reliable classification source if Kosh already has one. If not, derive categories transparently from the latest available market-cap data and clearly document the classification method internally.
+
+Do not incorrectly present arbitrary fixed rupee thresholds as official SEBI classifications.
+
+B. Custom market-cap range
+
+Allow users to enter:
+
+- Minimum market cap
+- Maximum market cap
+
+Display the values in ₹ crore.
+
+Examples:
+
+- ₹500 crore to ₹5,000 crore
+- ₹1,000 crore to ₹10,000 crore
+- Above ₹20,000 crore
+- Below ₹1,000 crore
+
+Support minimum-only and maximum-only filters.
+
+Add convenient presets, but let users enter their own values.
+
+Market-cap data requirements
+
+- Reuse the existing Kosh fundamentals/market-data infrastructure.
+- Do not create a separate market-data provider just for this feature.
+- Use the latest available market capitalisation.
+- Cache market-cap data to avoid fetching it repeatedly for every scan.
+- Store or expose the market-cap observation date.
+- Handle missing market-cap data explicitly.
+- Provide an optional "Include stocks with unavailable market cap" setting.
+- Never silently classify missing market-cap data as zero.
+
+Critical performance requirement
+
+Market-cap filtering must happen at the universe construction stage, before historical OHLCV fetching and liquidity detection.
+
+For example, if the user selects:
+
+- All listed
+- Small Cap
+- NSE + BSE
+
+The system should first build the exchange-specific universe, obtain or reuse cached market-cap data, apply the filter and then fetch historical candles only for eligible securities.
+
+Do not scan all 7,000+ securities and merely hide the results afterwards.
+
+Show:
+
+- Original universe size
+- Securities eligible after market-cap filtering
+- Securities excluded by the market-cap filter
+- Securities with unavailable market-cap data
+
+Make it clear that market-cap data can be stale and display its as-of date.
+
+4. Add a better scan configuration and summary area
+
+Redesign the filter/control area so it remains compact and organised.
+
+Suggested arrangement:
+
+First row
+
+- Screener type
+- Timeframe
+- Direction
+- Universe
+
+Second row
+
+- Watchlist / Portfolio selector, when applicable
+- Market-cap category
+- Custom market-cap range
+- Search
+
+Advanced filters
+
+- Swing type
+- Reclaim type
+- Minimum score
+- Minimum price
+- Follow-through
+- Other existing filters
+
+Keep advanced filters collapsed by default.
+
+Scan summary
+
+Before or during a scan, show a compact summary:
+
+- Selected universe
+- Total securities
+- Eligible securities after filters
+- Market-cap filter applied
+- Timeframe
+- Scan progress
+- Number scanned
+- Number skipped
+- Number of signals found
+
+The summary should update as the scan progresses.
+
+Make it clear whether the scan is:
+
+- Not started
+- In progress
+- Partially completed
+- Completed
+- Waiting for another scan
+- Resuming a saved scan
+
+5. Add saved scan configurations
+
+Allow users to save frequently used configurations.
+
+Examples:
+
+- NSE Small Cap Weekly Sweeps
+- BSE Micro Cap Reversals
+- Portfolio Weekly Liquidity Scan
+- Nifty 500 Daily Failed Breakouts
+
+A saved configuration should preserve:
+
+- Screener type
+- Timeframe
+- Direction
+- Universe
+- Selected portfolio or watchlist
+- Market-cap filters
+- Advanced filters
+- Column visibility and sorting preferences
+
+Allow users to:
+
+- Save configuration
+- Rename configuration
+- Load configuration
+- Delete configuration
+
+Do not save historical scan results as if they were current. Loading a configuration should restore the settings and let the user run or refresh the scan.
+
+6. Add useful result actions
+
+For each result, provide practical actions:
+
+- Open stock detail page
+- Open the chart with the signal annotations
+- Add to an existing watchlist
+- Add to an existing portfolio, using the existing portfolio workflow where supported
+- Copy stock symbol
+- View signal details
+
+Do not initiate a buy or sell order.
+
+When adding to a watchlist, allow the user to select the destination watchlist.
+
+Preserve existing chart annotations and do not overwrite the user's saved chart drawings or layout.
+
+7. Improve scan performance and data integrity
+
+Build on the existing scan architecture.
+
+The following must remain intact:
+
+- Database-backed scan lease and renewal
+- Owner-conditional lock release
+- Atomic lease-protected batch persistence
+- Stale-owner write protection
+- Process-local fallback when database coordination is unavailable
+- Saved partial runs and cursor-based continuation
+- Existing cache-key and universe fingerprint logic
+- Existing batch size and concurrency safeguards unless profiling justifies a change
+- Existing replay and no-lookahead protections
+
+Additional requirements:
+
+- Market-cap filters must be part of the scan identity/cache key.
+- A change in portfolio membership must invalidate the relevant saved scan configuration/run.
+- A change in market-cap eligibility must not silently reuse a scan from a different filtered universe.
+- Cache market-cap data independently from OHLCV data, with appropriate freshness rules.
+- Avoid refetching market-cap data for each batch.
+- Avoid duplicate scans when users select multiple portfolios containing overlapping holdings.
+- Do not allow a partially filtered universe to be reported as a completed full-universe scan.
+
+If market-cap data cannot be loaded, communicate that clearly and allow the user to decide whether to include unknowns.
+
+8. Additional enhancements worth implementing
+
+A. Quick presets
+
+Provide compact presets such as:
+
+- Strong Signals Only
+- Bullish Only
+- Bearish Only
+- Follow-through Only
+- Small Cap Opportunities
+- Large Cap Stocks
+- High Volume Reclaims
+
+Presets should configure existing filters, not change the underlying detector.
+
+B. Result comparison
+
+Allow users to select multiple results and compare their signal metrics side by side.
+
+Include:
+
+- Market cap
+- Score and score breakdown
+- Sweep depth
+- Reclaim quality
+- Volume ratio
+- Follow-through
+- Signal date
+
+C. Export
+
+Allow export of the currently filtered result set to CSV.
+
+The export must reflect the active filters and sorting, and include the relevant signal metrics and market-cap information. Do not export hidden or excluded rows unless the user explicitly requests all results.
+
+D. Clear distinction between signal quality and performance
+
+Keep Strong and Potential classifications separate.
+
+Do not imply that a higher score is a probability of success. Do not call a signal a confirmed reversal merely because it has reclaimed a level.
+
+Preserve the distinction between:
+
+- Developing
+- Reclaimed
+- Follow-through
+- Invalidated / expired
+
+9. UI and design expectations
+
+Follow Kosh's existing design language.
+
+The screener should feel like a professional market terminal:
+
+- Compact and information-dense
+- Neutral surfaces and restrained borders
+- Clear typography and alignment
+- Minimal unnecessary colour
+- Strong visual hierarchy
+- Fast interactions
+- No oversized cards or excessive explanatory text
+
+Do not turn the screen into a dashboard full of cards. The results table is the main interface.
+
+Keep the primary scan action easy to find.
+
+Use popovers or compact dropdowns for filters rather than expanding the page vertically.
+
+10. Implementation and validation process
+
+Before coding:
+
+1. Inspect the current screener component and result table.
+2. Inspect the portfolio store and how holdings are represented.
+3. Inspect watchlist selection and persistence.
+4. Identify the existing market-cap data source and its coverage.
+5. Identify how the current scan universe and cache key are constructed.
+6. Identify the existing table sorting/filtering utilities, if any.
+
+Then implement the changes using shared existing components and services wherever possible.
+
+Required tests
+
+Table
+
+- Sorting each supported column
+- Numeric sorting
+- Null values
+- Stable sorting
+- Multiple simultaneous filters
+- Clear filters
+- Column visibility persistence
+
+Portfolio
+
+- One portfolio
+- Multiple portfolios
+- Duplicate holdings across portfolios
+- NSE/BSE identity preservation
+- Empty portfolio
+- Portfolio membership changes
+- Deleted or renamed portfolio
+
+Market cap
+
+- Large, mid, small, micro and nano categories
+- Custom minimum and maximum values
+- Minimum-only and maximum-only filters
+- Missing market-cap data
+- Stale market-cap data
+- Correct filtering before OHLCV requests
+- Cache invalidation when eligibility changes
+
+Scan architecture
+
+- Filtered universe fingerprint
+- Correct scan cursor
+- Partial scan continuation
+- Lease renewal and stale-owner protection
+- No duplicate scan for overlapping portfolios
+- No false full-universe completion
+
+Run focused tests, TypeScript, the full test suite and production build. Report each result separately.
+
+Do not claim the full test suite is green if existing failures remain. Do not claim a full NSE/BSE scan or market backtest unless it was actually run.
+
+Final deliverable
+
+After implementation, report:
+
+1. Files changed.
+2. How portfolio holdings are sourced.
+3. Market-cap data source, coverage and freshness.
+4. How filtering is applied before OHLCV fetching.
+5. How the filtered universe is fingerprinted and cached.
+6. Tests and build results.
+7. Any known limitations.
+
+Most important: implement this as a native extension of Kosh's existing screener and data infrastructure. Do not build a disconnected prototype, duplicate data pipelines, or compromise the existing liquidity detection and scan reliability.

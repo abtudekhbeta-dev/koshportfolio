@@ -1126,3 +1126,29 @@ export async function fetchFastPrints(symbols: string[]): Promise<Quote[]> {
   });
 }
 
+/** One Yahoo quote batch for exact listings. A missing cap stays missing. It is not stored as zero. */
+export async function fetchListingCaps(symbols: string[]): Promise<Map<string, { mcapCr: number | null; price: number | null }>> {
+  const out = new Map<string, { mcapCr: number | null; price: number | null }>();
+  const tickers = [...new Set(symbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean))];
+  if (!tickers.length) return out;
+  const url = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=" + tickers.map((symbol) => encodeURIComponent(symbol)).join(",");
+  const data = (await yahoo(url)) as { quoteResponse?: { result?: Array<Record<string, unknown>> } };
+  const seen = new Set<string>();
+  for (const quote of data?.quoteResponse?.result || []) {
+    const symbol = String(quote.symbol || "").toUpperCase();
+    if (!symbol) continue;
+    seen.add(symbol);
+    const rawCap = Number(quote.marketCap || 0);
+    const currency = String(quote.currency || "INR");
+    const price = Number(quote.regularMarketPrice || 0);
+    out.set(symbol, {
+      mcapCr: rawCap > 0 && currency === "INR" ? rawCap / 1e7 : null,
+      price: price > 0 ? price : null,
+    });
+  }
+  for (const symbol of tickers) {
+    if (!seen.has(symbol)) out.set(symbol, { mcapCr: null, price: null });
+  }
+  return out;
+}
+

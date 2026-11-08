@@ -3,6 +3,9 @@
 import { getSql } from "@/lib/db";
 import { laterCandleLikely, mergeStats, reduceScanState, runValidityMs, type ForwardStats, type LiqTimeframe } from "./liquidity";
 import { claimScanLock, coordinationFromClaim, releaseScanLock, renewScanLock, saveRunIfOwned, saveRunLocal, scanLockDiagnostic, watchScanLock, SCAN_LOCK_TTL_MS, SCAN_LOCK_RENEW_MS, type RunSnapshot } from "./liquidity-lock";
+import { liquidityCacheKey } from "./liquidity-book";
+
+export { liquidityCacheKey };
 
 export type StoredHit = Record<string, unknown> & { id: string };
 
@@ -105,11 +108,6 @@ function rowToRun(row: {
     validUntil,
     newerCandle: laterCandleLikely(tf, newest),
   };
-}
-
-export function liquidityCacheKey(tf: string, universe: string, symbols: string[], revision = "") {
-  const list = [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))].sort().join(",");
-  return `v3|${tf}|${universe}|${revision}|${list}`;
 }
 
 export async function loadFreshRun(key: string, tf: LiqTimeframe): Promise<StoredRun | null> {

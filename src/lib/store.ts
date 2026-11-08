@@ -320,6 +320,7 @@ type KoshState = {
     drops?: CloudDrops;
   }) => void;
   toggleWatch: (symbol: string) => void;
+  addToWatchList: (id: string, symbol: string) => void;
   addWatchList: (name: string) => string;
   renameWatchList: (id: string, name: string) => void;
   deleteWatchList: (id: string) => void;
@@ -671,6 +672,18 @@ export const useKosh = create<KoshState>()(
           activeWatchId: active?.id || id,
           cloudDrops: removing ? withSymbolDrop(get().cloudDrops, { listId: id, symbol: n, at: Date.now() }) : get().cloudDrops,
         });
+      },
+      addToWatchList: (listId, symbol) => {
+        const n = listingId(symbol);
+        if (!n) return;
+        const lists = get().watchlists.length ? get().watchlists : defaultWatchlists(get().watch);
+        const next = lists.map((list) => {
+          if (list.id !== listId) return list;
+          const cur = list.symbols.map((item) => listingId(item));
+          return cur.includes(n) ? list : { ...list, symbols: [n, ...cur].slice(0, 500) };
+        });
+        const active = next.find((list) => list.id === get().activeWatchId) || next[0];
+        set({ watchlists: next, watch: active?.symbols || [], activeWatchId: active?.id || get().activeWatchId });
       },
       addWatchList: (name) => {
         const id = uid();

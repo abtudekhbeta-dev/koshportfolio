@@ -1,15 +1,17 @@
 import { useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { fmtPx } from "@/lib/kosh/engine";
 import { LIQ_FOCUS_KEY, mergeStats, type ForwardStats, type LiqEvent, type LiqFocus, type LiqTimeframe } from "@/lib/kosh/liquidity";
+import { portfolioScanBook, parseCr, type CapBand } from "@/lib/kosh/liquidity-book";
+import { activeFilterCount, COLUMN_LABEL, csvHits, describeFilters, filterHits, loadLiqView, OPEN_FILTER, saveLiqView, sortHits, type HitFilter, type LiqSetup, type LiqView, type SortKey } from "@/lib/kosh/liquidity-table";
 import { useKosh } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import type { ChartMark, OhlcBar } from "@/lib/kosh/types";
 import { LiquidityTape } from "@/components/liquidity-tape";
+import { ResultTable } from "@/components/liquidity-results";
 
 const CandleChart = lazy(() => import("@/components/charts/candle-chart").then((m) => ({ default: m.CandleChart })));
 
-type Hit = LiqEvent & { symbol: string; name: string; exchange: "NSE" | "BSE" };
+type Hit = LiqEvent & { symbol: string; name: string; exchange: "NSE" | "BSE"; mcapCr?: number | null; mcapAsOf?: number | null };
 
 type Page = {
   hits: Hit[];
@@ -30,6 +32,14 @@ type Page = {
   scannedN?: number;
   replace?: boolean;
   locked?: boolean;
+  preparing?: boolean;
+  listed?: number;
+  eligible?: number;
+  mcapExcluded?: number;
+  mcapMissing?: number;
+  mcapUnavailable?: number;
+  mcapAsOf?: number | null;
+  mcapPending?: number;
   error?: string;
 };
 
@@ -43,6 +53,7 @@ const UNIVERSES = [
   ["nifty200", "Nifty 200"],
   ["nifty500", "Nifty 500"],
   ["watch", "Watchlist"],
+  ["portfolio", "Portfolio"],
 ] as const;
 
 const LIFE: Record<LiqTimeframe, string> = {
@@ -62,18 +73,6 @@ function when(t: number | null) {
 function num(n: number | null, digits = 2) {
   if (n == null || !Number.isFinite(n)) return "—";
   return `${n > 0 ? "+" : ""}${n.toFixed(digits)}%`;
-}
-
-function closedBack(n: number | null) {
-  if (n == null) return "Not yet";
-  if (n <= 0) return "Same candle";
-  if (n === 1) return "Next candle";
-  return `${n} candles`;
-}
-
-function volPct(ratio: number | null) {
-  if (ratio == null || !Number.isFinite(ratio)) return "—";
-  return `${Math.round(ratio * 100)}%`;
 }
 
 function chartFrame(tf: LiqTimeframe): { interval: string; lookback: string; extra: string } {
@@ -104,15 +103,37 @@ function stageLabel(hit: Hit) {
 export function LiquidityDesk({ onBack }: { onBack: () => void }) {
   const navigate = useNavigate();
   const lists = useKosh((s) => s.watchlists);
+  const portfolios = useKosh((s) => s.portfolios);
+  const addHoldings = useKosh((s) => s.addHoldings);
+  const addToWatchList = useKosh((s) => s.addToWatchList);
   const patchChartPrefs = useKosh((s) => s.patchChartPrefs);
   const [pattern, setPattern] = useState<"sweep" | "failed">("sweep");
   const [tf, setTf] = useState<LiqTimeframe>("1W");
   const [direction, setDirection] = useState<"bull" | "bear" | "both">("both");
   const [status, setStatus] = useState<"developing" | "confirmed" | "potential" | "follow" | "all">("all");
   const [swing, setSwing] = useState<"both" | "single" | "equal">("both");
-  const [reclaim, setReclaim] = useState<"all" | "same" | "one" | "two" | "three">("all");
+  const [reclaim, setReclaim] = useState<"all" | "same" | "one" | "two" | "three" | "later">("all");
   const [universe, setUniverse] = useState<(typeof UNIVERSES)[number][0]>("nifty50");
   const [listId, setListId] = useState(lists[0]?.id || "");
+  const [portfolioIds, setPortfolioIds] = useState<string[]>([]);
+  const [band, setBand] = useState<"all" | CapBand>("all");
+  const [resultCap, setResultCap] = useState<"all" | CapBand>("all");
+  const [mcapMin, setMcapMin] = useState("");
+  const [mcapMax, setMcapMax] = useState("");
+  const [includeUnknown, setIncludeUnknown] = useState(false);
+  const [maxPrice, setMaxPrice] = useState("");
+  const [exchange, setExchange] = useState<"all" | "NSE" | "BSE">("all");
+  const [tier, setTier] = useState<"all" | "strong" | "potential" | "developing">("all");
+  const [follow, setFollow] = useState<"all" | "yes" | "no">("all");
+  const [highVolume, setHighVolume] = useState(false);
+  const [view, setView] = useState<LiqView>({ columns: ["name", "direction", "level", "depth", "reclaim", "follow", "volume", "date", "status", "score", "actions"], sortKey: "rank", sortDir: "desc", setups: [], combined: false });
+  const [viewReady, setViewReady] = useState(false);
+  const [setupName, setSetupName] = useState("");
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameTo, setRenameTo] = useState("");
+  const [compare, setCompare] = useState<string[]>([]);
+  const [phase, setPhase] = useState("");
+  const [actionFor, setActionFor] = useState<{ hit: Hit; kind: "watch" | "portfolio"; dest: string } | null>(null);
   const [minScore, setMinScore] = useState(0);
   const [minPrice, setMinPrice] = useState("");
   const [weak, setWeak] = useState(false);
@@ -122,7 +143,7 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
   const [stats, setStats] = useState<ForwardStats[]>([]);
   const [skipped, setSkipped] = useState<{ symbol: string; reason: string }[]>([]);
   const [skippedN, setSkippedN] = useState(0);
-  const [meta, setMeta] = useState<Pick<Page, "universeSize" | "universeNote" | "timeframeNote" | "adjusted" | "asOf" | "keptUntil" | "newerCandle" | "cached"> | null>(null);
+  const [meta, setMeta] = useState<(Pick<Page, "universeSize" | "universeNote" | "timeframeNote" | "adjusted" | "asOf" | "keptUntil" | "newerCandle" | "cached" | "listed" | "eligible" | "mcapExcluded" | "mcapMissing" | "mcapUnavailable" | "mcapAsOf" | "mcapPending">) | null>(null);
   const [progress, setProgress] = useState<{ done: number; size: number } | null>(null);
   const [savedKind, setSavedKind] = useState<"none" | "partial" | "done">("none");
   const [scanning, setScanning] = useState(false);
@@ -135,7 +156,29 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
   const savedPrefs = useRef<{ interval: string; lookback: string } | null>(null);
 
   const watchSymbols = universe === "watch" ? (lists.find((l) => l.id === listId) || lists[0])?.symbols || [] : [];
-  const watchKey = watchSymbols.join(",");
+  const selectedPorts = portfolios.filter((port) => portfolioIds.includes(port.id));
+  const portBook = portfolioScanBook(selectedPorts.flatMap((port) => (port.holdings || []).map((row) => ({ symbol: row.symbol, name: row.name, kind: row.kind }))));
+  const symbolKey = universe === "watch" ? watchSymbols.join(",") : universe === "portfolio" ? portBook.rows.map((row) => row.symbol).join(",") : "";
+  const resultFilter: HitFilter = {
+    ...OPEN_FILTER,
+    query,
+    pattern,
+    direction,
+    exchange,
+    tier,
+    follow,
+    reclaim,
+    swing,
+    minScore: Number.isFinite(minScore) ? minScore : 0,
+    minPrice: parseCr(minPrice),
+    maxPrice: parseCr(maxPrice),
+    minVolume: highVolume ? 1.5 : null,
+    cap: resultCap,
+    weak,
+    lifecycle: status,
+  };
+  const filterCount = activeFilterCount(resultFilter);
+  const filterNotes = describeFilters(resultFilter);
 
   function take(page: Page, how: "replace" | "add") {
     if (page.error) {
@@ -151,6 +194,13 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
       keptUntil: page.keptUntil ?? null,
       newerCandle: page.newerCandle,
       cached: page.cached,
+      listed: page.listed,
+      eligible: page.eligible,
+      mcapExcluded: page.mcapExcluded,
+      mcapMissing: page.mcapMissing,
+      mcapUnavailable: page.mcapUnavailable,
+      mcapAsOf: page.mcapAsOf,
+      mcapPending: page.mcapPending,
     });
     if (how === "replace") {
       setHits(page.hits || []);
@@ -200,7 +250,11 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
     setError("");
     setSide(null);
     const params = new URLSearchParams({ tf, universe, mode: "read" });
-    if (watchKey) params.set("symbols", watchKey);
+    if (symbolKey) params.set("symbols", symbolKey);
+    if (band !== "all") params.set("cap", band);
+    if (mcapMin) params.set("mcapMin", mcapMin);
+    if (mcapMax) params.set("mcapMax", mcapMax);
+    if (includeUnknown) params.set("unknown", "1");
     void fetch("/api/liquidity-scan?" + params.toString())
       .then((res) => res.json() as Promise<Page>)
       .then((page) => {
@@ -213,7 +267,7 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
     };
     // take is recreated each render; the scan identity is the timeframe and the book.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tf, universe, watchKey]);
+  }, [tf, universe, symbolKey, band, mcapMin, mcapMax, includeUnknown]);
 
   useEffect(() => {
     return () => {
@@ -239,6 +293,11 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
       setError("That watchlist is empty.");
       return;
     }
+    if (universe === "portfolio" && !portBook.rows.length) {
+      setScanning(false);
+      setError(selectedPorts.length ? "Those portfolios have no NSE or BSE holdings to scan." : "Select a portfolio first.");
+      return;
+    }
     let cursor = fresh ? 0 : resume.current;
     let first = true;
     let waits = 0;
@@ -251,7 +310,11 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
           cursor: String(cursor),
           fresh: fresh && first ? "1" : "0",
         });
-        if (watchSymbols.length) params.set("symbols", watchSymbols.join(","));
+        if (symbolKey) params.set("symbols", symbolKey);
+        if (band !== "all") params.set("cap", band);
+        if (mcapMin) params.set("mcapMin", mcapMin);
+        if (mcapMax) params.set("mcapMax", mcapMax);
+        if (includeUnknown) params.set("unknown", "1");
         const res = await fetch("/api/liquidity-scan?" + params.toString());
         const page = (await res.json()) as Page;
         if (token !== epoch.current) return;
@@ -259,8 +322,27 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
           setError(page.error || "The scan did not answer.");
           break;
         }
+        if (page.preparing) {
+          setMeta((cur) => ({
+            universeSize: cur?.universeSize || 0,
+            universeNote: page.universeNote,
+            timeframeNote: cur?.timeframeNote || "",
+            adjusted: cur?.adjusted || false,
+            asOf: cur?.asOf || 0,
+            keptUntil: cur?.keptUntil ?? null,
+            newerCandle: cur?.newerCandle,
+            cached: cur?.cached,
+            listed: page.listed,
+            eligible: page.eligible,
+            mcapPending: page.mcapPending,
+          }));
+          setPhase(`Loading market cap, ${page.mcapPending ?? 0} of ${page.listed ?? 0} still to check. Candle history has not been requested.`);
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          continue;
+        }
         if (page.locked) {
           waits += 1;
+          setPhase("Waiting for another scan of this book.");
           if (waits > 20) {
             setError("Another scan of this book is still running. What finished is saved. Continue in a moment.");
             break;
@@ -269,6 +351,7 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
           continue;
         }
         waits = 0;
+        setPhase("");
         if (page.cached && page.cursor == null) {
           take(page, "replace");
           break;
@@ -285,30 +368,74 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
     }
   }
 
-  const rows = hits.filter((hit) => {
-    const needle = query.trim().toLowerCase();
-    const floor = Number(minPrice);
-    if (hit.pattern !== pattern) return false;
-    if (direction !== "both" && hit.direction !== direction) return false;
-    if (swing === "equal" && !hit.repeated) return false;
-    if (swing === "single" && hit.repeated) return false;
-    if (reclaim !== "all" && hit.reclaimKind !== reclaim) return false;
-    if (hit.score < minScore) return false;
-    if (hit.lowQuality && !weak) return false;
-    if (Number.isFinite(floor) && floor > 0 && hit.reclaimClose != null && hit.reclaimClose < floor && hit.level < floor) return false;
-    if (status === "developing" && hit.status !== "developing") return false;
-    if (status === "confirmed" && !(hit.status === "confirmed" && hit.reclaimClosed)) return false;
-    if (status === "follow" && !hit.followThrough) return false;
-    if (status === "potential" && hit.tier !== "potential") return false;
-    if (needle && !hit.symbol.toLowerCase().includes(needle) && !hit.name.toLowerCase().includes(needle)) return false;
-    return true;
-  });
+  const rows = sortHits(filterHits(hits, resultFilter), view.sortKey, view.sortDir);
 
   const groups = {
-    strong: rows.filter((hit) => hit.tier === "strong" && hit.status === "confirmed"),
-    potential: rows.filter((hit) => hit.tier === "potential" && hit.status !== "developing"),
-    developing: rows.filter((hit) => hit.status === "developing"),
+    strong: view.combined ? [] : rows.filter((hit) => hit.tier === "strong" && hit.status === "confirmed"),
+    potential: view.combined ? [] : rows.filter((hit) => hit.tier === "potential" && hit.status !== "developing"),
+    developing: view.combined ? [] : rows.filter((hit) => hit.status === "developing"),
   };
+
+  useEffect(() => {
+    if (!lists.some((list) => list.id === listId)) setListId(lists[0]?.id || "");
+  }, [lists, listId]);
+
+  useEffect(() => {
+    setPortfolioIds((cur) => {
+      const next = cur.filter((id) => portfolios.some((port) => port.id === id));
+      return next.length === cur.length ? cur : next;
+    });
+  }, [portfolios]);
+
+  function patchFilter(patch: Partial<HitFilter>) {
+    if (patch.query != null) setQuery(patch.query);
+    if (patch.pattern === "sweep" || patch.pattern === "failed") setPattern(patch.pattern);
+    if (patch.direction) setDirection(patch.direction);
+    if (patch.exchange) setExchange(patch.exchange);
+    if (patch.tier) setTier(patch.tier);
+    if (patch.follow) setFollow(patch.follow);
+    if (patch.reclaim) setReclaim(patch.reclaim);
+    if (patch.swing) setSwing(patch.swing);
+    if (patch.cap) setResultCap(patch.cap);
+    if (patch.minScore != null) setMinScore(patch.minScore);
+    if ("minPrice" in patch) setMinPrice(patch.minPrice == null ? "" : String(patch.minPrice));
+    if ("maxPrice" in patch) setMaxPrice(patch.maxPrice == null ? "" : String(patch.maxPrice));
+    if (patch.minVolume != null) setHighVolume(true);
+    if (patch.minVolume === null) setHighVolume(false);
+    if (patch.weak != null) setWeak(patch.weak);
+    if (patch.lifecycle) setStatus(patch.lifecycle);
+  }
+
+  function clearResultFilters() {
+    setQuery("");
+    setExchange("all");
+    setTier("all");
+    setFollow("all");
+    setHighVolume(false);
+    setMinScore(0);
+    setMinPrice("");
+    setMaxPrice("");
+    setWeak(false);
+    setSwing("both");
+    setReclaim("all");
+    setStatus("all");
+    setResultCap("all");
+    setDirection("both");
+  }
+
+  useEffect(() => {
+    setView(loadLiqView((key) => window.localStorage.getItem(key)));
+    setViewReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!viewReady) return;
+    saveLiqView(view, (key, value) => window.localStorage.setItem(key, value));
+  }, [view, viewReady]);
+
+  function onSort(key: SortKey) {
+    setView((cur) => ({ ...cur, sortKey: key, sortDir: cur.sortKey === key && cur.sortDir === "desc" ? "asc" : "desc" }));
+  }
 
   function closeSide() {
     if (savedPrefs.current) {
@@ -443,8 +570,109 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
           ) : null}
         </div>
 
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
+          <select aria-label="Market cap band" value={band} onChange={(e) => setBand(e.target.value as typeof band)} className="h-8 rounded-sm bg-surface px-2 shadow-[var(--shadow-border)]">
+            <option value="all">All market caps</option>
+            <option value="large">Large cap</option>
+            <option value="mid">Mid cap</option>
+            <option value="small">Small cap</option>
+            <option value="micro">Micro cap</option>
+            <option value="nano">Nano cap</option>
+          </select>
+          <label className="flex items-center gap-1 text-muted">
+            Min ₹ Cr
+            <input aria-label="Minimum market cap" value={mcapMin} onChange={(e) => setMcapMin(e.target.value)} className="h-8 w-20 rounded-sm bg-surface px-2 text-fg shadow-[var(--shadow-border)] outline-none" />
+          </label>
+          <label className="flex items-center gap-1 text-muted">
+            Max ₹ Cr
+            <input aria-label="Maximum market cap" value={mcapMax} onChange={(e) => setMcapMax(e.target.value)} className="h-8 w-20 rounded-sm bg-surface px-2 text-fg shadow-[var(--shadow-border)] outline-none" />
+          </label>
+          <label className="flex items-center gap-1 text-muted">
+            <input type="checkbox" checked={includeUnknown} onChange={(e) => setIncludeUnknown(e.target.checked)} />
+            Include unknown cap
+          </label>
+          <select aria-label="Shown exchange" value={exchange} onChange={(e) => setExchange(e.target.value as typeof exchange)} className="h-8 rounded-sm bg-surface px-2 shadow-[var(--shadow-border)]">
+            <option value="all">Show NSE and BSE</option>
+            <option value="NSE">Show NSE rows</option>
+            <option value="BSE">Show BSE rows</option>
+          </select>
+        </div>
+
+        {universe === "portfolio" ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
+            <button type="button" className="h-7 rounded-sm bg-surface px-2 shadow-[var(--shadow-border)]" onClick={() => setPortfolioIds(portfolios.map((port) => port.id))}>Select all</button>
+            <button type="button" className="h-7 px-2 text-muted" onClick={() => setPortfolioIds([])}>None</button>
+            {!portfolios.length ? <span className="text-muted">No portfolios in Kosh yet.</span> : null}
+            {portfolios.map((port) => (
+              <label key={port.id} className="flex items-center gap-1 text-muted">
+                <input
+                  type="checkbox"
+                  checked={portfolioIds.includes(port.id)}
+                  onChange={(e) => setPortfolioIds((cur) => e.target.checked ? [...cur, port.id] : cur.filter((id) => id !== port.id))}
+                />
+                {port.name}{port.holdings?.length ? "" : " (empty)"}
+              </label>
+            ))}
+            <span className="text-subtle">{portBook.rows.length} unique listings{portBook.rows.length > 400 ? " · first 400 are scanned" : ""}{portBook.unmapped.length ? ` · ${portBook.unmapped.length} not mapped` : ""}</span>
+          </div>
+        ) : null}
+        {universe === "portfolio" && selectedPorts.length > 0 && selectedPorts.every((port) => !(port.holdings || []).length) ? (
+          <p className="mt-1 text-[12px] text-muted">Those portfolios are empty.</p>
+        ) : null}
+        {universe === "portfolio" && portBook.unmapped.length ? (
+          <p className="mt-1 text-[11px] text-subtle">{portBook.unmapped.slice(0, 6).map((row) => `${row.symbol}: ${row.reason}`).join(" · ")}</p>
+        ) : null}
+
+        <div className="mt-2 flex flex-wrap items-center gap-1 text-[11px]">
+          {([
+            ["Strong only", () => { setTier("strong"); setStatus("confirmed"); }],
+            ["Bullish", () => setDirection("bull")],
+            ["Bearish", () => setDirection("bear")],
+            ["Follow-through", () => setFollow("yes")],
+            ["Small cap", () => setBand("small")],
+            ["Large cap", () => setBand("large")],
+            ["High volume", () => setHighVolume(true)],
+          ] as const).map(([label, apply]) => (
+            <button key={label} type="button" className="h-7 rounded-sm bg-surface px-2 text-muted shadow-[var(--shadow-border)]" onClick={apply}>{label}</button>
+          ))}
+          <button type="button" className="h-7 px-2 text-muted" onClick={clearResultFilters}>Clear filters{filterCount ? ` (${filterCount})` : ""}</button>
+          {filterNotes.length ? <span className="text-subtle">{filterNotes.join(" · ")}</span> : null}
+          <button type="button" className="h-7 px-2 text-muted" onClick={() => setView((cur) => ({ ...cur, combined: !cur.combined }))}>{view.combined ? "Grouped" : "One list"}</button>
+          <button type="button" className="h-7 px-2 text-muted" onClick={() => {
+            const blob = new Blob([csvHits(rows)], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "kosh-liquidity.csv";
+            link.click();
+            URL.revokeObjectURL(url);
+          }}>Export shown</button>
+          <details className="relative">
+            <summary className="cursor-pointer list-none rounded-sm bg-surface px-2 py-1 text-muted shadow-[var(--shadow-border)]">Columns</summary>
+            <div className="absolute z-30 mt-1 grid w-44 gap-1 rounded-sm bg-surface p-2 shadow-[var(--shadow-border)]">
+              {(["name", "exchange", "mcap", "direction", "pattern", "tier", "price", "level", "distance", "depth", "reclaim", "volume", "touches", "follow", "date", "status", "score", "actions"] as const).map((id) => (
+                <label key={id} className="flex items-center gap-1">
+                  <input type="checkbox" checked={view.columns.includes(id)} onChange={(e) => setView((cur) => ({ ...cur, columns: e.target.checked ? [...cur.columns, id] : cur.columns.filter((col) => col !== id) }))} />
+                  {id === "actions" ? "Actions" : COLUMN_LABEL[id]}
+                </label>
+              ))}
+            </div>
+          </details>
+        </div>
+
         {advanced ? (
           <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
+            <select aria-label="Strength" value={tier} onChange={(e) => setTier(e.target.value as typeof tier)} className="h-8 rounded-sm bg-surface px-2 shadow-[var(--shadow-border)]">
+              <option value="all">Any strength</option>
+              <option value="strong">Strong</option>
+              <option value="potential">Potential</option>
+              <option value="developing">Developing</option>
+            </select>
+            <select aria-label="Follow-through" value={follow} onChange={(e) => setFollow(e.target.value as typeof follow)} className="h-8 rounded-sm bg-surface px-2 shadow-[var(--shadow-border)]">
+              <option value="all">Any follow-through</option>
+              <option value="yes">Follow-through</option>
+              <option value="no">No follow-through</option>
+            </select>
             <select aria-label="Swing type" value={swing} onChange={(e) => setSwing(e.target.value as typeof swing)} className="h-8 rounded-sm bg-surface px-2 shadow-[var(--shadow-border)]">
               <option value="both">Individual and repeated</option>
               <option value="single">Individual swing</option>
@@ -456,6 +684,7 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
               <option value="one">Next candle</option>
               <option value="two">Two candles</option>
               <option value="three">Three candles</option>
+              <option value="later">Later</option>
             </select>
             <label className="flex items-center gap-1 text-muted">
               Min score
@@ -466,31 +695,181 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
               <input aria-label="Minimum price" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} className="h-8 w-20 rounded-sm bg-surface px-2 text-fg shadow-[var(--shadow-border)] outline-none" />
             </label>
             <label className="flex items-center gap-1 text-muted">
+              Max price
+              <input aria-label="Maximum price" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} className="h-8 w-20 rounded-sm bg-surface px-2 text-fg shadow-[var(--shadow-border)] outline-none" />
+            </label>
+            <label className="flex items-center gap-1 text-muted">
               <input type="checkbox" checked={weak} onChange={(e) => setWeak(e.target.checked)} />
               Show scores under 55
             </label>
+            <input value={setupName} onChange={(e) => setSetupName(e.target.value)} placeholder="Save this setup" aria-label="Setup name" className="h-8 w-40 rounded-sm bg-surface px-2 outline-none shadow-[var(--shadow-border)]" />
+            <button type="button" className="h-8 px-2 text-muted" onClick={() => {
+              const name = setupName.trim();
+              if (!name) return;
+              const setup: LiqSetup = {
+                id: `${Date.now()}`,
+                name,
+                pattern,
+                tf,
+                direction,
+                universe,
+                listId,
+                portfolioIds,
+                band,
+                mcapMin,
+                mcapMax,
+                includeUnknown,
+                filter: resultFilter,
+                columns: view.columns,
+                sortKey: view.sortKey,
+                sortDir: view.sortDir,
+                combined: view.combined,
+              };
+              setView((cur) => ({ ...cur, setups: [setup, ...cur.setups.filter((row) => row.name !== name)].slice(0, 24) }));
+              setSetupName("");
+            }}>Save</button>
+          </div>
+        ) : null}
+
+        {view.setups.length ? (
+          <div className="mt-2 flex flex-wrap items-center gap-1 text-[12px]">
+            {view.setups.map((setup) => (
+              <span key={setup.id} className="inline-flex items-center gap-1 rounded-sm bg-surface px-2 py-1 shadow-[var(--shadow-border)]">
+                {renaming === setup.id ? (
+                  <input
+                    aria-label={`Rename ${setup.name}`}
+                    value={renameTo}
+                    onChange={(e) => setRenameTo(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      const name = renameTo.trim();
+                      if (!name) return;
+                      setView((cur) => ({ ...cur, setups: cur.setups.map((row) => row.id === setup.id ? { ...row, name } : row) }));
+                      setRenaming(null);
+                    }}
+                    className="h-6 w-36 bg-transparent outline-none"
+                  />
+                ) : (
+                  <button type="button" onClick={() => {
+                    const known = new Set(portfolios.map((port) => port.id));
+                    const wanted = setup.portfolioIds || [];
+                    const missing = wanted.filter((id) => !known.has(id));
+                    setPattern(setup.pattern);
+                    setTf(setup.tf as LiqTimeframe);
+                    setDirection(setup.direction);
+                    setUniverse(setup.universe as typeof universe);
+                    setListId(setup.listId);
+                    setPortfolioIds(wanted.filter((id) => known.has(id)));
+                    setBand(setup.band);
+                    setMcapMin(setup.mcapMin);
+                    setMcapMax(setup.mcapMax);
+                    setIncludeUnknown(setup.includeUnknown);
+                    setQuery(setup.filter?.query || "");
+                    setExchange(setup.filter?.exchange || "all");
+                    setTier(setup.filter?.tier || "all");
+                    setFollow(setup.filter?.follow || "all");
+                    setReclaim(setup.filter?.reclaim || "all");
+                    setSwing(setup.filter?.swing || "both");
+                    setMinScore(setup.filter?.minScore || 0);
+                    setMinPrice(setup.filter?.minPrice == null ? "" : String(setup.filter.minPrice));
+                    setMaxPrice(setup.filter?.maxPrice == null ? "" : String(setup.filter.maxPrice));
+                    setWeak(Boolean(setup.filter?.weak));
+                    setStatus(setup.filter?.lifecycle || "all");
+                    setHighVolume(setup.filter?.minVolume != null);
+                    setResultCap(setup.filter?.cap || "all");
+                    setView((cur) => ({ ...cur, columns: setup.columns?.length ? setup.columns : cur.columns, sortKey: setup.sortKey || cur.sortKey, sortDir: setup.sortDir || cur.sortDir, combined: setup.combined }));
+                    setError(missing.length ? "A saved portfolio is no longer in Kosh. The rest of this setup was restored. Run the scan when you want fresh results." : "");
+                  }}>{setup.name}</button>
+                )}
+                <button type="button" className="text-subtle" onClick={() => { setRenaming(setup.id); setRenameTo(setup.name); }}>Rename</button>
+                <button type="button" aria-label={`Delete ${setup.name}`} className="text-subtle" onClick={() => setView((cur) => ({ ...cur, setups: cur.setups.filter((row) => row.id !== setup.id) }))}>×</button>
+              </span>
+            ))}
           </div>
         ) : null}
 
         {error ? <p className="mt-3 text-[13px] text-muted">{error}</p> : null}
-        {progress ? (
-          <p className="mt-3 text-[12px] text-subtle">
-            {progress.done} of {progress.size} listed.
-            {meta?.universeNote ? ` ${meta.universeNote}` : ""}
-            {savedKind === "partial" ? " This pass has not finished the book. What finished is saved. Continue picks up the rest." : savedKind === "done" ? " This pass finished the book that was listed." : ""}
-            {meta?.keptUntil ? ` Kept until ${new Date(meta.keptUntil).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} IST (${LIFE[tf]}).` : ""}
-            {meta?.newerCandle ? " Refresh: a newer candle may have started. This save is not the current bar." : ""}
-            {meta?.timeframeNote ? ` ${meta.timeframeNote}` : ""}
-          </p>
+        <p className="mt-3 text-[12px] text-subtle">
+          {phase.startsWith("Waiting") ? "Waiting for another scan. " : scanning && savedKind === "partial" ? "Resuming a saved scan. " : scanning ? "In progress. " : savedKind === "partial" ? "Partially completed. " : savedKind === "done" && (band !== "all" || mcapMin || mcapMax) ? "Completed for the eligible names only. This is not a full-universe scan. " : savedKind === "done" ? "Completed. " : "Not started. "}
+          {phase && !phase.startsWith("Waiting") ? `${phase} ` : ""}
+          {meta?.listed != null ? `${meta.listed} in the universe. ` : ""}
+          {meta?.mcapPending ? "" : band !== "all" || mcapMin || mcapMax
+            ? `${meta?.eligible ?? "—"} eligible after market cap, ${meta?.mcapExcluded ?? 0} excluded, ${meta?.mcapMissing ?? 0} without a cap, ${meta?.mcapUnavailable ?? 0} whose quote did not answer. `
+            : "No market-cap filter. "}
+          {meta?.mcapAsOf ? `Caps as of ${new Date(meta.mcapAsOf).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" })}. ` : ""}
+          {progress ? `${progress.done} of ${progress.size} eligible names scanned. ` : ""}
+          {rows.length} of {hits.length} signals after filters. {tf}.
+          {meta?.universeNote ? ` ${meta.universeNote}` : " Nothing is scanned until you ask. A market-cap band is applied before candle history is fetched. Bands are Kosh working cuts (large from ₹20,000 Cr, mid from ₹5,000 Cr, small from ₹500 Cr, micro from ₹50 Cr, nano below that), not a SEBI classification. Missing caps are not treated as zero."}
+          {savedKind === "partial" ? " What finished is saved. Continue picks up the rest. This is not a finished full-universe scan." : ""}
+          {meta?.keptUntil ? ` Kept until ${new Date(meta.keptUntil).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} IST (${LIFE[tf]}).` : ""}
+          {meta?.newerCandle ? " A newer candle may have started." : ""}
+        </p>
+
+        {view.combined ? (
+          <ResultTable title="All signals" hint="Strong, Potential and Developing in one list. A higher score is not a probability." rows={rows} columns={view.columns} sortKey={view.sortKey} sortDir={view.sortDir} onSort={onSort} filter={resultFilter} onFilter={patchFilter} selected={side?.id || ""} compared={compare} onOpen={openSide} onInspect={setOpen} onCopy={(hit) => void navigator.clipboard?.writeText(hit.symbol)} onWatch={(hit) => setActionFor({ hit, kind: "watch", dest: lists[0]?.id || "" })} onPortfolio={(hit) => setActionFor({ hit, kind: "portfolio", dest: portfolios[0]?.id || "" })} onCompare={(hit) => setCompare((cur) => cur.includes(hit.id) ? cur.filter((id) => id !== hit.id) : [...cur, hit.id].slice(0, 4))} />
         ) : (
-          <p className="mt-3 text-[12px] text-subtle">
-            Nothing is scanned until you ask. Weekly is the default. All listed keeps both exchange lines unless the same ISIN is on both. A shared ticker without an ISIN is not merged. A partial BSE pull is not called complete. A name counts only after its history answers or it is explicitly skipped.
-          </p>
+          <>
+            <ResultTable title="Strong structure" hint="Closed reclaim and convincing structure. Not follow-through and not a confirmed reversal." rows={status === "developing" || status === "potential" || tier === "potential" || tier === "developing" ? [] : groups.strong} columns={view.columns} sortKey={view.sortKey} sortDir={view.sortDir} onSort={onSort} filter={resultFilter} onFilter={patchFilter} selected={side?.id || ""} compared={compare} onOpen={openSide} onInspect={setOpen} onCopy={(hit) => void navigator.clipboard?.writeText(hit.symbol)} onWatch={(hit) => setActionFor({ hit, kind: "watch", dest: lists[0]?.id || "" })} onPortfolio={(hit) => setActionFor({ hit, kind: "portfolio", dest: portfolios[0]?.id || "" })} onCompare={(hit) => setCompare((cur) => cur.includes(hit.id) ? cur.filter((id) => id !== hit.id) : [...cur, hit.id].slice(0, 4))} />
+            <ResultTable title="Potential" hint="The reclaim structure is there. At least one supporting piece is weaker." rows={status === "developing" || tier === "strong" || tier === "developing" ? [] : groups.potential} columns={view.columns} sortKey={view.sortKey} sortDir={view.sortDir} onSort={onSort} filter={resultFilter} onFilter={patchFilter} selected={side?.id || ""} compared={compare} onOpen={openSide} onInspect={setOpen} onCopy={(hit) => void navigator.clipboard?.writeText(hit.symbol)} onWatch={(hit) => setActionFor({ hit, kind: "watch", dest: lists[0]?.id || "" })} onPortfolio={(hit) => setActionFor({ hit, kind: "portfolio", dest: portfolios[0]?.id || "" })} onCompare={(hit) => setCompare((cur) => cur.includes(hit.id) ? cur.filter((id) => id !== hit.id) : [...cur, hit.id].slice(0, 4))} />
+            <ResultTable title="Developing" hint="The candle has not closed. This can disappear. It is never Strong structure." rows={status === "confirmed" || status === "potential" || status === "follow" || tier === "strong" || tier === "potential" ? [] : groups.developing} columns={view.columns} sortKey={view.sortKey} sortDir={view.sortDir} onSort={onSort} filter={resultFilter} onFilter={patchFilter} selected={side?.id || ""} compared={compare} onOpen={openSide} onInspect={setOpen} onCopy={(hit) => void navigator.clipboard?.writeText(hit.symbol)} onWatch={(hit) => setActionFor({ hit, kind: "watch", dest: lists[0]?.id || "" })} onPortfolio={(hit) => setActionFor({ hit, kind: "portfolio", dest: portfolios[0]?.id || "" })} onCompare={(hit) => setCompare((cur) => cur.includes(hit.id) ? cur.filter((id) => id !== hit.id) : [...cur, hit.id].slice(0, 4))} />
+          </>
         )}
 
-        <Group title="Strong structure" hint="Closed reclaim and convincing structure. This is not follow-through and not a confirmed reversal." rows={status === "developing" || status === "potential" ? [] : groups.strong} selected={side?.id || ""} onOpen={openSide} onInspect={setOpen} />
-        <Group title="Potential" hint="The reclaim structure is there. At least one supporting piece is weaker. Follow-through is separate." rows={status === "developing" ? [] : groups.potential} selected={side?.id || ""} onOpen={openSide} onInspect={setOpen} />
-        <Group title="Developing" hint="The candle has not closed. This can disappear. It is never Strong structure." rows={status === "confirmed" || status === "potential" || status === "follow" ? [] : groups.developing} selected={side?.id || ""} onOpen={openSide} onInspect={setOpen} />
+        {compare.length > 1 ? (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-[12px]">
+              <thead className="text-[10px] tracking-[0.06em] text-subtle uppercase">
+                <tr>
+                  <th className="py-1 pr-3">Stock</th>
+                  <th className="py-1 pr-3">Mcap</th>
+                  <th className="py-1 pr-3">Score</th>
+                  <th className="py-1 pr-3">Sweep</th>
+                  <th className="py-1 pr-3">Reclaim</th>
+                  <th className="py-1 pr-3">Volume</th>
+                  <th className="py-1 pr-3">Follow-through</th>
+                  <th className="py-1">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hits.filter((hit) => compare.includes(hit.id)).map((hit) => (
+                  <tr key={hit.id} className="border-t border-border font-mono tabular">
+                    <td className="py-1 pr-3 font-sans">{hit.symbol}</td>
+                    <td className="py-1 pr-3">{hit.mcapCr != null ? Math.round(hit.mcapCr).toLocaleString("en-IN") : "—"}</td>
+                    <td className="py-1 pr-3">{hit.score} · {hit.parts.swing}/{hit.parts.sweep}/{hit.parts.reclaim}/{hit.parts.volume}/{hit.parts.candle}/{hit.parts.confirm}</td>
+                    <td className="py-1 pr-3">{hit.depthPct.toFixed(1)}%</td>
+                    <td className="py-1 pr-3">{hit.parts.reclaim}</td>
+                    <td className="py-1 pr-3">{hit.volumeTrust === "neutral" ? "Split" : hit.volumeRatio == null ? "—" : `${Math.round(hit.volumeRatio * 100)}%`}</td>
+                    <td className="py-1 pr-3">{hit.followThrough ? "Yes" : "No"}</td>
+                    <td className="py-1">{when(hit.sweepT)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
+        {actionFor ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
+            <span className="text-muted">{actionFor.kind === "watch" ? "Add to watchlist" : "Record 1 unit only if this ticker is not already held"} · {actionFor.hit.symbol}. This does not place an order and does not change an existing quantity.</span>
+            <select aria-label="Destination" value={actionFor.dest} onChange={(e) => setActionFor({ ...actionFor, dest: e.target.value })} className="h-8 rounded-sm bg-surface px-2 shadow-[var(--shadow-border)]">
+              {(actionFor.kind === "watch" ? lists : portfolios).map((row) => (
+                <option key={row.id} value={row.id}>{row.name}</option>
+              ))}
+            </select>
+            <button type="button" className="h-8 rounded-sm bg-accent px-2 text-accent-fg" onClick={() => {
+              if (actionFor.kind === "watch") addToWatchList(actionFor.dest, actionFor.hit.symbol);
+              else {
+                const port = portfolios.find((row) => row.id === actionFor.dest);
+                const bare = actionFor.hit.symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
+                const exists = (port?.holdings || []).some((row) => row.symbol.replace(/\.(NS|BO)$/i, "").toUpperCase() === bare);
+                if (exists) setError("That ticker is already in the portfolio. The quantity was left unchanged.");
+                else addHoldings(actionFor.dest, [{ symbol: actionFor.hit.symbol, name: actionFor.hit.name, qty: 1, avg: actionFor.hit.reclaimClose, date: null }]);
+              }
+              setActionFor(null);
+            }}>Add</button>
+            <button type="button" className="h-8 px-2 text-muted" onClick={() => setActionFor(null)}>Cancel</button>
+          </div>
+        ) : null}
 
         {open ? (
           <div className="mt-3 rounded-md bg-surface p-3 text-[13px] shadow-[var(--shadow-border)]">
@@ -615,77 +994,5 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
         </aside>
       ) : null}
     </div>
-  );
-}
-
-function Group({
-  title,
-  hint,
-  rows,
-  selected,
-  onOpen,
-  onInspect,
-}: {
-  title: string;
-  hint: string;
-  rows: Hit[];
-  selected: string;
-  onOpen: (hit: Hit) => void;
-  onInspect: (hit: Hit) => void;
-}) {
-  const [more, setMore] = useState(40);
-  const shown = rows.slice(0, more);
-  return (
-    <section className="mt-4">
-      <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-[13px] font-semibold">{title} · {rows.length}</h3>
-        <p className="text-[11px] text-subtle">{hint}</p>
-      </div>
-      {!rows.length ? <p className="mt-1 text-[12px] text-muted">None in this group.</p> : null}
-      {shown.length ? (
-        <div className="mt-1 overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-[12px]">
-            <thead className="text-[10px] tracking-[0.06em] text-subtle uppercase">
-              <tr>
-                <th className="py-1 pr-2">Stock</th>
-                <th className="py-1 pr-2">Side</th>
-                <th className="py-1 pr-2">Level</th>
-                <th className="py-1 pr-2">Broke to</th>
-                <th className="py-1 pr-2">Closed back</th>
-                <th className="py-1 pr-2">Follow-through</th>
-                <th className="py-1 pr-2" title="This bar versus the average of the previous 20 bars">Volume</th>
-                <th className="py-1 pr-2">Date</th>
-                <th className="py-1 pr-2">Status</th>
-                <th className="py-1">Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((hit) => (
-                <tr key={hit.id} className={cn("border-t border-border", selected === hit.id && "bg-accent/10")}>
-                  <td className="py-1.5 pr-2">
-                    <button type="button" className="font-semibold hover:underline" onClick={() => onOpen(hit)}>{hit.symbol}</button>
-                    <div className="max-w-[180px] truncate text-[11px] text-subtle">{hit.name} · {hit.exchange}</div>
-                  </td>
-                  <td className={cn("py-1.5 pr-2", hit.direction === "bull" ? "text-up" : "text-down")}>{hit.direction === "bull" ? "Bullish" : "Bearish"}</td>
-                  <td className="py-1.5 pr-2 font-mono tabular">{fmtPx(hit.level)}</td>
-                  <td className="py-1.5 pr-2 font-mono tabular">{fmtPx(hit.extreme)} · {hit.depthPct.toFixed(1)}%</td>
-                  <td className="py-1.5 pr-2">{closedBack(hit.reclaimCandles)}</td>
-                  <td className="py-1.5 pr-2">{hit.followThrough ? "Yes" : hit.reclaimClosed ? "No" : "—"}</td>
-                  <td className="py-1.5 pr-2 font-mono tabular" title="Versus the previous 20 bars">{hit.volumeTrust === "neutral" ? "Split" : volPct(hit.volumeRatio)}</td>
-                  <td className="py-1.5 pr-2">{when(hit.sweepT)}</td>
-                  <td className="py-1.5 pr-2">{stageLabel(hit)}</td>
-                  <td className="py-1.5">
-                    <button type="button" className="font-mono tabular hover:underline" onClick={() => onInspect(hit)}>{hit.score}</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-      {rows.length > shown.length ? (
-        <button type="button" className="mt-1 text-[12px] text-chart" onClick={() => setMore((n) => n + 40)}>Show more</button>
-      ) : null}
-    </section>
   );
 }
