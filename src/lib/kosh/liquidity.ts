@@ -111,6 +111,23 @@ export type ForwardStats = {
   /** True when a horizon was cut at OBS_CAP. The median is then pooled only up to that cap. */
   capped: boolean;
   obs: ForwardObs;
+  /** Strong and Potential are separate. Absent on an older saved row. */
+  quality?: "strong" | "potential";
+  symbols?: string[];
+  /** Horizons the tape did not reach, and that were not already invalidated. */
+  incomplete?: { c1: number; c3: number; c5: number; c8: number };
+  overlapping?: number;
+  independentN?: number;
+  fromT?: number | null;
+  toT?: number | null;
+  excessAvg?: { c1: number | null; c3: number | null; c5: number | null; c8: number | null };
+  excessSamples?: { c1: number; c3: number; c5: number; c8: number };
+  /** Individual excess observations, so a merged book does not drop the benchmark column. */
+  excessObs?: ForwardObs;
+  /** Median of the earliest signal on each level. A robustness check, not the headline sample. */
+  indepMedian?: { c1: number | null; c3: number | null; c5: number | null; c8: number | null };
+  /** Earliest signal per level. A robustness check, not the headline sample. */
+  indepObs?: ForwardObs;
 };
 
 export type ForwardObs = { c1: number[]; c3: number[]; c5: number[]; c8: number[]; mfe: number[]; mae: number[] };
@@ -237,57 +254,91 @@ export function prepareBars(input: OhlcBar[], adjusted = true): { bars: ScanBar[
   return { bars, dropped, volumeKnown: bars.some((b) => b.v != null), adjusted: usedAdj };
 }
 
-/** Fold hourly (or finer) prints into IST session 4-hour bars. The afternoon bar ends at 15:30 and is shorter. */
-export function foldSession4h(input: OhlcBar[]): OhlcBar[] {
+/** Fold hourly prints into IST session slots. A slot is kept only when every expected hour is present. Weekend prints are ignored. Missing volume on any hour leaves the slot volume missing. */
+export type SlotAudit = {
+  day: number;
+  slot: 0 | 1;
+  t: number;
+  expected: number;
+  present: number;
+  missingHours: number[];
+  complete: boolean;
+  weekend: boolean;
+  volumeKnown: boolean;
+};
+
+const MORNING_HOURS = [9 * 3600 + 15 * 60, 10 * 3600 + 15 * 60, 11 * 3600 + 15 * 60, 12 * 3600 + 15 * 60];
+const AFTER_HOURS = [13 * 3600 + 15 * 60, 14 * 3600 + 15 * 60, 15 * 3600 + 15 * 60];
+
+function istWeekday(day: number): number {
+  return new Date(day * 86400000).getUTCDay();
+}
+
+export function foldSession4hReport(input: OhlcBar[]): { bars: OhlcBar[]; slots: SlotAudit[] } {
   const prepared = prepareBars(input, true).bars;
-  const groups = new Map<string, ScanBar>();
+  type Bucket = { t: number; o: number; h: number; l: number; c: number; hours: Map<number, number | null>; weekend: boolean };
+  const groups = new Map<string, Bucket>();
   for (const bar of prepared) {
     const { day, sod } = istParts(bar.t);
     if (sod < OPEN || sod > CLOSE) continue;
+    const hours = sod < SPLIT ? MORNING_HOURS : AFTER_HOURS;
+    const hour = hours.find((start) => sod >= start && sod < start + 3600);
+    if (hour == null) continue;
     const slot = sod < SPLIT ? 0 : 1;
     const key = `${day}:${slot}`;
+    const weekend = istWeekday(day) === 0 || istWeekday(day) === 6;
     const cur = groups.get(key);
-    if (!cur) groups.set(key, { ...bar });
-    else {
+    if (!cur) {
+      groups.set(key, { t: bar.t, o: bar.o, h: bar.h, l: bar.l, c: bar.c, hours: new Map([[hour, bar.v]]), weekend });
+    } else {
       cur.h = Math.max(cur.h, bar.h);
       cur.l = Math.min(cur.l, bar.l);
       cur.c = bar.c;
-      if (bar.v != null) cur.v = (cur.v ?? 0) + bar.v;
+      const prev = cur.hours.get(hour);
+      cur.hours.set(hour, prev == null ? bar.v : bar.v == null ? null : prev + bar.v);
     }
   }
-  return [...groups.values()]
-    .sort((a, b) => a.t - b.t)
-    .map((b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v == null ? 0 : b.v }));
+  const slots: SlotAudit[] = [];
+  const bars: OhlcBar[] = [];
+  for (const [key, bucket] of [...groups.entries()].sort((a, b) => a[1].t - b[1].t)) {
+    const slot = Number(key.split(":")[1]) as 0 | 1;
+    const expectedHours = slot === 0 ? MORNING_HOURS : AFTER_HOURS;
+    const missingHours = expectedHours.filter((hour) => !bucket.hours.has(hour));
+    const volumes = [...bucket.hours.values()];
+    const volumeKnown = volumes.length > 0 && volumes.every((v) => v != null);
+    const complete = !bucket.weekend && missingHours.length === 0;
+    const day = Number(key.split(":")[0]);
+    slots.push({
+      day,
+      slot,
+      t: bucket.t,
+      expected: expectedHours.length,
+      present: expectedHours.length - missingHours.length,
+      missingHours,
+      complete,
+      weekend: bucket.weekend,
+      volumeKnown,
+    });
+    if (!complete) continue;
+    const volume = volumeKnown ? volumes.reduce<number>((sum, v) => sum + (v || 0), 0) : 0;
+    bars.push({ t: bucket.t, o: bucket.o, h: bucket.h, l: bucket.l, c: bucket.c, v: volume });
+  }
+  return { bars, slots };
 }
 
-const MORNING_LAST = 12 * 3600 + 15 * 60;
-const AFTER_LAST = 15 * 3600 + 15 * 60;
+export function foldSession4h(input: OhlcBar[]): OhlcBar[] {
+  return foldSession4hReport(input).bars;
+}
 
-/** The last 4-hour slot is unfinished when the clock is still inside it, or the tape stopped before that slot's last hour and nothing followed. */
+/** The last 4-hour slot is unfinished when the clock is still inside it, or that slot is missing an expected hour and nothing later completed the session. */
 export function session4hTailOpen(input: OhlcBar[], now = Date.now()): boolean {
-  const prepared = prepareBars(input, true).bars.filter((bar) => {
-    const { sod } = istParts(bar.t);
-    return sod >= OPEN && sod <= CLOSE;
-  });
-  if (!prepared.length) return false;
-  const last = prepared[prepared.length - 1];
-  const { day, sod } = istParts(last.t);
-  const morning = sod < SPLIT;
-  const slotEnd = morning ? SPLIT : CLOSE;
+  const report = foldSession4hReport(input);
+  const last = report.slots[report.slots.length - 1];
+  if (!last) return false;
   const nowIst = istParts(Math.floor(now / 1000));
-  if (nowIst.day === day && nowIst.sod >= OPEN && nowIst.sod <= slotEnd) return true;
-  const need = morning ? MORNING_LAST : AFTER_LAST;
-  const reached = prepared.some((bar) => {
-    const part = istParts(bar.t);
-    if (part.day !== day) return false;
-    return morning ? part.sod >= need && part.sod < SPLIT : part.sod >= need && part.sod <= CLOSE;
-  });
-  if (reached) return false;
-  const later = prepared.some((bar) => {
-    const part = istParts(bar.t);
-    return part.day > day || (morning && part.day === day && part.sod >= SPLIT);
-  });
-  return !later;
+  const slotEnd = last.slot === 0 ? SPLIT : CLOSE;
+  if (!last.weekend && nowIst.day === last.day && nowIst.sod >= OPEN && nowIst.sod <= slotEnd) return true;
+  return !last.complete;
 }
 
 /** Keep prints inside the cash session. Does not invent the missing ones. */
@@ -297,6 +348,13 @@ export function sessionOnly(input: OhlcBar[]): OhlcBar[] {
     const { sod } = istParts(bar.t);
     return sod >= OPEN && sod <= CLOSE;
   });
+}
+
+/** The candle series the detector uses. The 4-hour chart must call this same function. */
+export function barsForTimeframe(tf: LiqTimeframe, raw: OhlcBar[]) {
+  if (tf === "4H") return prepareBars(foldSession4h(raw), true);
+  if (tf === "15m" || tf === "1H") return prepareBars(sessionOnly(raw), true);
+  return prepareBars(raw, true);
 }
 
 function atrAt(bars: ScanBar[], index: number, n = 14): number | null {
@@ -719,7 +777,7 @@ export function detectLiquidity(bars: ScanBar[], cfg: LiqConfig = DEFAULT_LIQ, f
           pattern: "sweep",
           sweepIndex: cursor,
           reclaimIndex: sweepHit.closed ? sweepHit.index : sweepHit.index,
-          forming: forming && !sweepHit.closed,
+          forming,
           upto: limit,
           cfg,
         });
@@ -749,7 +807,7 @@ export function detectLiquidity(bars: ScanBar[], cfg: LiqConfig = DEFAULT_LIQ, f
           pattern: "failed",
           sweepIndex: cursor,
           reclaimIndex: failedHit.index,
-          forming: forming && !failedHit.closed,
+          forming,
           upto: limit,
           cfg,
         });
@@ -799,7 +857,19 @@ function pushObs(bucket: number[], value: number, capped: { on: boolean }) {
   bucket.push(value);
 }
 
-function packStats(pattern: LiqPattern, direction: LiqDirection, n: number, invalidated: number, obs: ForwardObs, capped: boolean): ForwardStats {
+function emptyIncomplete() {
+  return { c1: 0, c3: 0, c5: 0, c8: 0 };
+}
+
+function packStats(
+  pattern: LiqPattern,
+  direction: LiqDirection,
+  n: number,
+  invalidated: number,
+  obs: ForwardObs,
+  capped: boolean,
+  extra?: Partial<Pick<ForwardStats, "quality" | "symbols" | "incomplete" | "overlapping" | "independentN" | "fromT" | "toT" | "excessAvg" | "excessSamples">>,
+): ForwardStats {
   const samples = {
     c1: obs.c1.length,
     c3: obs.c3.length,
@@ -829,44 +899,94 @@ function packStats(pattern: LiqPattern, direction: LiqDirection, n: number, inva
     invalidated,
     capped,
     obs,
+    quality: extra?.quality,
+    symbols: extra?.symbols,
+    incomplete: extra?.incomplete,
+    overlapping: extra?.overlapping,
+    independentN: extra?.independentN,
+    fromT: extra?.fromT,
+    toT: extra?.toT,
+    excessAvg: extra?.excessAvg,
+    excessSamples: extra?.excessSamples,
   };
 }
 
-/** Forward excursion uses only candles after the reclaim. Each horizon keeps its own sample. */
-export function forwardStats(events: LiqEvent[], bars: ScanBar[]): ForwardStats[] {
+function nearestBench(bench: ScanBar[], t: number, slack: number): ScanBar | null {
+  let best: ScanBar | null = null;
+  let gap = slack + 1;
+  for (const bar of bench) {
+    const d = Math.abs(bar.t - t);
+    if (d < gap) {
+      gap = d;
+      best = bar;
+    }
+  }
+  return gap <= slack ? best : null;
+}
+
+/** Forward excursion uses only candles after the reclaim. Each horizon keeps its own sample. Strong and Potential are not pooled together. */
+export function forwardStats(events: LiqEvent[], bars: ScanBar[], opts?: { symbol?: string; bench?: ScanBar[] }): ForwardStats[] {
   const groups = new Map<string, LiqEvent[]>();
   for (const event of events) {
     if (event.status === "developing" || event.reclaimIndex == null || !event.reclaimClosed) continue;
-    const key = `${event.pattern}|${event.direction}`;
+    const quality = event.tier === "strong" ? "strong" : "potential";
+    const key = `${event.pattern}|${event.direction}|${quality}`;
     const list = groups.get(key) || [];
     list.push(event);
     groups.set(key, list);
   }
+  const slack = bars.length > 2 ? Math.max(1, bars[1].t - bars[0].t) : 86400;
   const out: ForwardStats[] = [];
   for (const [key, list] of groups) {
-    const [pattern, direction] = key.split("|") as [LiqPattern, LiqDirection];
+    const [pattern, direction, quality] = key.split("|") as [LiqPattern, LiqDirection, "strong" | "potential"];
     const obs = emptyObs();
+    const indep = emptyObs();
+    const excess = emptyObs();
     const capped = { on: false };
+    const incomplete = emptyIncomplete();
     let invalidated = 0;
+    let fromT: number | null = null;
+    let toT: number | null = null;
+    const seenLevel = new Set<string>();
+    const firstByLevel = new Map<string, LiqEvent>();
     for (const event of list) {
-      if (event.invalidIndex != null && event.reclaimIndex != null && event.invalidIndex - event.reclaimIndex <= 8) invalidated += 1;
+      const prev = firstByLevel.get(event.levelId);
+      if (!prev || event.sweepIndex < prev.sweepIndex) firstByLevel.set(event.levelId, event);
+    }
+    const overlapping = list.length - firstByLevel.size;
+    for (const event of list) {
+      if (event.invalidIndex != null && event.reclaimIndex != null && event.invalidIndex > event.reclaimIndex) invalidated += 1;
       const i = event.reclaimIndex as number;
       const base = bars[i]?.c;
       if (!(base > 0)) continue;
+      if (fromT == null || bars[i].t < fromT) fromT = bars[i].t;
       const sign = direction === "bull" ? 1 : -1;
-      const take = (step: number, bucket: number[]) => {
+      const independent = firstByLevel.get(event.levelId) === event;
+      const take = (step: number, bucket: number[], indepBucket: number[], hole: keyof typeof incomplete, excessBucket: number[]) => {
+        if (event.invalidIndex != null && event.invalidIndex <= i + step) return;
         const bar = bars[i + step];
-        if (!bar) return;
-        pushObs(bucket, sign * ((bar.c / base - 1) * 100), capped);
+        if (!bar) {
+          incomplete[hole] += 1;
+          return;
+        }
+        if (toT == null || bar.t > toT) toT = bar.t;
+        const stock = sign * ((bar.c / base - 1) * 100);
+        pushObs(bucket, stock, capped);
+        if (independent) pushObs(indepBucket, stock, capped);
+        const b0 = opts?.bench ? nearestBench(opts.bench, bars[i].t, slack) : null;
+        const b1 = opts?.bench ? nearestBench(opts.bench, bar.t, slack) : null;
+        if (b0 && b1 && b0.c > 0) pushObs(excessBucket, stock - sign * ((b1.c / b0.c - 1) * 100), capped);
       };
-      take(1, obs.c1);
-      take(3, obs.c3);
-      take(5, obs.c5);
-      take(8, obs.c8);
+      take(1, obs.c1, indep.c1, "c1", excess.c1);
+      take(3, obs.c3, indep.c3, "c3", excess.c3);
+      take(5, obs.c5, indep.c5, "c5", excess.c5);
+      take(8, obs.c8, indep.c8, "c8", excess.c8);
       let fav = 0;
       let adv = 0;
       let any = false;
+      const blocked = event.invalidIndex != null;
       for (let k = 1; k <= 8 && i + k < bars.length; k++) {
+        if (blocked && event.invalidIndex != null && event.invalidIndex <= i + k) break;
         any = true;
         const up = ((bars[i + k].h / base - 1) * 100) * sign;
         const dn = ((bars[i + k].l / base - 1) * 100) * sign;
@@ -876,9 +996,27 @@ export function forwardStats(events: LiqEvent[], bars: ScanBar[]): ForwardStats[
       if (any) {
         pushObs(obs.mfe, fav, capped);
         pushObs(obs.mae, adv, capped);
+        if (independent) {
+          pushObs(indep.mfe, fav, capped);
+          pushObs(indep.mae, adv, capped);
+        }
       }
     }
-    out.push(packStats(pattern, direction, list.length, invalidated, obs, capped.on));
+    const row = packStats(pattern, direction, list.length, invalidated, obs, capped.on, {
+      quality,
+      symbols: opts?.symbol ? [opts.symbol] : [],
+      incomplete,
+      overlapping,
+      independentN: firstByLevel.size,
+      fromT,
+      toT,
+      excessAvg: { c1: avg(excess.c1), c3: avg(excess.c3), c5: avg(excess.c5), c8: avg(excess.c8) },
+      excessSamples: { c1: excess.c1.length, c3: excess.c3.length, c5: excess.c5.length, c8: excess.c8.length },
+    });
+    row.indepObs = indep;
+    row.excessObs = excess;
+    row.indepMedian = { c1: median(indep.c1), c3: median(indep.c3), c5: median(indep.c5), c8: median(indep.c8) };
+    out.push(row);
   }
   return out;
 }
@@ -894,22 +1032,66 @@ function concatObs(parts: ForwardObs[]): ForwardObs {
   return out;
 }
 
-/** Pools the individual observations. A median of per-name medians is not used. */
+/** Pools the individual observations. A median of per-name medians is not used. Strong and Potential stay apart. */
 export function mergeStats(parts: ForwardStats[]): ForwardStats[] {
-  const map = new Map<string, { pattern: LiqPattern; direction: LiqDirection; n: number; invalidated: number; obs: ForwardObs[]; capped: boolean }>();
+  const map = new Map<string, { pattern: LiqPattern; direction: LiqDirection; quality?: "strong" | "potential"; n: number; invalidated: number; obs: ForwardObs[]; indep: ForwardObs[]; capped: boolean; symbols: Set<string>; incomplete: { c1: number; c3: number; c5: number; c8: number }; overlapping: number; independentN: number; fromT: number | null; toT: number | null; excess: ForwardObs[] }>();
   for (const row of parts) {
-    const key = `${row.pattern}|${row.direction}`;
-    const cur = map.get(key) || { pattern: row.pattern, direction: row.direction, n: 0, invalidated: 0, obs: [], capped: false };
+    const key = `${row.pattern}|${row.direction}|${row.quality || "all"}`;
+    const cur = map.get(key) || {
+      pattern: row.pattern,
+      direction: row.direction,
+      quality: row.quality,
+      n: 0,
+      invalidated: 0,
+      obs: [],
+      indep: [],
+      capped: false,
+      symbols: new Set<string>(),
+      incomplete: emptyIncomplete(),
+      overlapping: 0,
+      independentN: 0,
+      fromT: null,
+      toT: null,
+      excess: [],
+    };
     cur.n += row.n;
     cur.invalidated += row.invalidated;
     cur.capped = cur.capped || row.capped === true;
+    cur.overlapping += row.overlapping || 0;
+    cur.independentN += row.independentN || 0;
+    if (row.incomplete) {
+      cur.incomplete.c1 += row.incomplete.c1;
+      cur.incomplete.c3 += row.incomplete.c3;
+      cur.incomplete.c5 += row.incomplete.c5;
+      cur.incomplete.c8 += row.incomplete.c8;
+    }
+    if (row.fromT != null && (cur.fromT == null || row.fromT < cur.fromT)) cur.fromT = row.fromT;
+    if (row.toT != null && (cur.toT == null || row.toT > cur.toT)) cur.toT = row.toT;
+    for (const symbol of row.symbols || []) cur.symbols.add(symbol);
     if (row.obs) cur.obs.push(row.obs);
+    if (row.indepObs) cur.indep.push(row.indepObs);
+    if (row.excessObs) cur.excess.push(row.excessObs);
     map.set(key, cur);
   }
   return [...map.values()].map((row) => {
     const obs = concatObs(row.obs);
     const capped = row.capped || Object.values(obs).some((bucket) => bucket.length >= OBS_CAP);
-    return packStats(row.pattern, row.direction, row.n, row.invalidated, obs, capped);
+    const packed = packStats(row.pattern, row.direction, row.n, row.invalidated, obs, capped, {
+      quality: row.quality,
+      symbols: [...row.symbols],
+      incomplete: row.incomplete,
+      overlapping: row.overlapping,
+      independentN: row.independentN,
+      fromT: row.fromT,
+      toT: row.toT,
+    });
+    packed.indepObs = concatObs(row.indep);
+    const excess = concatObs(row.excess);
+    packed.excessObs = excess;
+    packed.excessAvg = { c1: avg(excess.c1), c3: avg(excess.c3), c5: avg(excess.c5), c8: avg(excess.c8) };
+    packed.excessSamples = { c1: excess.c1.length, c3: excess.c3.length, c5: excess.c5.length, c8: excess.c8.length };
+    packed.indepMedian = { c1: median(packed.indepObs.c1), c3: median(packed.indepObs.c3), c5: median(packed.indepObs.c5), c8: median(packed.indepObs.c8) };
+    return packed;
   });
 }
 
@@ -949,4 +1131,94 @@ export function replayNoLookahead(bars: ScanBar[], cfg: LiqConfig = DEFAULT_LIQ)
     }
   }
   return { checked, leaks };
+}
+
+/**
+ * Every closed prefix, not only the candles that ended up inside a signal.
+ * A forming read of the same prefix must not close a reclaim or a follow-through on the live bar.
+ */
+export function replayEveryPrefix(bars: ScanBar[], cfg: LiqConfig = DEFAULT_LIQ): { prefixes: number; leaks: ReplayLeak[] } {
+  const leaks: ReplayLeak[] = [];
+  const prior = new Map<string, LiqEvent>();
+  const start = Math.min(bars.length, cfg.left + cfg.right);
+  for (let end = start; end < bars.length; end++) {
+    const prefix = bars.slice(0, end + 1);
+    const closed = detectLiquidity(prefix, cfg, false);
+    const live = detectLiquidity(prefix, cfg, true);
+    for (const event of closed) {
+      if (event.swingIndex + cfg.right > end) leaks.push({ id: event.id, reason: "swing used before its right-hand candles closed" });
+      if (event.reclaimClosed && (event.reclaimIndex == null || event.reclaimIndex > end)) leaks.push({ id: event.id, reason: "reclaim closed after the prefix" });
+      if (event.followThrough && (event.confirmIndex == null || event.confirmIndex > end)) leaks.push({ id: event.id, reason: "follow-through used a future candle" });
+      if (event.invalidIndex != null && event.invalidIndex > end) leaks.push({ id: event.id, reason: "invalidation used a future candle" });
+      if (event.status === "expired" && event.reclaimIndex != null && end - event.reclaimIndex <= cfg.expiry) {
+        leaks.push({ id: event.id, reason: "expired before the reclaim life had elapsed" });
+      }
+      const prev = prior.get(event.id);
+      if (prev) {
+        if (prev.extreme !== event.extreme || prev.sweepIndex !== event.sweepIndex || prev.level !== event.level) {
+          leaks.push({ id: event.id, reason: "a later candle rewrote the sweep" });
+        }
+        if (prev.reclaimClosed && prev.reclaimIndex !== event.reclaimIndex) leaks.push({ id: event.id, reason: "a later candle rewrote the reclaim" });
+        if (prev.followThrough && event.confirmIndex !== prev.confirmIndex) leaks.push({ id: event.id, reason: "follow-through moved after it had already printed" });
+      }
+      prior.set(event.id, event);
+    }
+    for (const event of live) {
+      if (event.reclaimIndex === end && event.reclaimClosed) leaks.push({ id: event.id, reason: "the live bar was treated as a closed reclaim" });
+      if (event.confirmIndex === end && event.followThrough) leaks.push({ id: event.id, reason: "the live bar was treated as follow-through" });
+    }
+  }
+  return { prefixes: Math.max(0, bars.length - start), leaks };
+}
+
+export type ScanCursorPlan = { action: "scan"; cursor: number } | { action: "use-saved" } | { action: "replace-with-saved" };
+
+/** Where the next batch starts. A stored cursor wins over a client that is behind. */
+export function planScanCursor(
+  saved: { done: boolean; cursorAt: number } | null,
+  requested: number,
+  fresh: boolean,
+): ScanCursorPlan {
+  if (fresh && requested === 0) return { action: "scan", cursor: 0 };
+  if (!saved) return { action: "scan", cursor: Math.max(0, requested) };
+  if (saved.done && requested === 0 && !fresh) return { action: "use-saved" };
+  if (!saved.done && requested < saved.cursorAt) return { action: "replace-with-saved" };
+  if (!saved.done) return { action: "scan", cursor: saved.cursorAt };
+  return { action: "scan", cursor: Math.max(0, requested) };
+}
+
+/** Finished only when every listed name was scanned or explicitly skipped. */
+export function scanIsComplete(universeSize: number, scannedN: number, skippedN: number, cursor: number | null): boolean {
+  if (cursor != null) return false;
+  if (universeSize <= 0) return scannedN + skippedN === 0;
+  return scannedN + skippedN >= universeSize;
+}
+
+export type ScanProgress = { scannedN: number; skippedN: number; cursorAt: number; done: boolean };
+
+/** Apply one page onto a saved cursor. A fresh page (from 0) replaces the counts. A later page must not mark the book finished early. */
+export function reduceScanState(
+  prev: { scannedN: number; skippedN: number },
+  page: { scanned: number; skipped: number; cursor: number | null; universeSize: number },
+  fromCursor: number,
+): ScanProgress {
+  const scannedN = (fromCursor === 0 ? 0 : prev.scannedN) + page.scanned;
+  const skippedN = (fromCursor === 0 ? 0 : prev.skippedN) + page.skipped;
+  return {
+    scannedN,
+    skippedN,
+    cursorAt: page.cursor ?? page.universeSize,
+    done: scanIsComplete(page.universeSize, scannedN, skippedN, page.cursor),
+  };
+}
+
+/** One scan of a cache key at a time. A thrown scan still lets the next one start. */
+export function createScanGate() {
+  const tails = new Map<string, Promise<unknown>>();
+  return function withGate<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = tails.get(key) ?? Promise.resolve();
+    const run = prev.then(fn, fn);
+    tails.set(key, run.then(() => undefined, () => undefined));
+    return run;
+  };
 }

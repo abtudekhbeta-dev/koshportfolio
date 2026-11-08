@@ -3,14 +3,14 @@
 import { loadIndexBasket } from "./index-basket.server";
 import {
   activeSignals,
+  barsForTimeframe,
   detectLiquidity,
-  foldSession4h,
   forwardStats,
   lastBarForming,
   mergeStats,
-  prepareBars,
   session4hTailOpen,
-  sessionOnly,
+  planScanCursor,
+  createScanGate,
   type ForwardStats,
   type LiqEvent,
   type LiqTimeframe,
@@ -34,7 +34,7 @@ const INDEX: Record<string, string> = {
 export const TF_SPEC: Record<LiqTimeframe, { range: string; interval: string; note: string }> = {
   "15m": { range: "1mo", interval: "15m", note: "15-minute history from Yahoo is about one month, not a multi-year tape." },
   "1H": { range: "2y", interval: "60m", note: "Hourly history from Yahoo is about two years." },
-  "4H": { range: "2y", interval: "60m", note: "4-hour bars are folded from hourly prints inside 09:15–15:30 IST. The afternoon bar stops at 15:30, so it is shorter than four hours." },
+  "4H": { range: "2y", interval: "60m", note: "4-hour bars are folded from hourly prints inside 09:15–15:30 IST. A slot missing an expected hour, or a weekend print, is left out. The afternoon bar stops at 15:30, so it is shorter than four hours." },
   "1D": { range: "5y", interval: "1d", note: "Daily bars, up to five years. A candle is scaled when Yahoo's adjusted close differs from the raw close by more than 0.2%, so splits and dividends stay on one series." },
   "1W": { range: "10y", interval: "1wk", note: "Weekly bars, up to ten years. The current week stays Developing until it closes." },
   "1M": { range: "max", interval: "1mo", note: "Monthly bars across the Yahoo max range. The current month stays Developing until it closes." },
@@ -53,9 +53,11 @@ export type ScanPage = {
   timeframeNote: string;
   adjusted: boolean;
   asOf: number;
+  fingerprint: string;
 };
 
-const books = new Map<string, { at: number; symbols: { symbol: string; name: string; exchange: "NSE" | "BSE" }[]; note: string }>();
+const books = new Map<string, { at: number; symbols: { symbol: string; name: string; exchange: "NSE" | "BSE" }[]; note: string; fingerprint: string }>();
+const scanGate = createScanGate();
 
 function pinned(symbol: string, exchange: "NSE" | "BSE"): string {
   const bare = symbol.trim().toUpperCase().replace(/\.(NS|BO)$/i, "");
@@ -65,57 +67,59 @@ function pinned(symbol: string, exchange: "NSE" | "BSE"): string {
 async function listedBook(mode: "all" | "nse" | "bse") {
   const [nse, bse] = await Promise.all([
     listedEquities().catch(() => []),
-    bseEquities().catch(() => ({ ok: false, rows: [], total: null, error: "BSE list failed" })),
+    bseEquities().catch(() => ({ ok: false as const, complete: false, rows: [] as { symbol: string; name: string }[], total: null, received: 0, pagesFailed: 1, fetchedAt: 0, error: "BSE list failed" })),
   ]);
   return composeListedBook({
-    nse: nse.map((row) => ({ symbol: row.symbol, name: row.name })),
-    bse: bse.ok ? bse.rows : [],
+    nse: nse.map((row) => ({ symbol: row.symbol, name: row.name, isin: row.isin })),
+    bse: bse.ok ? bse.rows.map((row) => ({ symbol: row.symbol, name: row.name, isin: row.isin })) : [],
     mode,
     bseReady: bse.ok && bse.rows.length > 0,
+    bseComplete: bse.complete === true,
     bseError: bse.ok ? bse.error : bse.error || "BSE list failed",
   });
 }
 
-async function universeBook(kind: ScanUniverse, explicit: string[]): Promise<{ symbols: { symbol: string; name: string; exchange: "NSE" | "BSE" }[]; note: string }> {
+async function universeBook(kind: ScanUniverse, explicit: string[]): Promise<{ symbols: { symbol: string; name: string; exchange: "NSE" | "BSE" }[]; note: string; fingerprint: string }> {
   if (kind === "watch") {
     const symbols = [...new Set(explicit.map((s) => s.trim().toUpperCase()).filter(Boolean))].slice(0, 80);
+    const rows = symbols.map((symbol) => ({
+      symbol: symbol.endsWith(".BO") ? symbol : symbol.replace(/\.NS$/, ""),
+      name: symbol.replace(/\.(NS|BO)$/i, ""),
+      exchange: symbol.endsWith(".BO") ? "BSE" as const : "NSE" as const,
+    }));
     return {
-      symbols: symbols.map((symbol) => ({
-        symbol: symbol.endsWith(".BO") ? symbol : symbol.replace(/\.NS$/, ""),
-        name: symbol.replace(/\.(NS|BO)$/i, ""),
-        exchange: symbol.endsWith(".BO") ? "BSE" : "NSE",
-      })),
+      symbols: rows,
       note: symbols.length ? "Watchlist symbols you selected. A name is scanned only if the price history answers. A .BO symbol stays on BSE." : "This watchlist has no symbols.",
+      fingerprint: rows.map((row) => row.symbol).sort().join(","),
     };
   }
   const cached = books.get(kind);
   if (cached && Date.now() - cached.at < 6 * 60 * 60 * 1000) return cached;
   if (kind === "all" || kind === "nse" || kind === "bse") {
     const book = await listedBook(kind);
-    const next = { at: Date.now(), symbols: book.symbols, note: book.note };
+    const next = { at: Date.now(), symbols: book.symbols, note: book.note, fingerprint: book.fingerprint };
     if (book.symbols.length) books.set(kind, next);
     return next;
   }
   const id = INDEX[kind];
   const row = NIFTY_CATALOGUE.find((item) => item.symbol === id);
-  if (!row) return { symbols: [], note: "That index is not in the catalogue." };
+  if (!row) return { symbols: [], note: "That index is not in the catalogue.", fingerprint: "missing" };
   const basket = await loadIndexBasket(row);
   if (basket.unavailable || !basket.rows.length) {
-    return { symbols: [], note: basket.unavailable || "No published constituent file for this index." };
+    return { symbols: [], note: basket.unavailable || "No published constituent file for this index.", fingerprint: "empty" };
   }
   const symbols = basket.rows
     .filter((item) => item.symbol)
     .map((item) => ({ symbol: item.symbol as string, name: item.name, exchange: "NSE" as const }));
   const note = `${basket.source || row.name}${basket.asOf ? `, as of ${basket.asOf}` : ""}. ${symbols.length} names with an NSE code${basket.rows.length - symbols.length ? `, ${basket.rows.length - symbols.length} without one and not scanned` : ""}. Weights are not required for this scan.`;
-  const book = { at: Date.now(), symbols, note };
+  const fingerprint = `${row.symbol}|${basket.asOf || ""}|${symbols.length}`;
+  const book = { at: Date.now(), symbols, note, fingerprint };
   books.set(kind, book);
   return book;
 }
 
 function barsFor(tf: LiqTimeframe, raw: { t: number; o: number; h: number; l: number; c: number; v: number; adj?: number }[]) {
-  if (tf === "4H") return prepareBars(foldSession4h(raw), true);
-  if (tf === "15m" || tf === "1H") return prepareBars(sessionOnly(raw), true);
-  return prepareBars(raw, true);
+  return barsForTimeframe(tf, raw);
 }
 
 export async function scanLiquidityPage(input: {
@@ -135,6 +139,13 @@ export async function scanLiquidityPage(input: {
   const hits: ScanHit[] = [];
   const stats: ForwardStats[] = [];
   let adjusted = false;
+  let bench: { t: number; o: number; h: number; l: number; c: number; v: number | null }[] = [];
+  try {
+    const index = await fetchOhlc("^NSEI", spec.range, spec.interval);
+    if (index && !index.missing && index.bars.length > 2) bench = barsFor(input.timeframe, index.bars).bars;
+  } catch {
+    bench = [];
+  }
   let next = 0;
   const run = async (row: { symbol: string; name: string; exchange: "NSE" | "BSE" }) => {
     try {
@@ -166,7 +177,7 @@ export async function scanLiquidityPage(input: {
           exchange: row.exchange,
         });
       }
-      stats.push(...forwardStats(events.filter((event) => event.status !== "developing"), prepared.bars));
+      stats.push(...forwardStats(events.filter((event) => event.status !== "developing"), prepared.bars, { symbol: storedId, bench }));
       scanned.push({
         symbol: storedId,
         name: pack.name || row.name,
@@ -197,9 +208,10 @@ export async function scanLiquidityPage(input: {
     cursor: next < book.symbols.length ? next : null,
     universeSize: book.symbols.length,
     universeNote: book.note,
-    timeframeNote: spec.note,
+    timeframeNote: bench.length ? spec.note : `${spec.note} Nifty did not load, so there is no benchmark-relative column for this page.`,
     adjusted,
     asOf: Date.now(),
+    fingerprint: book.fingerprint,
   };
 }
 
@@ -234,6 +246,7 @@ function fromStored(run: StoredRun): RecallPage {
     saved: true,
     skippedN: run.skippedN,
     scannedN: run.scannedN,
+    fingerprint: "",
   };
 }
 
@@ -256,6 +269,7 @@ function emptyRecall(): RecallPage {
     saved: false,
     skippedN: 0,
     scannedN: 0,
+    fingerprint: "",
   };
 }
 
@@ -269,19 +283,26 @@ export async function scanOrRecall(input: {
   mode?: "read" | "scan";
 }): Promise<RecallPage> {
   const symbols = input.universe === "watch" ? input.symbols || [] : [];
-  const key = liquidityCacheKey(input.timeframe, input.universe, symbols);
+  const book = await universeBook(input.universe, symbols);
+  const key = liquidityCacheKey(input.timeframe, input.universe, symbols, book.fingerprint);
   if (input.mode === "read") {
     const saved = await loadFreshRun(key, input.timeframe);
     return saved ? fromStored(saved) : emptyRecall();
   }
+  return scanGate(key, () => scanBody(input, key));
+}
+
+async function scanBody(
+  input: { timeframe: LiqTimeframe; universe: ScanUniverse; symbols?: string[]; cursor?: number; fresh?: boolean },
+  key: string,
+): Promise<RecallPage> {
   let cursor = Math.max(0, input.cursor || 0);
+  const saved = !input.fresh || cursor !== 0 ? await loadFreshRun(key, input.timeframe) : null;
+  const plan = planScanCursor(saved, cursor, input.fresh === true);
+  if (plan.action === "use-saved") return saved ? fromStored(saved) : emptyRecall();
+  if (plan.action === "replace-with-saved") return saved ? { ...fromStored(saved), replace: true } : emptyRecall();
   if (input.fresh && cursor === 0) await deleteRun(key);
-  else {
-    const saved = await loadFreshRun(key, input.timeframe);
-    if (saved?.done && cursor === 0) return fromStored(saved);
-    if (saved && !saved.done && cursor < saved.cursorAt) return { ...fromStored(saved), replace: true };
-    if (saved && !saved.done) cursor = saved.cursorAt;
-  }
+  cursor = plan.cursor;
   const page = await scanLiquidityPage({
     timeframe: input.timeframe,
     universe: input.universe,
@@ -292,7 +313,7 @@ export async function scanOrRecall(input: {
   return {
     ...page,
     cached: false,
-    partial: page.cursor != null,
+    partial: !stored.done,
     keptUntil: stored.validUntil,
     newerCandle: false,
     saved: stored.ok,

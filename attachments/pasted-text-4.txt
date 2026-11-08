@@ -1,0 +1,73 @@
+KOSH — FINAL QUALITY AND DATA-INTEGRITY REFINEMENT
+
+The latest implementation is a substantial improvement. Preserve the existing architecture and all working functionality. Do not redesign the screener.
+
+Address the following remaining issues:
+
+1. Exchange/security identity
+   
+   - Improve NSE/BSE reconciliation using ISIN where available.
+   - Do not assume identical ticker stems always identify the same security.
+   - Keep exchange-specific listings distinguishable.
+   - Clearly disclose when an ISIN match is unavailable.
+   - Report actual BSE pagination completeness, not just the provider-reported total.
+   - Never label a partially retrieved BSE book as complete.
+
+2. Historical 4H candle integrity
+   
+   - Validate every historical 4H slot, not just the latest slot.
+   - Identify missing expected hourly intervals.
+   - Do not use materially incomplete bars for swing or liquidity detection.
+   - Preserve missing volume as missing.
+   - Ensure the chart panel uses exactly the same adjusted OHLC series as the detector.
+   - Test incomplete morning and afternoon slots, weekends, holidays and missing hourly data.
+
+3. Full sequential historical replay
+   
+   - Evaluate every historical prefix, not just selected event checkpoints.
+   - Confirm that a swing becomes available only after its right-side candles close.
+   - Confirm that an intrabar signal may disappear before the candle closes.
+   - Confirm that a closed reclaim appears only after that candle closes.
+   - Confirm that follow-through appears only after its own candle.
+   - Check invalidation and expiry across subsequent prefixes.
+   - Verify that old signals do not acquire information from future candles.
+   - Add deterministic tests for bullish and bearish signals, same-candle reclaim, one-to-three-candle reclaim, equal highs/lows and false breakouts.
+
+4. Strong versus Potential
+   
+   - Make structural quality and lifecycle stage independent dimensions.
+   - A confirmed reclaim should remain identifiable even without follow-through.
+   - Do not make the term Strong ambiguous between strong reclaim and confirmed reversal.
+   - Show separate reclaim and follow-through states and make the score components inspectable.
+   - Maintain the rule that missing volume receives no positive points.
+
+5. Historical statistics
+   
+   - Report Strong and Potential separately.
+   - Show individual horizon sample sizes.
+   - Show the number of unique securities contributing to each sample.
+   - Identify overlapping signals on the same security and level.
+   - Offer non-overlapping signal statistics as a separate robustness check.
+   - Include benchmark-relative returns.
+   - Separate invalidated events, incomplete forward windows and completed forward observations.
+   - Clearly state the dates and timeframe of the underlying sample.
+   - Do not claim predictive performance from synthetic tests.
+
+6. Cache and scan freshness
+   
+   - Make universe composition version and source freshness part of the cache identity or invalidation process.
+   - Ensure a changed universe cannot silently reuse an old completed run.
+   - Ensure a newer candle triggers a clearly labelled refresh state.
+   - Test concurrent scans, interrupted scans and resumes from the stored cursor.
+   - Do not claim completion until every eligible symbol has either been scanned or explicitly skipped.
+
+7. Final validation
+   
+   - Run all relevant tests, typecheck and production build.
+   - Add test coverage for the above edge cases.
+   - Report actual NSE, BSE and All Listed counts, source freshness and price-history availability.
+   - Report scan duration and completed/skipped counts by timeframe.
+   - Distinguish source-level checks from live market-data validation.
+   - Do not overstate the completeness of the universe or the predictive value of the signals.
+
+Preserve all working Kosh functionality. Implement these corrections directly in the source files.

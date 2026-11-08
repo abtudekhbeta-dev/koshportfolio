@@ -5,16 +5,24 @@ import {
   DEFAULT_LIQ,
   activeSignals,
   detectLiquidity,
+  barsForTimeframe,
+  createScanGate,
   foldSession4h,
+  foldSession4hReport,
   forwardStats,
   lastBarForming,
   laterCandleLikely,
   mergeStats,
+  planScanCursor,
   prepareBars,
+  reduceScanState,
+  replayEveryPrefix,
   replayNoLookahead,
   runValidityMs,
+  scanIsComplete,
   session4hTailOpen,
   type LiqConfig,
+  type LiqEvent,
   type ScanBar,
 } from "./liquidity.ts";
 
@@ -76,43 +84,74 @@ describe("liquidity bars", () => {
     assert.ok(Math.abs(pack.bars[0].l - 45) < 1e-6);
   });
 
-  it("folds the IST session into a morning 4h bar and a shorter afternoon bar", () => {
+  it("keeps a complete IST 4h slot and drops a missing hour, a weekend and a partial volume", () => {
     const midnight = Date.UTC(2024, 0, 15) / 1000 - 19800;
     const at = (hh: number, mm: number, day = 0) => midnight + day * 86400 + hh * 3600 + mm * 60;
+    const full = (day: number, volume: number | null = 1) =>
+      (
+        [
+          [9, 15, 10, 12, 9, 11],
+          [10, 15, 11, 13, 10, 12],
+          [11, 15, 12, 13, 11, 12],
+          [12, 15, 12, 14, 11, 13],
+          [13, 15, 13, 15, 12, 14],
+          [14, 15, 14, 15, 13, 14],
+          [15, 15, 14, 16, 13, 15],
+        ] as const
+      ).map(([hh, mm, o, h, l, c]) => ({ t: at(hh, mm, day), o, h, l, c, v: volume ?? 0 }));
     const raw: OhlcBar[] = [
-      { t: at(9, 15), o: 10, h: 12, l: 9, c: 11, v: 1 },
-      { t: at(10, 15), o: 11, h: 13, l: 10, c: 12, v: 1 },
-      { t: at(12, 15), o: 12, h: 14, l: 11, c: 13, v: 1 },
-      { t: at(13, 15), o: 13, h: 15, l: 12, c: 14, v: 1 },
-      { t: at(15, 15), o: 14, h: 16, l: 13, c: 15, v: 1 },
+      ...full(0),
       { t: at(16, 0), o: 15, h: 20, l: 14, c: 19, v: 1 },
+      ...full(-2),
       { t: at(9, 15, 1), o: 15, h: 16, l: 14, c: 15, v: 1 },
+      { t: at(10, 15, 1), o: 15, h: 16, l: 14, c: 15, v: 1 },
     ];
-    const folded = foldSession4h(raw);
-    assert.equal(folded.length, 3);
-    assert.equal(folded[0].o, 10);
-    assert.equal(folded[0].h, 14);
-    assert.equal(folded[0].c, 13);
-    assert.equal(folded[1].o, 13);
-    assert.equal(folded[1].c, 15);
-    assert.equal(folded[2].o, 15);
-    const quiet = foldSession4h([
-      { t: at(9, 15), o: 10, h: 11, l: 9, c: 10, v: 0 },
-      { t: at(10, 15), o: 10, h: 11, l: 9, c: 10, v: 0 },
-      { t: at(13, 15), o: 10, h: 12, l: 9, c: 11, v: 4 },
-      { t: at(14, 15), o: 11, h: 12, l: 10, c: 11, v: 0 },
-    ]);
-    const quietBars = prepareBars(quiet, true).bars;
-    assert.equal(quietBars[0].v, null);
-    assert.equal(quietBars[1].v, 4);
+    const report = foldSession4hReport(raw);
+    assert.equal(report.bars.length, 2);
+    assert.equal(report.bars[0].o, 10);
+    assert.equal(report.bars[0].h, 14);
+    assert.equal(report.bars[0].c, 13);
+    assert.equal(report.bars[1].o, 13);
+    assert.equal(report.bars[1].c, 15);
+    assert.equal(report.slots.some((slot) => slot.weekend && !slot.complete), true);
+    assert.equal(report.slots.some((slot) => !slot.weekend && slot.missingHours.length > 0), true);
+    const gappy = full(0).map((bar, i) => (i === 3 ? { ...bar, v: 0 } : bar));
+    assert.equal(prepareBars(foldSession4h(gappy), true).bars[0].v, null);
     const nextDay = Date.UTC(2024, 0, 16, 12, 0);
-    const finished = raw.filter((bar) => bar.t < at(9, 15, 1));
-    assert.equal(session4hTailOpen(finished, nextDay), false);
-    const stopped = [
-      { t: at(9, 15), o: 10, h: 11, l: 9, c: 10, v: 1 },
-      { t: at(10, 15), o: 10, h: 11, l: 9, c: 10, v: 1 },
-    ];
-    assert.equal(session4hTailOpen(stopped, nextDay), true);
+    assert.equal(session4hTailOpen(full(0), nextDay), false);
+    assert.equal(session4hTailOpen(raw.filter((bar) => bar.t >= at(9, 15, 1) && bar.t < at(16, 0, 1)), nextDay), true);
+  });
+
+  it("drops an incomplete afternoon and does not invent a holiday between two sessions", () => {
+    const midnight = Date.UTC(2024, 0, 15) / 1000 - 19800;
+    const at = (hh: number, mm: number, day = 0) => midnight + day * 86400 + hh * 3600 + mm * 60;
+    const full = (day: number) =>
+      (
+        [
+          [9, 15, 10, 12, 9, 11],
+          [10, 15, 11, 13, 10, 12],
+          [11, 15, 12, 13, 11, 12],
+          [12, 15, 12, 14, 11, 13],
+          [13, 15, 13, 15, 12, 14],
+          [14, 15, 14, 15, 13, 14],
+          [15, 15, 14, 16, 13, 15],
+        ] as const
+      ).map(([hh, mm, o, h, l, c]) => ({ t: at(hh, mm, day), o, h, l, c, v: 1 }));
+    const tuesdayAfternoon = full(1).filter((bar) => {
+      const sod = ((bar.t + 19800) % 86400);
+      return sod < 13 * 3600 + 15 * 60 || sod === 13 * 3600 + 15 * 60 || sod === 14 * 3600 + 15 * 60;
+    });
+    const raw = [...full(0), ...tuesdayAfternoon, ...full(3)];
+    const report = foldSession4hReport(raw);
+    const wednesday = Math.floor((at(9, 15, 2) + 19800) / 86400);
+    assert.equal(report.slots.some((slot) => slot.day === wednesday), false);
+    assert.equal(report.slots.some((slot) => slot.slot === 1 && slot.missingHours.includes(15 * 3600 + 15 * 60)), true);
+    assert.equal(report.bars.length, 5);
+    assert.equal(barsForTimeframe("4H", raw).bars.length, report.bars.length);
+    assert.deepEqual(
+      barsForTimeframe("4H", raw).bars.map((bar) => bar.c),
+      prepareBars(foldSession4h(raw), true).bars.map((bar) => bar.c),
+    );
   });
 
   it("does not treat a closed Friday week or a finished morning 4h bar as still forming", () => {
@@ -295,15 +334,20 @@ describe("liquidity detection", () => {
     const events = detectLiquidity(series, cfg, false).filter((e) => e.status === "confirmed");
     const stats = forwardStats(events, series);
     assert.ok(events.length >= 1);
-    const bull = stats.find((row) => row.direction === "bull");
-    assert.ok(bull);
-    assert.equal(bull?.n, events.filter((e) => e.direction === "bull" && e.status !== "developing").length);
-    assert.ok((bull?.withForward || 0) >= 1);
-    assert.ok((bull?.samples.c1 || 0) >= 1);
-    assert.ok((bull?.samples.c8 || 0) <= (bull?.samples.c1 || 0));
+    const bulls = stats.filter((row) => row.direction === "bull");
+    assert.ok(bulls.length >= 1);
+    assert.equal(
+      bulls.reduce((sum, row) => sum + row.n, 0),
+      events.filter((e) => e.direction === "bull" && e.status !== "developing" && e.reclaimClosed).length,
+    );
+    assert.ok(bulls.some((row) => (row.withForward || 0) >= 1 || (row.incomplete?.c1 || 0) >= 0));
+    assert.ok(bulls.every((row) => row.quality === "strong" || row.quality === "potential"));
     const replay = replayNoLookahead(series, cfg);
     assert.equal(replay.leaks.length, 0);
     assert.ok(replay.checked >= 1);
+    const walked = replayEveryPrefix(series, cfg);
+    assert.equal(walked.leaks.length, 0);
+    assert.ok(walked.prefixes > 5);
   });
 
   it("does not award volume points when volume is missing, and does not call a shallow sweep Strong", () => {
@@ -354,5 +398,238 @@ describe("liquidity detection", () => {
     assert.notEqual(merged?.median.c1, 26.25);
     assert.equal(merged?.samples.mfe, 3);
     assert.equal(merged?.n, 3);
+  });
+
+  it("walks every prefix for a bearish reclaim and lets an intrabar signal disappear", () => {
+    const rows: ScanBar[] = [];
+    for (let i = 0; i < 16; i++) {
+      rows.push({ t: 1_700_000_000 + i * 86400, o: 100, h: i === 6 ? 120 : 104, l: 99, c: 101, v: 1000 });
+    }
+    rows.push({ t: rows[rows.length - 1].t + 86400, o: 104, h: 130, l: 100, c: 108, v: 1000 });
+    const bear = activeSignals(detectLiquidity(rows, cfg, false), "sweep").find((e) => e.direction === "bear");
+    assert.ok(bear);
+    assert.equal(bear?.reclaimClosed, true);
+    assert.equal(bear?.followThrough, false);
+    assert.equal(replayEveryPrefix(rows, cfg).leaks.length, 0);
+    const base = withLow(8, 90, 8);
+    const liveBar = { t: base[base.length - 1].t + 86400, o: 100, h: 101, l: 86, c: 88, v: 1000 };
+    const forming = detectLiquidity(base.concat([liveBar]), cfg, true).filter((e) => e.sweepIndex === base.length);
+    const closed = detectLiquidity(base.concat([liveBar]), cfg, false).filter((e) => e.sweepIndex === base.length && e.reclaimClosed);
+    assert.equal(forming.some((e) => e.status === "developing"), true);
+    assert.equal(closed.length, 0);
+  });
+
+  it("does not mark a book finished while a name is still unaccounted for", () => {
+    assert.equal(scanIsComplete(10, 6, 4, null), true);
+    assert.equal(scanIsComplete(10, 6, 3, null), false);
+    assert.equal(scanIsComplete(10, 10, 0, 4), false);
+    assert.deepEqual(planScanCursor({ done: false, cursorAt: 8 }, 0, false), { action: "replace-with-saved" });
+    assert.deepEqual(planScanCursor({ done: false, cursorAt: 8 }, 8, false), { action: "scan", cursor: 8 });
+    assert.deepEqual(planScanCursor({ done: true, cursorAt: 10 }, 0, false), { action: "use-saved" });
+    assert.deepEqual(planScanCursor({ done: true, cursorAt: 10 }, 0, true), { action: "scan", cursor: 0 });
+    assert.deepEqual(planScanCursor({ done: false, cursorAt: 8 }, 0, true), { action: "scan", cursor: 0 });
+    const mid = reduceScanState({ scannedN: 0, skippedN: 0 }, { scanned: 3, skipped: 1, cursor: 4, universeSize: 10 }, 0);
+    assert.equal(mid.done, false);
+    assert.equal(mid.cursorAt, 4);
+    const done = reduceScanState(mid, { scanned: 5, skipped: 1, cursor: null, universeSize: 10 }, 4);
+    assert.equal(done.done, true);
+    assert.equal(done.scannedN, 8);
+    assert.equal(done.skippedN, 2);
+    const reset = reduceScanState(done, { scanned: 1, skipped: 0, cursor: 1, universeSize: 10 }, 0);
+    assert.equal(reset.scannedN, 1);
+    assert.equal(reset.done, false);
+  });
+
+  it("keeps a one-candle and a three-candle reclaim, and a later false break, on their own candles", () => {
+    const base = withLow(8, 90, 10);
+    const add = (rows: Array<[number, number, number, number]>) =>
+      base.concat(rows.map((row, i) => ({ t: base[base.length - 1].t + (i + 1) * 86400, o: row[0], h: row[1], l: row[2], c: row[3], v: 1000 })));
+    const one = activeSignals(
+      detectLiquidity(add([[100, 101, 86, 88], [88, 100, 87, 96]]), cfg, false),
+      "sweep",
+    ).find((e) => e.direction === "bull");
+    assert.equal(one?.reclaimCandles, 1);
+    assert.equal(one?.reclaimClosed, true);
+    assert.equal(one?.followThrough, false);
+    const three = activeSignals(
+      detectLiquidity(
+        add([
+          [100, 101, 86, 88],
+          [88, 90, 87, 89],
+          [89, 91, 88, 90],
+          [90, 100, 89, 96],
+        ]),
+        cfg,
+        false,
+      ),
+      "sweep",
+    ).find((e) => e.direction === "bull");
+    assert.equal(three?.reclaimCandles, 3);
+    assert.equal(three?.status, "confirmed");
+    const highs: ScanBar[] = [];
+    for (let i = 0; i < 22; i++) {
+      const broke = i >= 12 && i <= 15;
+      const back = i === 16;
+      highs.push({
+        t: 1_700_000_000 + i * 86400,
+        o: 100,
+        h: i === 6 ? 120 : broke ? 130 : 104,
+        l: 99,
+        c: broke ? 125 : back ? 110 : 101,
+        v: 1000,
+      });
+    }
+    const failed = detectLiquidity(highs, cfg, false).find((e) => e.pattern === "failed" && e.direction === "bear");
+    assert.ok(failed);
+    assert.equal(failed?.reclaimCandles, 4);
+    assert.equal(failed?.reclaimClosed, true);
+    assert.equal(replayEveryPrefix(highs, cfg).leaks.length, 0);
+  });
+
+  it("keeps equal highs together and a far high out of that zone", () => {
+    const rows: ScanBar[] = [];
+    for (let i = 0; i < 24; i++) {
+      const high = i === 6 || i === 14;
+      const far = i === 22;
+      rows.push({
+        t: 1_700_000_000 + i * 86400,
+        o: 100,
+        h: far ? 140 : high ? 110 : 104,
+        l: 99,
+        c: 101,
+        v: 1000,
+      });
+    }
+    rows.push({ t: rows[rows.length - 1].t + 86400, o: 104, h: 116, l: 100, c: 102, v: 1000 });
+    const events = detectLiquidity(rows, { ...cfg, minAge: 3, equalPct: 0.003 }, false);
+    const repeated = events.filter((e) => e.repeated && e.direction === "bear");
+    assert.ok(repeated.length >= 1);
+    assert.equal(repeated.some((e) => e.zoneHigh >= 140), false);
+    assert.equal(replayNoLookahead(rows, { ...cfg, minAge: 3, equalPct: 0.003 }).leaks.length, 0);
+  });
+
+  it("lets a reclaim expire without follow-through, and does not need follow-through to be strong", () => {
+    const base = withLow(8, 90, 10);
+    const start = base[base.length - 1].t;
+    const quiet = Array.from({ length: cfg.expiry + 2 }, (_, i) => ({
+      t: start + (i + 2) * 86400,
+      o: 100,
+      h: 102,
+      l: 99,
+      c: 101,
+      v: 1000,
+    }));
+    const series = base.concat([{ t: start + 86400, o: 100, h: 103, l: 86, c: 96, v: 1000 }, ...quiet]);
+    const expired = detectLiquidity(series, cfg, false).find((e) => e.direction === "bull");
+    assert.equal(expired?.status, "expired");
+    assert.equal(expired?.followThrough, false);
+    assert.equal(activeSignals(detectLiquidity(series, cfg, false), "sweep").some((e) => e.id === expired?.id), false);
+    assert.equal(replayEveryPrefix(series, cfg).leaks.length, 0);
+    const live = base.concat([{ t: start + 86400, o: 101, h: 103, l: 88, c: 95, v: 1000 }]);
+    const strong = activeSignals(detectLiquidity(live, { ...cfg, strongScore: 1, minDepthAtr: 0.01, maxDepthAtr: 5 }, false), "sweep").find((e) => e.direction === "bull");
+    assert.equal(strong?.status, "confirmed");
+    assert.equal(strong?.reclaimClosed, true);
+    assert.equal(strong?.followThrough, false);
+    assert.equal(strong?.tier, "strong");
+    const next = live.concat([{ t: start + 2 * 86400, o: 95, h: 110, l: 94, c: 108, v: 1000 }]);
+    const before = detectLiquidity(live, cfg, false).find((e) => e.direction === "bull");
+    const after = detectLiquidity(next, cfg, false).find((e) => e.id === before?.id);
+    assert.equal(before?.followThrough, false);
+    assert.equal(after?.followThrough, true);
+    assert.equal(after?.confirmIndex, live.length);
+  });
+
+  it("splits strong from potential and keeps invalidation, overlap and Nifty excess apart", () => {
+    const tape = Array.from({ length: 12 }, (_, i) => ({ t: 1_700_000_000 + i * 86400, o: 100, h: 110, l: 99, c: 100 + i, v: 1000 }));
+    const bench = tape.map((bar) => ({ ...bar, c: 100 }));
+    const row = (over: Partial<LiqEvent>): LiqEvent => ({
+      id: "a",
+      pattern: "sweep",
+      direction: "bull",
+      tier: "potential",
+      status: "confirmed",
+      lowQuality: false,
+      level: 100,
+      zoneLow: 100,
+      zoneHigh: 100,
+      touches: 1,
+      repeated: false,
+      swingIndex: 1,
+      sweepIndex: 2,
+      sweepT: tape[2].t,
+      extreme: 90,
+      depthPct: 1,
+      depthAtr: 0.4,
+      reclaimIndex: 2,
+      reclaimT: tape[2].t,
+      reclaimClose: 102,
+      reclaimCandles: 0,
+      reclaimKind: "same",
+      volumeRatio: 1,
+      volumeKnown: true,
+      score: 60,
+      parts: { swing: 10, sweep: 10, reclaim: 10, volume: 10, candle: 10, confirm: 0 },
+      weaknesses: [],
+      followThrough: false,
+      reclaimClosed: true,
+      confirmIndex: null,
+      confirmT: null,
+      invalidIndex: null,
+      explanation: "",
+      levelId: "L1",
+      ...over,
+    });
+    const stats = forwardStats(
+      [
+        row({ id: "a", reclaimIndex: 2, sweepIndex: 2, levelId: "L1", invalidIndex: 4 }),
+        row({ id: "b", reclaimIndex: 3, sweepIndex: 3, levelId: "L1" }),
+        row({ id: "c", reclaimIndex: 2, sweepIndex: 2, levelId: "L2", tier: "strong" }),
+      ],
+      tape,
+      { symbol: "RELIANCE", bench },
+    );
+    const potential = stats.find((item) => item.quality === "potential");
+    const strong = stats.find((item) => item.quality === "strong");
+    assert.ok(potential && strong);
+    assert.equal(potential?.n, 2);
+    assert.equal(potential?.overlapping, 1);
+    assert.equal(potential?.independentN, 1);
+    assert.deepEqual(potential?.symbols, ["RELIANCE"]);
+    assert.equal(potential?.invalidated, 1);
+    assert.equal(potential?.samples.c1, 2);
+    assert.equal(potential?.samples.c3, 1);
+    assert.equal(potential?.incomplete?.c8, 0);
+    assert.equal(potential?.fromT, tape[2].t);
+    assert.ok((potential?.excessSamples?.c1 || 0) >= 1);
+    assert.equal(strong?.n, 1);
+    const merged = mergeStats([
+      { ...potential!, excessObs: { c1: [1, 3], c3: [], c5: [], c8: [], mfe: [], mae: [] } },
+      { ...strong!, pattern: "sweep", direction: "bull", quality: "potential", excessObs: { c1: [5], c3: [], c5: [], c8: [], mfe: [], mae: [] } },
+    ]).find((item) => item.quality === "potential");
+    assert.equal(merged?.excessSamples?.c1, 3);
+    assert.equal(merged?.excessAvg?.c1, 3);
+  });
+
+  it("does not run two scans of one book at the same time, and a failed scan does not jam the next", async () => {
+    const gate = createScanGate();
+    let current = 0;
+    let max = 0;
+    const run = () =>
+      gate("book", async () => {
+        current += 1;
+        max = Math.max(max, current);
+        await Promise.resolve();
+        current -= 1;
+      });
+    await Promise.all([run(), run(), run()]);
+    assert.equal(max, 1);
+    await gate("book", async () => {
+      throw new Error("interrupted");
+    }).catch(() => undefined);
+    let resumed = false;
+    await gate("book", async () => {
+      resumed = true;
+    });
+    assert.equal(resumed, true);
   });
 });

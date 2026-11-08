@@ -1,14 +1,19 @@
-/** BSE equity lines from Yahoo's screener. Cached. Not a fabricated list. */
+import { bseRetrievalStatus } from "./liquidity-universe.ts";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
-export type BseRow = { symbol: string; name: string };
+export type BseRow = { symbol: string; name: string; isin?: string | null };
 
 export type BseBook = {
   ok: boolean;
+  /** True only when every requested page returned and the row count covers the reported total. */
+  complete: boolean;
   rows: BseRow[];
   total: number | null;
+  received: number;
+  pagesFailed: number;
+  fetchedAt: number;
   error?: string;
 };
 
@@ -26,7 +31,8 @@ export function parseBseScreenerPage(data: unknown): { total: number; rows: BseR
     const kind = String(quote.quoteType || "EQUITY").toUpperCase();
     if (!symbol.endsWith(".BO") || kind !== "EQUITY") continue;
     const name = String(quote.shortName || quote.longName || symbol.replace(/\.BO$/, "")).trim();
-    rows.push({ symbol, name: name || symbol });
+    const isin = String(quote.isin || "").trim().toUpperCase();
+    rows.push({ symbol, name: name || symbol, ...(isin && /^IN[A-Z0-9]{10}$/.test(isin) ? { isin } : {}) });
   }
   const total = Number(page?.total);
   return { total: Number.isFinite(total) ? total : rows.length, rows };
@@ -97,11 +103,15 @@ async function loadBseBook(): Promise<BseBook> {
   for (const row of first.rows) rows.set(row.symbol, row);
   const total = first.total;
   const size = 250;
-  const pages = Math.min(40, Math.ceil(Math.max(0, total - first.rows.length) / size));
+  const pagesWanted = Math.ceil(Math.max(0, total - first.rows.length) / size);
+  const capped = pagesWanted > 40;
+  const pages = Math.min(40, pagesWanted);
+  let received = first.rows.length;
   let failed = 0;
   for (let i = 1; i <= pages; i++) {
     try {
       const page = await screenerPage(session, i * size, size);
+      received += page.rows.length;
       for (const row of page.rows) rows.set(row.symbol, row);
       if (!page.rows.length) break;
     } catch {
@@ -110,17 +120,23 @@ async function loadBseBook(): Promise<BseBook> {
     }
   }
   const got = [...rows.values()];
-  const short = total > 0 && got.length + 25 < total;
+  const status = bseRetrievalStatus({ received, unique: got.length, total, pagesFailed: failed, capped });
   return {
     ok: got.length > 0,
+    complete: status.complete,
     rows: got,
     total,
-    error: short ? `Yahoo reported ${total} BSE equities and ${got.length} lines came back` : undefined,
+    received,
+    pagesFailed: failed,
+    fetchedAt: Date.now(),
+    error: status.complete ? undefined : status.note,
   };
 }
 
 export async function bseEquities(): Promise<BseBook> {
-  if (cache && Date.now() - cache.at < TTL && cache.data.ok) return cache.data;
+  const now = Date.now();
+  if (cache && cache.data.complete && now - cache.at < TTL) return cache.data;
+  if (cache && !cache.data.complete && now - cache.at < 15 * 60 * 1000) return cache.data;
   if (inflight) return inflight;
   inflight = loadBseBook()
     .then((data) => {
@@ -129,7 +145,7 @@ export async function bseEquities(): Promise<BseBook> {
     })
     .catch((err: unknown) => {
       const error = err instanceof Error ? err.message : "BSE list failed";
-      return { ok: false, rows: [], total: null, error };
+      return { ok: false, complete: false, rows: [], total: null, received: 0, pagesFailed: 1, fetchedAt: Date.now(), error };
     })
     .finally(() => {
       inflight = null;

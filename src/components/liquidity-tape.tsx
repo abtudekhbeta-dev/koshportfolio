@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiOhlc } from "@/lib/kosh/api";
-import { foldSession4h, prepareBars, type LiqEvent } from "@/lib/kosh/liquidity";
+import { barsForTimeframe, foldSession4hReport, type LiqEvent } from "@/lib/kosh/liquidity";
 
 /** The 4-hour candles the scan actually used. The stock chart has no 4-hour frame. */
 export function LiquidityTape({ symbol, hit }: { symbol: string; hit: LiqEvent }) {
@@ -13,7 +13,9 @@ export function LiquidityTape({ symbol, hit }: { symbol: string; hit: LiqEvent }
   if (query.isError || !query.data || query.data.missing) {
     return <p className="p-4 text-[13px] text-muted">The hourly tape did not answer, so the 4-hour structure cannot be drawn.</p>;
   }
-  const bars = prepareBars(foldSession4h(query.data.bars), true).bars;
+  const report = foldSession4hReport(query.data.bars);
+  const bars = barsForTimeframe("4H", query.data.bars).bars;
+  const dropped = report.slots.filter((slot) => !slot.complete).length;
   const sweepAt = bars.findIndex((bar) => bar.t === hit.sweepT);
   const center = sweepAt >= 0 ? sweepAt : bars.length - 1;
   const slice = bars.slice(Math.max(0, center - 24), Math.min(bars.length, center + 16));
@@ -30,7 +32,7 @@ export function LiquidityTape({ symbol, hit }: { symbol: string; hit: LiqEvent }
   return (
     <div>
       <p className="px-3 pb-2 text-[12px] text-muted">
-        These are the 4-hour candles folded from hourly prints inside 09:15–15:30 IST. The afternoon bar is shorter. This is the structure the scan used, not the 1-hour stock chart.
+        These are the same adjusted 4-hour candles the scan uses, folded from hourly prints inside 09:15–15:30 IST. A slot missing an expected hour is left out. {dropped ? `${dropped} incomplete slots were left out, including any weekend or partial session.` : "Every folded slot had its expected hours."} The afternoon bar is shorter. This is not the 1-hour stock chart.
         {query.data.seriesNote ? ` ${query.data.seriesNote}` : ""}
       </p>
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full" role="img" aria-label="4-hour candles around the signal">

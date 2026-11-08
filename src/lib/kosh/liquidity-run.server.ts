@@ -1,7 +1,7 @@
 /** Saved liquidity scans. Kept for one reclaim life of the timeframe (10 bars), then dropped. */
 
 import { getSql } from "@/lib/db";
-import { laterCandleLikely, mergeStats, runValidityMs, type ForwardStats, type LiqTimeframe } from "./liquidity";
+import { laterCandleLikely, mergeStats, reduceScanState, runValidityMs, type ForwardStats, type LiqTimeframe } from "./liquidity";
 
 export type StoredHit = Record<string, unknown> & { id: string };
 
@@ -101,9 +101,9 @@ function rowToRun(row: {
   };
 }
 
-export function liquidityCacheKey(tf: string, universe: string, symbols: string[]) {
+export function liquidityCacheKey(tf: string, universe: string, symbols: string[], revision = "") {
   const list = [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))].sort().join(",");
-  return `v2|${tf}|${universe}|${list}`;
+  return `v3|${tf}|${universe}|${revision}|${list}`;
 }
 
 export async function loadFreshRun(key: string, tf: LiqTimeframe): Promise<StoredRun | null> {
@@ -167,7 +167,7 @@ export async function mergeRun(
     adjusted: boolean;
   },
   fromCursor: number,
-): Promise<{ ok: boolean; validUntil: number; skippedN: number; scannedN: number }> {
+): Promise<{ ok: boolean; validUntil: number; skippedN: number; scannedN: number; done: boolean }> {
   const prev = (await loadFreshRun(key, tf)) || {
     cursorAt: 0,
     universeSize: page.universeSize,
@@ -202,17 +202,22 @@ export async function mergeRun(
   }
   prev.stats = mergeStats([...prev.stats, ...page.stats]);
   prev.skipped = prev.skipped.concat(page.skipped).slice(0, 200);
-  prev.skippedN += page.skipped.length;
-  prev.scannedN += page.scanned.length;
+  const progress = reduceScanState(
+    { scannedN: prev.scannedN, skippedN: prev.skippedN },
+    { scanned: page.scanned.length, skipped: page.skipped.length, cursor: page.cursor, universeSize: page.universeSize },
+    fromCursor,
+  );
+  prev.scannedN = progress.scannedN;
+  prev.skippedN = progress.skippedN;
   for (const row of page.scanned) {
     if (row.to != null && (prev.newestBar == null || row.to > prev.newestBar)) prev.newestBar = row.to;
   }
   const now = Date.now();
   const next: StoredRun = {
     ...prev,
-    cursorAt: page.cursor ?? page.universeSize,
+    cursorAt: progress.cursorAt,
     universeSize: page.universeSize,
-    done: page.cursor == null,
+    done: progress.done,
     universeNote: page.universeNote || prev.universeNote,
     timeframeNote: page.timeframeNote || prev.timeframeNote,
     adjusted: prev.adjusted || page.adjusted,
@@ -262,8 +267,8 @@ export async function mergeRun(
         next.validUntil,
       ],
     );
-    return { ok: true, validUntil: next.validUntil, skippedN: next.skippedN, scannedN: next.scannedN };
+    return { ok: true, validUntil: next.validUntil, skippedN: next.skippedN, scannedN: next.scannedN, done: next.done };
   } catch {
-    return { ok: false, validUntil: next.validUntil, skippedN: next.skippedN, scannedN: next.scannedN };
+    return { ok: false, validUntil: next.validUntil, skippedN: next.skippedN, scannedN: next.scannedN, done: next.done };
   }
 }

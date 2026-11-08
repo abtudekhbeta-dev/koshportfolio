@@ -97,7 +97,6 @@ function marksFor(hit: Hit): ChartMark[] {
 
 function stageLabel(hit: Hit) {
   if (hit.status === "developing" || !hit.reclaimClosed) return "Developing";
-  if (hit.followThrough) return "Follow-through";
   return "Reclaimed";
 }
 
@@ -173,15 +172,17 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
       setSkippedN((n) => n + (page.skipped?.length || 0));
     }
     if (page.universeSize) {
-      const done = page.cursor == null ? page.universeSize : page.cursor;
-      setProgress({ done: Math.min(done, page.universeSize), size: page.universeSize });
+      const accounted = (page.scannedN || 0) + (page.skippedN || 0);
+      const cursorDone = page.cursor == null ? page.universeSize : page.cursor;
+      const walked = page.scannedN != null ? accounted : cursorDone;
+      setProgress({ done: Math.min(walked, page.universeSize), size: page.universeSize });
       resume.current = page.cursor ?? page.universeSize;
     } else {
       setProgress(null);
       resume.current = 0;
     }
     if (!page.universeSize && !(page.hits || []).length) setSavedKind("none");
-    else if (page.cursor != null) setSavedKind("partial");
+    else if (page.cursor != null || page.partial) setSavedKind("partial");
     else setSavedKind("done");
   }
 
@@ -336,6 +337,8 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
   }
 
   const shownStats = stats.filter((row) => row.pattern === pattern && (direction === "both" || row.direction === direction));
+  const sampleFrom = shownStats.reduce<number | null>((min, row) => (row.fromT != null && (min == null || row.fromT < min) ? row.fromT : min), null);
+  const sampleTo = shownStats.reduce<number | null>((max, row) => (row.toT != null && (max == null || row.toT > max) ? row.toT : max), null);
   const frame = chartFrame(tf);
 
   return (
@@ -357,7 +360,7 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
             disabled={scanning}
             onClick={() => void scan(savedKind !== "partial")}
           >
-            {scanning ? "Scanning…" : savedKind === "partial" ? "Continue" : savedKind === "done" ? "Scan again" : "Scan"}
+            {scanning ? "Scanning…" : savedKind === "partial" ? "Continue" : meta?.newerCandle ? "Refresh" : savedKind === "done" ? "Scan again" : "Scan"}
           </button>
         </div>
 
@@ -464,18 +467,18 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
             {meta?.universeNote ? ` ${meta.universeNote}` : ""}
             {savedKind === "partial" ? " This pass has not finished the book. What finished is saved. Continue picks up the rest." : savedKind === "done" ? " This pass finished the book that was listed." : ""}
             {meta?.keptUntil ? ` Kept until ${new Date(meta.keptUntil).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} IST (${LIFE[tf]}).` : ""}
-            {meta?.newerCandle ? " A newer candle may have started since this save. Scan again to refresh." : ""}
+            {meta?.newerCandle ? " Refresh: a newer candle may have started. This save is not the current bar." : ""}
             {meta?.timeframeNote ? ` ${meta.timeframeNote}` : ""}
           </p>
         ) : (
           <p className="mt-3 text-[12px] text-subtle">
-            Nothing is scanned until you ask. Weekly is the default. All listed is the NSE master plus BSE-only names from Yahoo's BSE screener. NSE and BSE are separate books. Nifty lists use the published constituent file. A name is counted only after its history answers, and skipped names stay listed. Kept for {LIFE[tf]} once a pass finishes.
+            Nothing is scanned until you ask. Weekly is the default. All listed keeps both exchange lines unless the same ISIN is on both. A shared ticker without an ISIN is not merged. A partial BSE pull is not called complete. A name counts only after its history answers or it is explicitly skipped.
           </p>
         )}
 
-        <Group title="Strong" hint="Confirmed structure and convincing supporting evidence." rows={status === "developing" || status === "potential" ? [] : groups.strong} selected={side?.id || ""} onOpen={openSide} onInspect={setOpen} />
-        <Group title="Potential" hint="The structure is there. At least one supporting piece is weaker." rows={status === "developing" || status === "confirmed" ? [] : groups.potential} selected={side?.id || ""} onOpen={openSide} onInspect={setOpen} />
-        <Group title="Developing" hint="The candle has not closed. This can disappear or confirm. It is never Strong." rows={status === "confirmed" || status === "potential" ? [] : groups.developing} selected={side?.id || ""} onOpen={openSide} onInspect={setOpen} />
+        <Group title="Strong structure" hint="Closed reclaim and convincing structure. This is not follow-through and not a confirmed reversal." rows={status === "developing" || status === "potential" ? [] : groups.strong} selected={side?.id || ""} onOpen={openSide} onInspect={setOpen} />
+        <Group title="Potential" hint="The reclaim structure is there. At least one supporting piece is weaker. Follow-through is separate." rows={status === "developing" ? [] : groups.potential} selected={side?.id || ""} onOpen={openSide} onInspect={setOpen} />
+        <Group title="Developing" hint="The candle has not closed. This can disappear. It is never Strong structure." rows={status === "confirmed" || status === "potential" || status === "follow" ? [] : groups.developing} selected={side?.id || ""} onOpen={openSide} onInspect={setOpen} />
 
         {open ? (
           <div className="mt-3 rounded-md bg-surface p-3 text-[13px] shadow-[var(--shadow-border)]">
@@ -502,36 +505,42 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
         {shownStats.length ? (
           <div className="mt-4">
             <h3 className="text-[13px] font-semibold">Measured after the close back, on this scan only</h3>
-            <p className="mt-1 max-w-2xl text-[12px] text-muted">Later candles in the history that was loaded, measured from the close back, not from follow-through. Each horizon has its own sample size. The median is the median of those observations pooled across names, not a median of medians. Not a success rate and not a forecast.</p>
+            <p className="mt-1 max-w-2xl text-[12px] text-muted">Measured on the loaded {tf} bars after the close back{sampleFrom ? `, from ${when(sampleFrom)} to ${when(sampleTo)} IST` : ""}. Strong structure and Potential are separate. Each horizon has its own sample. Names is how many securities contributed. Overlap is a later signal on a level that already had one. First-only keeps the earliest signal on that level. Excess is the signed return minus Nifty when that bar existed. Incomplete means the tape ended first. Invalidated paths are not averaged in. This is not a prediction, and a synthetic test is not this sample.</p>
             <div className="mt-2 overflow-x-auto">
               <table className="w-full min-w-[640px] text-left text-[12px]">
                 <thead className="text-[10px] tracking-[0.06em] text-subtle uppercase">
                   <tr>
+                    <th className="py-1 pr-3">Quality</th>
                     <th className="py-1 pr-3">Side</th>
                     <th className="py-1 pr-3">Signals</th>
-                    <th className="py-1 pr-3">With a later close</th>
+                    <th className="py-1 pr-3">Names</th>
                     <th className="py-1 pr-3">+1</th>
                     <th className="py-1 pr-3">+3</th>
                     <th className="py-1 pr-3">+5</th>
                     <th className="py-1 pr-3">+8</th>
                     <th className="py-1 pr-3">Median favourable</th>
                     <th className="py-1 pr-3">Median adverse</th>
-                    <th className="py-1">Lost within 8</th>
+                    <th className="py-1 pr-3">Excess +1</th>
+                    <th className="py-1 pr-3">First-only +1</th>
+                    <th className="py-1">Invalidated</th>
                   </tr>
                 </thead>
                 <tbody>
                   {shownStats.map((row) => (
-                    <tr key={`${row.pattern}-${row.direction}-${row.n}`} className="border-t border-border font-mono tabular">
+                    <tr key={`${row.pattern}-${row.direction}-${row.quality || "all"}-${row.n}`} className="border-t border-border font-mono tabular">
+                      <td className="py-1 pr-3">{row.quality === "strong" ? "Strong structure" : row.quality === "potential" ? "Potential" : "—"}</td>
                       <td className="py-1 pr-3">{row.direction === "bull" ? "Bullish" : "Bearish"}</td>
-                      <td className="py-1 pr-3">{row.n}</td>
-                      <td className="py-1 pr-3">{row.withForward}</td>
+                      <td className="py-1 pr-3">{row.n}{row.overlapping ? ` (${row.overlapping} overlap)` : ""}{row.independentN != null ? ` / ${row.independentN} first` : ""}</td>
+                      <td className="py-1 pr-3">{row.symbols?.length || "—"}</td>
                       <td className="py-1 pr-3">{num(row.avg.c1)} <span className="text-subtle">n={row.samples?.c1 ?? row.withForward}</span></td>
                       <td className="py-1 pr-3">{num(row.avg.c3)} <span className="text-subtle">n={row.samples?.c3 ?? "—"}</span></td>
                       <td className="py-1 pr-3">{num(row.avg.c5)} <span className="text-subtle">n={row.samples?.c5 ?? "—"}</span></td>
                       <td className="py-1 pr-3">{num(row.avg.c8)} <span className="text-subtle">n={row.samples?.c8 ?? "—"}</span></td>
                       <td className="py-1 pr-3">{num(row.medianMfe)}</td>
                       <td className="py-1 pr-3">{num(row.medianMae)}</td>
-                      <td className="py-1">{row.invalidated}</td>
+                      <td className="py-1 pr-3">{num(row.excessAvg?.c1 ?? null)} <span className="text-subtle">n={row.excessSamples?.c1 ?? 0}</span></td>
+                      <td className="py-1 pr-3">{num(row.indepMedian?.c1 ?? null)} <span className="text-subtle">n={row.independentN ?? 0}</span></td>
+                      <td className="py-1">{row.invalidated}{row.incomplete?.c8 ? ` · ${row.incomplete.c8} short of 8` : ""}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -631,6 +640,7 @@ function Group({
                 <th className="py-1 pr-2">Level</th>
                 <th className="py-1 pr-2">Broke to</th>
                 <th className="py-1 pr-2">Closed back</th>
+                <th className="py-1 pr-2">Follow-through</th>
                 <th className="py-1 pr-2" title="This bar versus the average of the previous 20 bars">Volume</th>
                 <th className="py-1 pr-2">Date</th>
                 <th className="py-1 pr-2">Status</th>
@@ -648,6 +658,7 @@ function Group({
                   <td className="py-1.5 pr-2 font-mono tabular">{fmtPx(hit.level)}</td>
                   <td className="py-1.5 pr-2 font-mono tabular">{fmtPx(hit.extreme)} · {hit.depthPct.toFixed(1)}%</td>
                   <td className="py-1.5 pr-2">{closedBack(hit.reclaimCandles)}</td>
+                  <td className="py-1.5 pr-2">{hit.followThrough ? "Yes" : hit.reclaimClosed ? "No" : "—"}</td>
                   <td className="py-1.5 pr-2 font-mono tabular" title="Versus the previous 20 bars">{volPct(hit.volumeRatio)}</td>
                   <td className="py-1.5 pr-2">{when(hit.sweepT)}</td>
                   <td className="py-1.5 pr-2">{stageLabel(hit)}</td>
