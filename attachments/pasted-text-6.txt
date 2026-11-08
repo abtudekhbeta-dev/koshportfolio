@@ -1,0 +1,68 @@
+Kosh Liquidity Screener — Lock Lease and Persistence Hardening
+
+Work on the existing implementation in "src/lib/kosh/". Do not rewrite the screener or change detection/scoring behaviour.
+
+The latest source already has:
+
+- Database-backed scan locks in "liquidity_locks"
+- Three-minute lock expiry
+- Owner-conditional release
+- An in-process scan gate
+- Saved partial runs and cursor-based continuation
+
+Harden this implementation against lock expiry during long-running scans.
+
+1. Add lock renewal
+
+- Renew the lock periodically while a scan is active, well before its three-minute expiry.
+- Renewal must update the row only when both "cache_key" and "owner" match.
+- A renewal must not revive a lock already taken over by another owner.
+- Treat a zero-row renewal as lost ownership.
+
+2. Enforce ownership before persistence
+
+- Before "mergeRun()" writes a batch, verify that the current process still owns a valid lock.
+- Prefer an atomic database operation or transaction that prevents a stale owner from saving after takeover.
+- If ownership is lost, stop the scan cleanly and return the saved partial run.
+- Do not allow a stale process to overwrite progress or statistics written by the new owner.
+
+3. Handle database outages explicitly
+
+- Preserve the current in-process fallback when the database is unavailable.
+- Clearly distinguish "database-coordinated", "process-local-only", and "lock-lost" states internally.
+- Do not imply cross-instance exclusion when the database cannot coordinate it.
+- Expose a concise diagnostic in server logs, not technical database details in the customer-facing UI.
+
+4. Crash recovery
+
+- Keep expiry-based takeover.
+- Ensure renewal and release are owner-conditional.
+- Ensure a process that resumes after a long pause cannot continue as owner merely because it previously acquired the lock.
+
+5. Add concurrency tests
+Use two independent database clients/process-equivalent owners against the same database:
+
+- Owner A acquires; owner B is blocked.
+- A renews; B remains blocked beyond the original expiry.
+- A expires without renewal; B takes over.
+- A cannot renew or release B's lock after takeover.
+- A cannot persist a batch after losing ownership.
+- Database outage uses only the local gate and is labelled accordingly.
+- Two separate keys can scan concurrently.
+
+6. Preserve everything else
+Do not change:
+
+- Signal detection or event IDs
+- Replay and lookahead protections
+- Strong/Potential classification
+- Volume split handling
+- 4H candle construction
+- Benchmark matching and excess calculations
+- Universe selection or scan cursor semantics
+- Existing UI or chart behaviour
+
+7. Validation
+Run the focused liquidity, replay, lock and universe tests, TypeScript, the full test suite and production build. Report each result separately. Do not call the full suite green while the existing 13 failures remain. Do not claim a full NSE/BSE scan or market backtest unless it was actually run.
+
+Finish by reporting the commit SHA and exactly which preview/build source is being served.
