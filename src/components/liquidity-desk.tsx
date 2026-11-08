@@ -29,6 +29,7 @@ type Page = {
   skippedN?: number;
   scannedN?: number;
   replace?: boolean;
+  locked?: boolean;
   error?: string;
 };
 
@@ -240,6 +241,7 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
     }
     let cursor = fresh ? 0 : resume.current;
     let first = true;
+    let waits = 0;
     try {
       while (!stop.current && cursor < 20000) {
         const params = new URLSearchParams({
@@ -257,6 +259,16 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
           setError(page.error || "The scan did not answer.");
           break;
         }
+        if (page.locked) {
+          waits += 1;
+          if (waits > 20) {
+            setError("Another scan of this book is still running. What finished is saved. Continue in a moment.");
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 600));
+          continue;
+        }
+        waits = 0;
         if (page.cached && page.cursor == null) {
           take(page, "replace");
           break;
@@ -493,7 +505,7 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
               <dt className="text-subtle">Swing</dt><dd>{open.parts.swing}/20</dd>
               <dt className="text-subtle">Break</dt><dd>{open.parts.sweep}/20</dd>
               <dt className="text-subtle">Closed back</dt><dd>{open.reclaimClosed ? "Yes" : "Not closed"} · {open.parts.reclaim}/20</dd>
-              <dt className="text-subtle">Volume</dt><dd>{open.volumeKnown ? `${open.parts.volume}/15` : "Not on the tape"}</dd>
+              <dt className="text-subtle">Volume</dt><dd>{open.volumeTrust === "neutral" ? "Not used · split" : open.volumeKnown ? `${open.parts.volume}/15` : "Not on the tape"}</dd>
               <dt className="text-subtle">Candle</dt><dd>{open.parts.candle}/15</dd>
               <dt className="text-subtle">Follow-through</dt><dd>{open.followThrough ? "Yes" : "No"} · {open.parts.confirm}/10</dd>
             </dl>
@@ -505,7 +517,7 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
         {shownStats.length ? (
           <div className="mt-4">
             <h3 className="text-[13px] font-semibold">Measured after the close back, on this scan only</h3>
-            <p className="mt-1 max-w-2xl text-[12px] text-muted">Measured on the loaded {tf} bars after the close back{sampleFrom ? `, from ${when(sampleFrom)} to ${when(sampleTo)} IST` : ""}. Strong structure and Potential are separate. Each horizon has its own sample. Names is how many securities contributed. Overlap is a later signal on a level that already had one. First-only keeps the earliest signal on that level. Excess is the signed return minus Nifty when that bar existed. Incomplete means the tape ended first. Invalidated paths are not averaged in. This is not a prediction, and a synthetic test is not this sample.</p>
+            <p className="mt-1 max-w-2xl text-[12px] text-muted">Measured on the loaded {tf} bars after the close back{sampleFrom ? `, from ${when(sampleFrom)} to ${when(sampleTo)} IST` : ""}. Strong structure and Potential are separate. Each horizon has its own sample. Names is how many securities contributed. Overlap is a later signal on a level that already had one. First-only keeps the earliest signal on that level. Excess is the signed return minus Nifty only where both bars existed. A missing Nifty bar is unmatched, not a zero excess. Incomplete means the tape ended first. Invalidated paths are not averaged in. This is not a prediction, and a synthetic test is not this sample.</p>
             <div className="mt-2 overflow-x-auto">
               <table className="w-full min-w-[640px] text-left text-[12px]">
                 <thead className="text-[10px] tracking-[0.06em] text-subtle uppercase">
@@ -538,7 +550,7 @@ export function LiquidityDesk({ onBack }: { onBack: () => void }) {
                       <td className="py-1 pr-3">{num(row.avg.c8)} <span className="text-subtle">n={row.samples?.c8 ?? "—"}</span></td>
                       <td className="py-1 pr-3">{num(row.medianMfe)}</td>
                       <td className="py-1 pr-3">{num(row.medianMae)}</td>
-                      <td className="py-1 pr-3">{num(row.excessAvg?.c1 ?? null)} <span className="text-subtle">n={row.excessSamples?.c1 ?? 0}</span></td>
+                      <td className="py-1 pr-3">{num(row.excessAvg?.c1 ?? null)} <span className="text-subtle">n={row.benchMatched?.c1 ?? row.excessSamples?.c1 ?? 0}{row.benchUnmatched?.c1 ? ` · ${row.benchUnmatched.c1} unmatched` : ""}</span></td>
                       <td className="py-1 pr-3">{num(row.indepMedian?.c1 ?? null)} <span className="text-subtle">n={row.independentN ?? 0}</span></td>
                       <td className="py-1">{row.invalidated}{row.incomplete?.c8 ? ` · ${row.incomplete.c8} short of 8` : ""}</td>
                     </tr>
@@ -659,7 +671,7 @@ function Group({
                   <td className="py-1.5 pr-2 font-mono tabular">{fmtPx(hit.extreme)} · {hit.depthPct.toFixed(1)}%</td>
                   <td className="py-1.5 pr-2">{closedBack(hit.reclaimCandles)}</td>
                   <td className="py-1.5 pr-2">{hit.followThrough ? "Yes" : hit.reclaimClosed ? "No" : "—"}</td>
-                  <td className="py-1.5 pr-2 font-mono tabular" title="Versus the previous 20 bars">{volPct(hit.volumeRatio)}</td>
+                  <td className="py-1.5 pr-2 font-mono tabular" title="Versus the previous 20 bars">{hit.volumeTrust === "neutral" ? "Split" : volPct(hit.volumeRatio)}</td>
                   <td className="py-1.5 pr-2">{when(hit.sweepT)}</td>
                   <td className="py-1.5 pr-2">{stageLabel(hit)}</td>
                   <td className="py-1.5">

@@ -1,0 +1,48 @@
+KOSH — FINAL REPLAY, DISTRIBUTED LOCK AND MARKET-DATA VALIDATION
+
+The latest implementation is substantially improved. Preserve it. Do not redesign or replace the existing engine.
+
+Address these remaining points directly in the source.
+
+1. Replay disappearance detection
+   
+   - In replayEveryPrefix, compare every prefix's event IDs with the preceding prefix.
+   - Detect events that disappear, not only events that change while remaining present.
+   - Record why each event disappeared.
+   - Add a test where a later equal-level pivot changes an existing level cluster after an earlier sweep.
+   - Ensure a signal that was valid at its historical point does not silently disappear or have its historical level rewritten.
+
+2. Distributed scan locking
+   
+   - Replace or supplement the in-memory scan gate with a database-backed lock.
+   - Ensure two application instances cannot execute the same scan key concurrently.
+   - Include lock expiry, crash recovery and safe release.
+   - Preserve partial scan resumption.
+
+3. 4H forming-state correction
+   
+   - Distinguish an actively forming 4H slot from a historical incomplete slot caused by unavailable data.
+   - Do not automatically treat the last valid completed folded bar as forming just because an older or incomplete raw slot exists.
+   - Test provider-truncated histories and incomplete final session bars.
+
+4. Benchmark coverage
+   
+   - Report how many stock observations successfully match Nifty at each horizon.
+   - Report unmatched observations separately.
+   - Preserve separate sample sizes for benchmark-relative statistics.
+   - Do not interpret the absence of benchmark observations as zero excess return.
+
+5. Corporate-action volume integrity
+   
+   - Investigate split-adjusted OHLC alongside raw volume.
+   - Do not allow stock-split discontinuities to create misleading relative-volume scores.
+   - If reliable adjusted volume is unavailable, identify affected observations and neutralise the volume contribution rather than inventing data.
+
+6. Final validation
+   
+   - Run the complete project test suite, typecheck and production build.
+   - Report actual test output and build exit status.
+   - Confirm the deployed application is running the latest source.
+   - Keep the distinction between source tests, synthetic replay and real-market backtesting.
+
+Do not claim an exhaustive official NSE/BSE universe while relying on fallback or third-party lists. Preserve all existing Kosh functionality.

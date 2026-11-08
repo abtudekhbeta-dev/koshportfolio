@@ -19,7 +19,7 @@ import { listedEquities } from "./master.server";
 import { bseEquities } from "./bse-book.server";
 import { composeListedBook } from "./liquidity-universe";
 import { NIFTY_CATALOGUE } from "./nifty-catalogue";
-import { deleteRun, liquidityCacheKey, loadFreshRun, mergeRun, type StoredRun } from "./liquidity-run.server";
+import { deleteRun, liquidityCacheKey, loadFreshRun, mergeRun, tryScanLock, unlockScan, type StoredRun } from "./liquidity-run.server";
 import { fetchOhlc } from "./yahoo.server";
 
 export type ScanUniverse = "nifty50" | "nifty100" | "nifty200" | "nifty500" | "all" | "nse" | "bse" | "watch";
@@ -225,6 +225,8 @@ export type RecallPage = ScanPage & {
   scannedN: number;
   /** Ask the client to replace its list. Set when a saved partial run is ahead of the cursor it sent. */
   replace?: boolean;
+  /** Another instance holds this scan key. The saved partial run is unchanged. */
+  locked?: boolean;
 };
 
 function fromStored(run: StoredRun): RecallPage {
@@ -289,7 +291,20 @@ export async function scanOrRecall(input: {
     const saved = await loadFreshRun(key, input.timeframe);
     return saved ? fromStored(saved) : emptyRecall();
   }
-  return scanGate(key, () => scanBody(input, key));
+  return scanGate(key, async () => {
+    const lock = await tryScanLock(key);
+    if (lock === "busy") {
+      const saved = await loadFreshRun(key, input.timeframe);
+      return saved
+        ? { ...fromStored(saved), locked: true }
+        : { ...emptyRecall(), locked: true, universeNote: "Another scan of this book is still running." };
+    }
+    try {
+      return await scanBody(input, key);
+    } finally {
+      if (lock === "acquired") await unlockScan(key);
+    }
+  });
 }
 
 async function scanBody(

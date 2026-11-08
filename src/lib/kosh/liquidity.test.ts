@@ -7,6 +7,7 @@ import {
   detectLiquidity,
   barsForTimeframe,
   createScanGate,
+  disappearedEvents,
   foldSession4h,
   foldSession4hReport,
   forwardStats,
@@ -21,6 +22,7 @@ import {
   runValidityMs,
   scanIsComplete,
   session4hTailOpen,
+  volumeWindowTrust,
   type LiqConfig,
   type LiqEvent,
   type ScanBar,
@@ -119,7 +121,22 @@ describe("liquidity bars", () => {
     assert.equal(prepareBars(foldSession4h(gappy), true).bars[0].v, null);
     const nextDay = Date.UTC(2024, 0, 16, 12, 0);
     assert.equal(session4hTailOpen(full(0), nextDay), false);
-    assert.equal(session4hTailOpen(raw.filter((bar) => bar.t >= at(9, 15, 1) && bar.t < at(16, 0, 1)), nextDay), true);
+    assert.equal(session4hTailOpen(raw.filter((bar) => bar.t >= at(9, 15, 1) && bar.t < at(16, 0, 1)), nextDay), false);
+  });
+
+  it("keeps a closed 4h bar closed when a later slot is only truncated", () => {
+    const midnight = Date.UTC(2024, 0, 15) / 1000 - 19800;
+    const at = (hh: number, mm: number, day = 0) => midnight + day * 86400 + hh * 3600 + mm * 60;
+    const hour = (day: number, hh: number, mm: number) => ({ t: at(hh, mm, day), o: 10, h: 11, l: 9, c: 10, v: 1 });
+    const morning = (day: number) => [hour(day, 9, 15), hour(day, 10, 15), hour(day, 11, 15), hour(day, 12, 15)];
+    const afternoon = (day: number) => [hour(day, 13, 15), hour(day, 14, 15), hour(day, 15, 15)];
+    assert.equal(session4hTailOpen(morning(0), at(12, 40) * 1000), true);
+    assert.equal(session4hTailOpen(morning(0), at(14, 0) * 1000), false);
+    const truncated = [...morning(0), ...afternoon(0), hour(1, 9, 15), hour(1, 10, 15)];
+    assert.equal(session4hTailOpen(truncated, at(11, 0, 10) * 1000), false);
+    const partialAfternoon = [...morning(0), hour(0, 13, 15), hour(0, 14, 15)];
+    assert.equal(session4hTailOpen(partialAfternoon, at(14, 40) * 1000), false);
+    assert.equal(barsForTimeframe("4H", partialAfternoon).bars.length, 1);
   });
 
   it("drops an incomplete afternoon and does not invent a holiday between two sessions", () => {
@@ -631,5 +648,146 @@ describe("liquidity detection", () => {
       resumed = true;
     });
     assert.equal(resumed, true);
+  });
+
+  it("keeps an earlier sweep when a later equal swing joins the level", () => {
+    const rows: ScanBar[] = [];
+    for (let i = 0; i < 28; i++) {
+      const swing = i === 6;
+      const sweep = i === 12;
+      const later = i === 20;
+      rows.push({
+        t: 1_700_000_000 + i * 86400,
+        o: 110,
+        h: 112,
+        l: swing ? 100 : sweep ? 96 : later ? 100.2 : 105,
+        c: sweep ? 108 : 110,
+        v: 1000,
+      });
+    }
+    const early = detectLiquidity(rows.slice(0, 16), cfg, false).find((e) => e.direction === "bull" && e.reclaimClosed);
+    const full = detectLiquidity(rows, cfg, false).find((e) => e.id === early?.id);
+    assert.ok(early);
+    assert.ok(full);
+    assert.equal(full?.level, early?.level);
+    assert.ok(Math.abs((full?.level || 0) - 100) < 1e-6);
+    const walked = replayEveryPrefix(rows, cfg);
+    assert.equal(walked.leaks.length, 0);
+    assert.equal(walked.gone.some((row) => row.id === early?.id), false);
+  });
+
+  it("records why a closed signal disappeared between prefixes", () => {
+    const event = (over: Partial<LiqEvent>): LiqEvent => ({
+      id: "a",
+      pattern: "sweep",
+      direction: "bull",
+      tier: "potential",
+      status: "confirmed",
+      lowQuality: false,
+      level: 100,
+      zoneLow: 100,
+      zoneHigh: 100,
+      touches: 1,
+      repeated: false,
+      swingIndex: 1,
+      sweepIndex: 4,
+      sweepT: 5,
+      extreme: 90,
+      depthPct: 1,
+      depthAtr: 0.4,
+      reclaimIndex: 4,
+      reclaimT: 5,
+      reclaimClose: 101,
+      reclaimCandles: 0,
+      reclaimKind: "same",
+      volumeRatio: 1,
+      volumeKnown: true,
+      score: 60,
+      parts: { swing: 1, sweep: 1, reclaim: 1, volume: 1, candle: 1, confirm: 0 },
+      weaknesses: [],
+      followThrough: false,
+      reclaimClosed: true,
+      confirmIndex: null,
+      confirmT: null,
+      invalidIndex: null,
+      explanation: "",
+      levelId: "L",
+      ...over,
+    });
+    const gone = disappearedEvents(
+      [event({ id: "old", level: 100 })],
+      [event({ id: "new", level: 100.1 })],
+    );
+    assert.equal(gone.length, 1);
+    assert.match(gone[0].reason, /rewritten|different id|missing/i);
+    const unfinished = disappearedEvents([event({ id: "live", reclaimClosed: false, status: "developing" })], []);
+    assert.match(unfinished[0].reason, /unfinished/i);
+  });
+
+  it("neutralises volume across a split instead of inventing an adjusted volume", () => {
+    const base = withLow(8, 90, 16).map((bar, i) => ({ ...bar, scale: i < 14 ? 0.5 : 1, v: i < 14 ? 500 : 2000 }));
+    const series = base.concat([{ t: base[base.length - 1].t + 86400, o: 101, h: 103, l: 86, c: 96, v: 8000, scale: 1 }]);
+    assert.equal(volumeWindowTrust(series, series.length - 21, series.length - 1), "neutral");
+    const hit = activeSignals(detectLiquidity(series, cfg, false), "sweep").find((e) => e.direction === "bull");
+    assert.equal(hit?.volumeTrust, "neutral");
+    assert.equal(hit?.parts.volume, 0);
+    assert.match(hit?.weaknesses.join(" ") || "", /split/i);
+    const clean = series.map((bar) => ({ ...bar, scale: 1 }));
+    const known = activeSignals(detectLiquidity(clean, cfg, false), "sweep").find((e) => e.direction === "bull");
+    assert.equal(known?.volumeTrust, "known");
+    assert.ok((known?.parts.volume || 0) > 0);
+  });
+
+  it("does not treat a missing Nifty bar as zero excess", () => {
+    const tape = Array.from({ length: 6 }, (_, i) => ({ t: 1_700_000_000 + i * 86400, o: 100, h: 101, l: 99, c: 100 + i, v: 1 }));
+    const event = (over: Partial<LiqEvent> = {}): LiqEvent => ({
+      id: "a",
+      pattern: "sweep",
+      direction: "bull",
+      tier: "potential",
+      status: "confirmed",
+      lowQuality: false,
+      level: 100,
+      zoneLow: 100,
+      zoneHigh: 100,
+      touches: 1,
+      repeated: false,
+      swingIndex: 0,
+      sweepIndex: 1,
+      sweepT: tape[1].t,
+      extreme: 90,
+      depthPct: 1,
+      depthAtr: 0.4,
+      reclaimIndex: 1,
+      reclaimT: tape[1].t,
+      reclaimClose: 101,
+      reclaimCandles: 0,
+      reclaimKind: "same",
+      volumeRatio: null,
+      volumeKnown: false,
+      score: 60,
+      parts: { swing: 1, sweep: 1, reclaim: 1, volume: 0, candle: 1, confirm: 0 },
+      weaknesses: [],
+      followThrough: false,
+      reclaimClosed: true,
+      confirmIndex: null,
+      confirmT: null,
+      invalidIndex: null,
+      explanation: "",
+      levelId: "L",
+      ...over,
+    });
+    const bare = forwardStats([event()], tape)[0];
+    assert.equal(bare.excessAvg?.c1 ?? null, null);
+    assert.equal(bare.excessSamples?.c1, 0);
+    assert.equal(bare.benchMatched?.c1, 0);
+    assert.equal(bare.benchUnmatched?.c1, 1);
+    const matched = forwardStats([event()], tape, { bench: tape })[0];
+    assert.equal(matched.benchMatched?.c1, 1);
+    assert.equal(matched.benchUnmatched?.c1, 0);
+    assert.notEqual(matched.excessAvg?.c1, null);
+    const pooled = mergeStats([bare])[0];
+    assert.equal(pooled.benchUnmatched?.c1, 1);
+    assert.equal(pooled.excessAvg?.c1 ?? null, null);
   });
 });

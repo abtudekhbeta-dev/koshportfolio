@@ -2,6 +2,7 @@
 
 import { getSql } from "@/lib/db";
 import { laterCandleLikely, mergeStats, reduceScanState, runValidityMs, type ForwardStats, type LiqTimeframe } from "./liquidity";
+import { claimScanLock, releaseScanLock, SCAN_LOCK_TTL_MS } from "./liquidity-lock";
 
 export type StoredHit = Record<string, unknown> & { id: string };
 
@@ -54,6 +55,11 @@ async function ensureTable() {
         newest_bar bigint,
         as_of bigint not null,
         valid_until bigint not null
+      )`);
+      await sql.query(`create table if not exists liquidity_locks (
+        cache_key text primary key,
+        owner text not null,
+        expires_at bigint not null
       )`);
     })
     .catch((err) => {
@@ -139,6 +145,28 @@ export async function loadFreshRun(key: string, tf: LiqTimeframe): Promise<Store
   const mem = memory.get(key);
   if (!mem || mem.validUntil <= now) return null;
   return { ...mem, newerCandle: laterCandleLikely(tf, mem.newestBar) };
+}
+
+const scanOwner = `scan-${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
+
+/** One key across processes. Busy means another instance holds it. Unavailable means the database itself failed. */
+export async function tryScanLock(key: string): Promise<"acquired" | "busy" | "unavailable"> {
+  try {
+    await ensureTable();
+    const sql = await getSql();
+    return await claimScanLock(sql, key, scanOwner, Date.now(), SCAN_LOCK_TTL_MS);
+  } catch {
+    return "unavailable";
+  }
+}
+
+export async function unlockScan(key: string): Promise<void> {
+  try {
+    const sql = await getSql();
+    await releaseScanLock(sql, key, scanOwner);
+  } catch {
+    /* the expiry still frees a crashed holder */
+  }
 }
 
 export async function deleteRun(key: string) {

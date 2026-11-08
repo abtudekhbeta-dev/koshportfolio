@@ -41,7 +41,7 @@ export const DEFAULT_LIQ: LiqConfig = {
   expiry: 10,
 };
 
-export type ScanBar = { t: number; o: number; h: number; l: number; c: number; v: number | null };
+export type ScanBar = { t: number; o: number; h: number; l: number; c: number; v: number | null; scale?: number };
 
 export type LiqEvent = {
   id: string;
@@ -69,6 +69,8 @@ export type LiqEvent = {
   volumeRatio: number | null;
   /** False when the tape had no volume. The score then gives volume 0, it does not invent a midpoint. */
   volumeKnown: boolean;
+  /** known: comparable volume. missing: no print. neutral: a split-sized adjustment sits in the window, so volume scored 0. */
+  volumeTrust?: "known" | "missing" | "neutral";
   score: number;
   parts: { swing: number; sweep: number; reclaim: number; volume: number; candle: number; confirm: number };
   weaknesses: string[];
@@ -122,6 +124,10 @@ export type ForwardStats = {
   toT?: number | null;
   excessAvg?: { c1: number | null; c3: number | null; c5: number | null; c8: number | null };
   excessSamples?: { c1: number; c3: number; c5: number; c8: number };
+  /** Stock observations that found a Nifty bar at that horizon. Not the stock sample. */
+  benchMatched?: { c1: number; c3: number; c5: number; c8: number };
+  /** Stock observations with no Nifty bar. These are not a zero excess return. */
+  benchUnmatched?: { c1: number; c3: number; c5: number; c8: number };
   /** Individual excess observations, so a merged book does not drop the benchmark column. */
   excessObs?: ForwardObs;
   /** Median of the earliest signal on each level. A robustness check, not the headline sample. */
@@ -249,7 +255,7 @@ export function prepareBars(input: OhlcBar[], adjusted = true): { bars: ScanBar[
       continue;
     }
     const v = Number.isFinite(bar.v) && bar.v > 0 ? bar.v : null;
-    bars.push({ t: bar.t, o, h, l, c, v });
+    bars.push({ t: bar.t, o, h, l, c, v, scale });
   }
   return { bars, dropped, volumeKnown: bars.some((b) => b.v != null), adjusted: usedAdj };
 }
@@ -267,6 +273,8 @@ export type SlotAudit = {
   volumeKnown: boolean;
 };
 
+type FoldedBar = OhlcBar & { scale?: number };
+
 const MORNING_HOURS = [9 * 3600 + 15 * 60, 10 * 3600 + 15 * 60, 11 * 3600 + 15 * 60, 12 * 3600 + 15 * 60];
 const AFTER_HOURS = [13 * 3600 + 15 * 60, 14 * 3600 + 15 * 60, 15 * 3600 + 15 * 60];
 
@@ -274,9 +282,9 @@ function istWeekday(day: number): number {
   return new Date(day * 86400000).getUTCDay();
 }
 
-export function foldSession4hReport(input: OhlcBar[]): { bars: OhlcBar[]; slots: SlotAudit[] } {
+export function foldSession4hReport(input: OhlcBar[]): { bars: FoldedBar[]; slots: SlotAudit[] } {
   const prepared = prepareBars(input, true).bars;
-  type Bucket = { t: number; o: number; h: number; l: number; c: number; hours: Map<number, number | null>; weekend: boolean };
+  type Bucket = { t: number; o: number; h: number; l: number; c: number; hours: Map<number, number | null>; scales: number[]; weekend: boolean };
   const groups = new Map<string, Bucket>();
   for (const bar of prepared) {
     const { day, sod } = istParts(bar.t);
@@ -289,23 +297,26 @@ export function foldSession4hReport(input: OhlcBar[]): { bars: OhlcBar[]; slots:
     const weekend = istWeekday(day) === 0 || istWeekday(day) === 6;
     const cur = groups.get(key);
     if (!cur) {
-      groups.set(key, { t: bar.t, o: bar.o, h: bar.h, l: bar.l, c: bar.c, hours: new Map([[hour, bar.v]]), weekend });
+      groups.set(key, { t: bar.t, o: bar.o, h: bar.h, l: bar.l, c: bar.c, hours: new Map([[hour, bar.v]]), scales: [bar.scale ?? 1], weekend });
     } else {
       cur.h = Math.max(cur.h, bar.h);
       cur.l = Math.min(cur.l, bar.l);
       cur.c = bar.c;
       const prev = cur.hours.get(hour);
       cur.hours.set(hour, prev == null ? bar.v : bar.v == null ? null : prev + bar.v);
+      cur.scales.push(bar.scale ?? 1);
     }
   }
   const slots: SlotAudit[] = [];
-  const bars: OhlcBar[] = [];
+  const bars: FoldedBar[] = [];
   for (const [key, bucket] of [...groups.entries()].sort((a, b) => a[1].t - b[1].t)) {
     const slot = Number(key.split(":")[1]) as 0 | 1;
     const expectedHours = slot === 0 ? MORNING_HOURS : AFTER_HOURS;
     const missingHours = expectedHours.filter((hour) => !bucket.hours.has(hour));
     const volumes = [...bucket.hours.values()];
     const volumeKnown = volumes.length > 0 && volumes.every((v) => v != null);
+    const scaleBase = bucket.scales[0] ?? 1;
+    const mixedScale = bucket.scales.some((scale) => !(scale > 0) || Math.abs(scale - scaleBase) / scaleBase > 0.08);
     const complete = !bucket.weekend && missingHours.length === 0;
     const day = Number(key.split(":")[0]);
     slots.push({
@@ -320,8 +331,8 @@ export function foldSession4hReport(input: OhlcBar[]): { bars: OhlcBar[]; slots:
       volumeKnown,
     });
     if (!complete) continue;
-    const volume = volumeKnown ? volumes.reduce<number>((sum, v) => sum + (v || 0), 0) : 0;
-    bars.push({ t: bucket.t, o: bucket.o, h: bucket.h, l: bucket.l, c: bucket.c, v: volume });
+    const volume = volumeKnown && !mixedScale ? volumes.reduce<number>((sum, v) => sum + (v || 0), 0) : 0;
+    bars.push({ t: bucket.t, o: bucket.o, h: bucket.h, l: bucket.l, c: bucket.c, v: volume, scale: mixedScale ? Number.NaN : scaleBase });
   }
   return { bars, slots };
 }
@@ -330,15 +341,11 @@ export function foldSession4h(input: OhlcBar[]): OhlcBar[] {
   return foldSession4hReport(input).bars;
 }
 
-/** The last 4-hour slot is unfinished when the clock is still inside it, or that slot is missing an expected hour and nothing later completed the session. */
+/** True only while the clock is still inside the last completed 4-hour slot. An older incomplete slot is missing data, not a live bar. */
 export function session4hTailOpen(input: OhlcBar[], now = Date.now()): boolean {
-  const report = foldSession4hReport(input);
-  const last = report.slots[report.slots.length - 1];
+  const last = foldSession4hReport(input).bars.at(-1);
   if (!last) return false;
-  const nowIst = istParts(Math.floor(now / 1000));
-  const slotEnd = last.slot === 0 ? SPLIT : CLOSE;
-  if (!last.weekend && nowIst.day === last.day && nowIst.sod >= OPEN && nowIst.sod <= slotEnd) return true;
-  return !last.complete;
+  return lastBarForming("4H", last.t, now);
 }
 
 /** Keep prints inside the cash session. Does not invent the missing ones. */
@@ -352,7 +359,24 @@ export function sessionOnly(input: OhlcBar[]): OhlcBar[] {
 
 /** The candle series the detector uses. The 4-hour chart must call this same function. */
 export function barsForTimeframe(tf: LiqTimeframe, raw: OhlcBar[]) {
-  if (tf === "4H") return prepareBars(foldSession4h(raw), true);
+  if (tf === "4H") {
+    const folded = foldSession4hReport(raw).bars;
+    const bars: ScanBar[] = folded.map((bar) => ({
+      t: bar.t,
+      o: bar.o,
+      h: bar.h,
+      l: bar.l,
+      c: bar.c,
+      v: bar.v > 0 ? bar.v : null,
+      scale: bar.scale,
+    }));
+    return {
+      bars,
+      dropped: 0,
+      volumeKnown: bars.some((bar) => bar.v != null),
+      adjusted: bars.some((bar) => bar.scale != null && Number.isFinite(bar.scale) && Math.abs(bar.scale - 1) > 0.002),
+    };
+  }
   if (tf === "15m" || tf === "1H") return prepareBars(sessionOnly(raw), true);
   return prepareBars(raw, true);
 }
@@ -381,6 +405,22 @@ function volAvg(bars: ScanBar[], index: number, n = 20): number | null {
     }
   }
   return count ? sum / count : null;
+}
+
+/** Volume across a split is not comparable. A missing print stays missing. Nothing is invented. */
+export function volumeWindowTrust(bars: ScanBar[], from: number, to: number): "known" | "missing" | "neutral" {
+  let base: number | null = null;
+  let any = false;
+  for (let i = Math.max(0, from); i <= to && i < bars.length; i++) {
+    const bar = bars[i];
+    if (!bar) continue;
+    if (bar.v != null) any = true;
+    const scale = bar.scale ?? 1;
+    if (!Number.isFinite(scale) || !(scale > 0)) return "neutral";
+    if (base == null) base = scale;
+    else if (Math.abs(scale - base) / base > 0.08) return "neutral";
+  }
+  return any ? "known" : "missing";
 }
 
 type Swing = { index: number; price: number; kind: "low" | "high"; confirm: number };
@@ -412,6 +452,7 @@ type Level = {
   confirm: number;
   first: number;
   last: number;
+  members: Swing[];
 };
 
 function cluster(list: Swing[], bars: ScanBar[], cfg: LiqConfig): Level[] {
@@ -443,7 +484,7 @@ function cluster(list: Swing[], bars: ScanBar[], cfg: LiqConfig): Level[] {
     const price = prices.reduce((s, n) => s + n, 0) / prices.length;
     const last = members[members.length - 1];
     levels.push({
-      id: `${seed.kind}:${seed.index}:${members.length}`,
+      id: `${seed.kind}:${seed.index}`,
       kind: seed.kind,
       price,
       low,
@@ -453,9 +494,31 @@ function cluster(list: Swing[], bars: ScanBar[], cfg: LiqConfig): Level[] {
       confirm: Math.max(...members.map((m) => m.confirm)),
       first: seed.index,
       last: last.index,
+      members,
     });
   }
   return levels;
+}
+
+/** Level as it stood once `asOf` had closed. A later equal swing does not rewrite an earlier sweep. */
+function levelAsOf(level: Level, asOf: number): Level {
+  const members = level.members.filter((member) => member.confirm <= asOf);
+  const used = members.length ? members : level.members.slice(0, 1);
+  const prices = used.map((member) => member.price);
+  const last = used[used.length - 1];
+  return {
+    ...level,
+    id: `${level.kind}:${used[0].index}`,
+    price: prices.reduce((sum, price) => sum + price, 0) / prices.length,
+    low: Math.min(...prices),
+    high: Math.max(...prices),
+    anchor: used[0].price,
+    touches: used.map((member) => member.index),
+    confirm: Math.max(...used.map((member) => member.confirm)),
+    first: used[0].index,
+    last: last.index,
+    members: used,
+  };
 }
 
 function clamp(n: number, lo: number, hi: number) {
@@ -479,6 +542,7 @@ function scoreEvent(input: {
   body: number;
   closePos: number;
   volRatio: number | null;
+  volumeNeutral?: boolean;
   followThrough: boolean;
   cfg: LiqConfig;
 }): { score: number; parts: LiqEvent["parts"]; weaknesses: string[] } {
@@ -513,7 +577,11 @@ function scoreEvent(input: {
 
   let volume = 0;
   if (input.volRatio == null) {
-    weaknesses.push("Volume was missing, so it scored 0 and was not used as a reason to drop the setup.");
+    weaknesses.push(
+      input.volumeNeutral
+        ? "A split-sized corporate action sits in the volume window. Yahoo does not give split-adjusted volume, so volume scored 0 instead of a made-up ratio."
+        : "Volume was missing, so it scored 0 and was not used as a reason to drop the setup.",
+    );
   } else if (input.volRatio >= 1.4) volume = 15;
   else if (input.volRatio >= 1) volume = 12;
   else if (input.volRatio >= 0.7) {
@@ -635,9 +703,10 @@ function buildAt(args: {
   const closedReclaim = reclaimIndex != null && (!forming || reclaimIndex < bars.length - 1);
   const developing = !closedReclaim;
   if (pattern === "sweep" && depthAtr != null && depthAtr > cfg.maxDepthAtr * 1.25) return null;
+  const trust = volumeWindowTrust(bars, Math.max(0, sweepIndex - 20), reclaimIndex ?? sweepIndex);
   const avg = volAvg(bars, sweepIndex);
   const volNow = reclaim?.v ?? sweep.v;
-  const volumeRatio = avg && volNow != null ? volNow / avg : null;
+  const volumeRatio = trust === "known" && avg && volNow != null ? volNow / avg : null;
   const volumeKnown = volumeRatio != null;
   const range = reclaim ? Math.max(1e-9, reclaim.h - reclaim.l) : 1;
   const body = reclaim ? Math.abs(reclaim.c - reclaim.o) / range : 0;
@@ -688,6 +757,7 @@ function buildAt(args: {
     body,
     closePos,
     volRatio: volumeRatio,
+    volumeNeutral: trust === "neutral",
     followThrough: confirmIndex != null,
     cfg,
   });
@@ -718,6 +788,7 @@ function buildAt(args: {
     reclaimKind: candles == null ? null : reclaimKind(candles),
     volumeRatio,
     volumeKnown,
+    volumeTrust: trust,
     score: scored.score,
     parts: scored.parts,
     weaknesses: scored.weaknesses,
@@ -750,33 +821,40 @@ export function detectLiquidity(bars: ScanBar[], cfg: LiqConfig = DEFAULT_LIQ, f
   const levels = cluster(pivots, bars, cfg);
   const events: LiqEvent[] = [];
   for (const level of levels) {
-    const eligible = Math.max(level.confirm, level.last + cfg.minAge);
-    if (eligible > (forming ? bars.length - 1 : upto)) continue;
-    let cursor = eligible;
+    if (!level.members.length) continue;
+    const opened = levelAsOf(level, level.members[0].confirm);
+    let cursor = Math.max(opened.confirm, opened.last + cfg.minAge);
     const limit = forming ? bars.length - 1 : upto;
+    if (cursor > limit) continue;
     while (cursor <= limit) {
-      if (cursor - level.first > cfg.maxLookback && cursor - level.last > cfg.maxLookback) break;
+      const seen = levelAsOf(level, cursor);
+      const ready = Math.max(seen.confirm, seen.last + cfg.minAge);
+      if (cursor < ready) {
+        cursor += 1;
+        continue;
+      }
+      if (cursor - seen.first > cfg.maxLookback && cursor - seen.last > cfg.maxLookback) break;
       const bar = bars[cursor];
-      const penetrated = level.kind === "low" ? bar.l < level.low : bar.h > level.high;
+      const penetrated = seen.kind === "low" ? bar.l < seen.low : bar.h > seen.high;
       if (!penetrated) {
         cursor += 1;
         continue;
       }
       const sweepWindow = Math.min(limit, cursor + cfg.maxReclaim);
       const failedWindow = Math.min(limit, cursor + cfg.failedWindow);
-      const sweepHit = findReclaim(bars, level, cursor, sweepWindow, forming);
+      const sweepHit = findReclaim(bars, seen, cursor, sweepWindow, forming);
       const atr = atrAt(bars, Math.max(1, cursor - 1));
-      const ref = level.kind === "low" ? level.low : level.high;
-      const extreme = level.kind === "low" ? bar.l : bar.h;
+      const ref = seen.kind === "low" ? seen.low : seen.high;
+      const extreme = seen.kind === "low" ? bar.l : bar.h;
       const depthAtr = atr && atr > 0 ? Math.abs(extreme - ref) / atr : null;
       const deep = depthAtr != null && depthAtr > cfg.maxDepthAtr * 1.25;
       if (sweepHit && !deep) {
         const row = buildAt({
           bars,
-          level,
+          level: seen,
           pattern: "sweep",
           sweepIndex: cursor,
-          reclaimIndex: sweepHit.closed ? sweepHit.index : sweepHit.index,
+          reclaimIndex: sweepHit.index,
           forming,
           upto: limit,
           cfg,
@@ -788,7 +866,7 @@ export function detectLiquidity(bars: ScanBar[], cfg: LiqConfig = DEFAULT_LIQ, f
       if (!sweepHit && forming && cursor === bars.length - 1) {
         const row = buildAt({
           bars,
-          level,
+          level: seen,
           pattern: deep ? "failed" : "sweep",
           sweepIndex: cursor,
           reclaimIndex: null,
@@ -799,11 +877,11 @@ export function detectLiquidity(bars: ScanBar[], cfg: LiqConfig = DEFAULT_LIQ, f
         if (row) events.push(classify({ ...row, status: "developing" }, cfg));
         break;
       }
-      const failedHit = findReclaim(bars, level, cursor, failedWindow, forming);
+      const failedHit = findReclaim(bars, seen, cursor, failedWindow, forming);
       if (failedHit) {
         const row = buildAt({
           bars,
-          level,
+          level: seen,
           pattern: "failed",
           sweepIndex: cursor,
           reclaimIndex: failedHit.index,
@@ -944,10 +1022,11 @@ export function forwardStats(events: LiqEvent[], bars: ScanBar[], opts?: { symbo
     const excess = emptyObs();
     const capped = { on: false };
     const incomplete = emptyIncomplete();
+    const benchMatched = emptyIncomplete();
+    const benchUnmatched = emptyIncomplete();
     let invalidated = 0;
     let fromT: number | null = null;
     let toT: number | null = null;
-    const seenLevel = new Set<string>();
     const firstByLevel = new Map<string, LiqEvent>();
     for (const event of list) {
       const prev = firstByLevel.get(event.levelId);
@@ -975,7 +1054,10 @@ export function forwardStats(events: LiqEvent[], bars: ScanBar[], opts?: { symbo
         if (independent) pushObs(indepBucket, stock, capped);
         const b0 = opts?.bench ? nearestBench(opts.bench, bars[i].t, slack) : null;
         const b1 = opts?.bench ? nearestBench(opts.bench, bar.t, slack) : null;
-        if (b0 && b1 && b0.c > 0) pushObs(excessBucket, stock - sign * ((b1.c / b0.c - 1) * 100), capped);
+        if (b0 && b1 && b0.c > 0 && b1.c > 0) {
+          pushObs(excessBucket, stock - sign * ((b1.c / b0.c - 1) * 100), capped);
+          benchMatched[hole] += 1;
+        } else benchUnmatched[hole] += 1;
       };
       take(1, obs.c1, indep.c1, "c1", excess.c1);
       take(3, obs.c3, indep.c3, "c3", excess.c3);
@@ -1015,6 +1097,8 @@ export function forwardStats(events: LiqEvent[], bars: ScanBar[], opts?: { symbo
     });
     row.indepObs = indep;
     row.excessObs = excess;
+    row.benchMatched = benchMatched;
+    row.benchUnmatched = benchUnmatched;
     row.indepMedian = { c1: median(indep.c1), c3: median(indep.c3), c5: median(indep.c5), c8: median(indep.c8) };
     out.push(row);
   }
@@ -1034,7 +1118,7 @@ function concatObs(parts: ForwardObs[]): ForwardObs {
 
 /** Pools the individual observations. A median of per-name medians is not used. Strong and Potential stay apart. */
 export function mergeStats(parts: ForwardStats[]): ForwardStats[] {
-  const map = new Map<string, { pattern: LiqPattern; direction: LiqDirection; quality?: "strong" | "potential"; n: number; invalidated: number; obs: ForwardObs[]; indep: ForwardObs[]; capped: boolean; symbols: Set<string>; incomplete: { c1: number; c3: number; c5: number; c8: number }; overlapping: number; independentN: number; fromT: number | null; toT: number | null; excess: ForwardObs[] }>();
+  const map = new Map<string, { pattern: LiqPattern; direction: LiqDirection; quality?: "strong" | "potential"; n: number; invalidated: number; obs: ForwardObs[]; indep: ForwardObs[]; capped: boolean; symbols: Set<string>; incomplete: { c1: number; c3: number; c5: number; c8: number }; overlapping: number; independentN: number; fromT: number | null; toT: number | null; excess: ForwardObs[]; benchMatched: { c1: number; c3: number; c5: number; c8: number }; benchUnmatched: { c1: number; c3: number; c5: number; c8: number } }>();
   for (const row of parts) {
     const key = `${row.pattern}|${row.direction}|${row.quality || "all"}`;
     const cur = map.get(key) || {
@@ -1053,6 +1137,8 @@ export function mergeStats(parts: ForwardStats[]): ForwardStats[] {
       fromT: null,
       toT: null,
       excess: [],
+      benchMatched: emptyIncomplete(),
+      benchUnmatched: emptyIncomplete(),
     };
     cur.n += row.n;
     cur.invalidated += row.invalidated;
@@ -1064,6 +1150,18 @@ export function mergeStats(parts: ForwardStats[]): ForwardStats[] {
       cur.incomplete.c3 += row.incomplete.c3;
       cur.incomplete.c5 += row.incomplete.c5;
       cur.incomplete.c8 += row.incomplete.c8;
+    }
+    if (row.benchMatched) {
+      cur.benchMatched.c1 += row.benchMatched.c1;
+      cur.benchMatched.c3 += row.benchMatched.c3;
+      cur.benchMatched.c5 += row.benchMatched.c5;
+      cur.benchMatched.c8 += row.benchMatched.c8;
+    }
+    if (row.benchUnmatched) {
+      cur.benchUnmatched.c1 += row.benchUnmatched.c1;
+      cur.benchUnmatched.c3 += row.benchUnmatched.c3;
+      cur.benchUnmatched.c5 += row.benchUnmatched.c5;
+      cur.benchUnmatched.c8 += row.benchUnmatched.c8;
     }
     if (row.fromT != null && (cur.fromT == null || row.fromT < cur.fromT)) cur.fromT = row.fromT;
     if (row.toT != null && (cur.toT == null || row.toT > cur.toT)) cur.toT = row.toT;
@@ -1090,12 +1188,37 @@ export function mergeStats(parts: ForwardStats[]): ForwardStats[] {
     packed.excessObs = excess;
     packed.excessAvg = { c1: avg(excess.c1), c3: avg(excess.c3), c5: avg(excess.c5), c8: avg(excess.c8) };
     packed.excessSamples = { c1: excess.c1.length, c3: excess.c3.length, c5: excess.c5.length, c8: excess.c8.length };
+    packed.benchMatched = row.benchMatched;
+    packed.benchUnmatched = row.benchUnmatched;
     packed.indepMedian = { c1: median(packed.indepObs.c1), c3: median(packed.indepObs.c3), c5: median(packed.indepObs.c5), c8: median(packed.indepObs.c8) };
     return packed;
   });
 }
 
 export type ReplayLeak = { id: string; reason: string };
+export type ReplayGone = { id: string; reason: string };
+
+/** Why an id that was present on one prefix is absent on the next. */
+export function disappearedEvents(prev: LiqEvent[], next: LiqEvent[]): ReplayGone[] {
+  const ids = new Set(next.map((event) => event.id));
+  const gone: ReplayGone[] = [];
+  for (const event of prev) {
+    if (ids.has(event.id)) continue;
+    const moved = next.find((row) => row.sweepT === event.sweepT && row.direction === event.direction && row.pattern === event.pattern);
+    let reason: string;
+    if (!event.reclaimClosed || event.status === "developing") {
+      reason = "The unfinished signal dropped once that candle closed without a reclaim.";
+    } else if (moved && moved.level !== event.level) {
+      reason = "A later swing joined the level and the historical price was rewritten under a new id.";
+    } else if (moved) {
+      reason = "The same sweep came back under a different id.";
+    } else {
+      reason = "A signal that had already closed was missing on the next prefix.";
+    }
+    gone.push({ id: event.id, reason });
+  }
+  return gone;
+}
 
 /**
  * Walk the tape forward. A swing, a closed reclaim, and a follow-through may each appear
@@ -1137,14 +1260,22 @@ export function replayNoLookahead(bars: ScanBar[], cfg: LiqConfig = DEFAULT_LIQ)
  * Every closed prefix, not only the candles that ended up inside a signal.
  * A forming read of the same prefix must not close a reclaim or a follow-through on the live bar.
  */
-export function replayEveryPrefix(bars: ScanBar[], cfg: LiqConfig = DEFAULT_LIQ): { prefixes: number; leaks: ReplayLeak[] } {
+export function replayEveryPrefix(bars: ScanBar[], cfg: LiqConfig = DEFAULT_LIQ): { prefixes: number; leaks: ReplayLeak[]; gone: ReplayGone[] } {
   const leaks: ReplayLeak[] = [];
+  const gone: ReplayGone[] = [];
   const prior = new Map<string, LiqEvent>();
   const start = Math.min(bars.length, cfg.left + cfg.right);
   for (let end = start; end < bars.length; end++) {
     const prefix = bars.slice(0, end + 1);
     const closed = detectLiquidity(prefix, cfg, false);
     const live = detectLiquidity(prefix, cfg, true);
+    const lost = disappearedEvents([...prior.values()], closed);
+    for (const row of lost) {
+      gone.push(row);
+      const prev = prior.get(row.id);
+      if (prev && prev.reclaimClosed && prev.status !== "developing") leaks.push(row);
+      prior.delete(row.id);
+    }
     for (const event of closed) {
       if (event.swingIndex + cfg.right > end) leaks.push({ id: event.id, reason: "swing used before its right-hand candles closed" });
       if (event.reclaimClosed && (event.reclaimIndex == null || event.reclaimIndex > end)) leaks.push({ id: event.id, reason: "reclaim closed after the prefix" });
@@ -1168,7 +1299,7 @@ export function replayEveryPrefix(bars: ScanBar[], cfg: LiqConfig = DEFAULT_LIQ)
       if (event.confirmIndex === end && event.followThrough) leaks.push({ id: event.id, reason: "the live bar was treated as follow-through" });
     }
   }
-  return { prefixes: Math.max(0, bars.length - start), leaks };
+  return { prefixes: Math.max(0, bars.length - start), leaks, gone };
 }
 
 export type ScanCursorPlan = { action: "scan"; cursor: number } | { action: "use-saved" } | { action: "replace-with-saved" };
