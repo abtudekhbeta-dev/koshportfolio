@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   ArrowDownRight,
@@ -42,6 +42,8 @@ import {
 } from "@/lib/kosh/market-data";
 import type { OhlcBar, Quote } from "@/lib/kosh/types";
 import { bareSymbol, drawKey, isWatched, newDrawId, useKosh, type DrawKind, type DrawShape } from "@/lib/store";
+import { PineDock } from "@/components/terminal/pine-editor";
+import type { PinePlot } from "@/lib/kosh/pine";
 import { cn } from "@/lib/utils";
 
 const UP = "var(--color-up)";
@@ -210,6 +212,8 @@ export function TermChart({
   const [size, setSize] = useState({ w: 640, h: 320 });
   const [view, setView] = useState({ start: 0, count: TF_VIEW[interval] || 180 });
   const [inds, setInds] = useState<IndFlags>({ sma20: false, ema21: false, bb: false, vwap: false, rsi: false, macd: false });
+  const [pinePlots, setPinePlots] = useState<PinePlot[]>([]);
+  const onPine = useCallback((plots: PinePlot[]) => setPinePlots(plots), []);
   const [tool, setTool] = useState<ToolId>("pan");
   const [keepDraw, setKeepDraw] = useState(false);
   const drawOpen = useKosh((s) => s.chartPrefs.drawOpen !== false);
@@ -935,6 +939,9 @@ export function TermChart({
               : null}
             {sma20 ? poly(sma20, CHART) : null}
             {ema21 ? poly(ema21, WARN) : null}
+            {pinePlots.map((plot, index) => (
+              <g key={`${plot.title}-${index}`}>{poly(plot.values, plot.color)}</g>
+            ))}
             {vw ? poly(vw, WARN) : null}
             {style === "line"
               ? poly(closes, CHART)
@@ -1068,6 +1075,7 @@ export function TermChart({
         ))}
         <span className="ml-auto text-[10px] text-subtle">{volMissing ? "Volume unavailable" : "RAW OHLC"}</span>
       </div>
+      <PineDock bars={bars} onPlots={onPine} />
     </section>
   );
   return card;

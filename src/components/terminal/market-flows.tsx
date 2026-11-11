@@ -5,6 +5,7 @@ import { fmtPct, fmtPx } from "@/lib/kosh/engine";
 import { flowBrief } from "@/lib/kosh/flow-brief";
 import type { FlowBar, FlowFrame, FlowVerdict } from "@/lib/kosh/market-flows";
 import type { ResearchBrief } from "@/lib/kosh/flow-research";
+import { describeHistory, writeFlowStory } from "@/lib/kosh/flow-story";
 import { FlowDeskPanel } from "@/components/terminal/flow-desk-panel";
 import { cn } from "@/lib/utils";
 
@@ -277,7 +278,7 @@ export function MarketFlowsPage() {
             </div>
             <FlowTable bars={bars} />
           </details>
-          {pack.research ? <ResearchNote brief={pack.research} /> : null}
+          {pack.research ? <ResearchNote brief={pack.research} monthly={pack.monthly} /> : null}
         </>
       ) : null}
     </div>
@@ -323,107 +324,147 @@ function FlowTable({ bars }: { bars: FlowBar[] }) {
 
 type ChartStyle = "combined" | "line" | "bar";
 
-function ResearchNote({ brief }: { brief: ResearchBrief }) {
+function ResearchNote({ brief, monthly }: { brief: ResearchBrief; monthly: FlowBar[] }) {
+  const dated = monthly.filter((bar) => bar.indexReturn != null);
+  const latest = dated[dated.length - 1];
+  const story = writeFlowStory(brief, {
+    months: dated.length,
+    from: dated[0]?.end || null,
+    to: latest?.end || null,
+    partial: Boolean(latest?.partial),
+  });
+  const choices = [
+    { id: "monthly", label: "Monthly", history: brief.history },
+    ...brief.comparisons,
+  ];
+  const [frame, setFrame] = useState(choices[0].id);
+  const selected = choices.find((item) => item.id === frame) || choices[0];
+  const sections: { title: string; body: string[] }[] = [
+    { title: "What is happening now", body: story.now },
+    { title: "Historical context", body: story.context },
+    { title: "What happened afterwards", body: frame === "monthly" ? story.afterwards : describeHistory(selected.history) },
+    { title: "Relative performance", body: story.relative },
+    { title: "Risk and consistency", body: story.risk },
+  ];
   return (
     <section className="mt-3 rounded-lg bg-surface p-4 shadow-[var(--shadow-border)]">
-      <h2 className="text-[14px] font-semibold">Earlier months</h2>
-      <div className="mt-3 space-y-5">
-          <div>
-            <h2 className="text-[18px] font-semibold tracking-tight">{brief.headline}</h2>
-            <ul className="mt-2 space-y-1 text-[13px] leading-relaxed text-muted">
-              {brief.reasons.map((reason) => (
-                <li key={reason}>{reason}</li>
-              ))}
-            </ul>
+      <h2 className="text-[14px] font-semibold">Pattern of flows</h2>
+      <p className="mt-1 text-[12px] text-subtle">Calculated from the cash file and Nifty. Not a forecast. {story.asOf ? `Latest month in the note: ${story.asOf}.` : ""}</p>
+      <div className="mt-3 space-y-4">
+        {sections.map((section) => (
+          <div key={section.title}>
+            <h3 className="text-[13px] font-semibold">{section.title}</h3>
+            {section.body.map((line) => (
+              <p key={line} className="mt-1 text-[13px] leading-relaxed text-muted">{line}</p>
+            ))}
           </div>
-          <div>
-            <h3 className="text-[13px] font-semibold">Why this matters</h3>
-            <p className="mt-1 text-[13px] leading-relaxed text-muted">{brief.regime.evidence} {brief.regime.alternative}</p>
+        ))}
+        <div>
+          <div className="flex flex-wrap items-center gap-1" role="tablist" aria-label="Observation frequency">
+            {choices.map((item) => (
+              <button key={item.id} type="button" role="tab" aria-selected={frame === item.id} className={cn("h-7 rounded-sm px-2 text-[11px]", frame === item.id ? "bg-bg text-fg" : "text-muted")} onClick={() => setFrame(item.id)}>
+                {item.label}
+              </button>
+            ))}
           </div>
-          <div>
-            <h3 className="text-[13px] font-semibold">Trend and flows</h3>
-            <p className="mt-1 text-[13px] font-medium text-fg">{brief.regime.label}</p>
-            <p className="mt-1 text-[13px] leading-relaxed text-muted">{brief.synthesis}</p>
-            <ul className="mt-2 space-y-1 text-[13px] text-muted">
-              {brief.frames.map((frame) => (
-                <li key={frame.id}>{frame.text}</li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <h3 className="text-[13px] font-semibold">Historical comparisons</h3>
-            <p className="mt-1 text-[13px] leading-relaxed text-muted">{brief.history.note}</p>
-            {brief.history.usable ? (
-              <>
-                <div className="mt-3 overflow-x-auto">
-                  <table className="w-full text-left text-[12px]">
-                    <thead className="text-[10px] tracking-wide text-subtle uppercase">
-                      <tr>
-                        <th className="py-1 pr-2 font-medium">After the month</th>
-                        <th className="py-1 pr-2 text-right font-medium">Similar months</th>
-                        <th className="py-1 pr-2 text-right font-medium">Ordinary month</th>
-                        <th className="py-1 text-right font-medium">Sample</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {brief.history.similar.map((row, index) => {
-                        const base = brief.history.baseline[index];
-                        return (
-                          <tr key={row.label} className="border-t border-border">
-                            <td className="py-1.5 pr-2">{row.label}</td>
-                            <td className="py-1.5 pr-2 text-right font-mono tabular">{row.median == null ? "—" : fmtPct(row.median)} median · {row.positiveShare == null ? "—" : `${Math.round(row.positiveShare * 100)}% up`}</td>
-                            <td className="py-1.5 pr-2 text-right font-mono tabular">{base?.median == null ? "—" : fmtPct(base.median)}</td>
-                            <td className="py-1.5 text-right font-mono tabular">{row.n}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                <ul className="mt-3 space-y-2 text-[13px] leading-relaxed text-muted">
-                  {brief.history.examples.map((example) => (
-                    <li key={example.end}>
-                      <span className="text-fg">{example.end}</span>
-                      {example.failed ? " · later declined" : ""} · FII {cr(example.fiiNet)} · DII {cr(example.diiNet)} · month {fmtPct(example.indexReturn)}. {example.difference} Next 4 weeks {example.forward.find((item) => item.label === "4 weeks")?.returnPct == null ? "—" : fmtPct(example.forward.find((item) => item.label === "4 weeks")?.returnPct || 0)}, worst point {example.forward.find((item) => item.label === "4 weeks")?.adversePct == null ? "—" : fmtPct(example.forward.find((item) => item.label === "4 weeks")?.adversePct || 0)}.
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-2 text-[12px] leading-relaxed text-subtle">{brief.history.association}</p>
-              </>
-            ) : null}
-          </div>
-          <div>
-            <h3 className="text-[13px] font-semibold">What could happen next</h3>
-            <div className="mt-2 space-y-3">
-              {brief.scenarios.map((scenario) => (
-                <div key={scenario.name}>
-                  <p className="text-[13px] font-medium text-fg">{scenario.name}</p>
-                  <p className="mt-1 text-[13px] leading-relaxed text-muted">{scenario.support} {scenario.against}</p>
-                  <p className="mt-1 text-[12px] leading-relaxed text-subtle">Would strengthen it: {scenario.strengthen} Would knock it out: {scenario.invalidate}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div>
-            <h3 className="text-[13px] font-semibold">What to watch</h3>
-            <ul className="mt-2 space-y-2 text-[13px] leading-relaxed text-muted">
-              {brief.watch.map((item) => (
-                <li key={item.variable}>
-                  <span className="text-fg">{item.variable}.</span> Now: {item.now} A change that matters: {item.change} {item.effect}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <details className="text-[12px] leading-relaxed text-subtle">
-            <summary className="cursor-pointer text-[13px] font-semibold text-fg">Methodology</summary>
-            <ul className="mt-2 space-y-1">
-              {brief.method.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-          </details>
+          <p className="mt-1 text-[11px] text-subtle">Observation frequency is separate from the later path. A monthly row can still show a four-week result. Incomplete paths are left out, not counted as losses.</p>
+          {selected.history.usable ? <OutcomeTable history={selected.history} /> : <p className="mt-2 text-[13px] text-muted">{selected.history.note}</p>}
         </div>
+        <div>
+          <h3 className="text-[13px] font-semibold">Overall reading</h3>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted">{story.interpretation}</p>
+        </div>
+        <div>
+          <h3 className="text-[13px] font-semibold">What could change the reading</h3>
+          <div className="mt-2 space-y-3">
+            {brief.scenarios.map((scenario) => (
+              <div key={scenario.name}>
+                <p className="text-[13px] font-medium text-fg">{scenario.name}</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-muted">{scenario.support} {scenario.against}</p>
+                <p className="mt-1 text-[12px] leading-relaxed text-subtle">Would strengthen it: {scenario.strengthen} Would knock it out: {scenario.invalidate}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <h3 className="text-[13px] font-semibold">What to watch</h3>
+          <ul className="mt-2 space-y-2 text-[13px] leading-relaxed text-muted">
+            {brief.watch.map((item) => (
+              <li key={item.variable}>
+                <span className="text-fg">{item.variable}.</span> Now: {item.now} A change that matters: {item.change} {item.effect}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <details className="text-[12px] leading-relaxed text-subtle">
+          <summary className="cursor-pointer text-[13px] font-semibold text-fg">Closest periods and method</summary>
+          <ul className="mt-2 space-y-2">
+            {selected.history.examples.map((example) => {
+              const next = example.forward.find((item) => item.label === "4 weeks");
+              return (
+                <li key={example.end}>
+                  <span className="text-fg">{example.end}</span>
+                  {example.failed ? " · the next four weeks closed down" : ""} · FII {cr(example.fiiNet)} · DII {cr(example.diiNet)} · period {fmtPct(example.indexReturn)}. {example.difference} Next 20 sessions {next?.returnPct == null ? "not complete" : fmtPct(next.returnPct)}, lowest point along that path {next?.adversePct == null ? "—" : fmtPct(next.adversePct)}.
+                </li>
+              );
+            })}
+          </ul>
+          <ul className="mt-2 space-y-1">
+            {brief.method.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </details>
+      </div>
     </section>
+  );
+}
+
+function OutcomeTable({ history }: { history: ResearchBrief["history"] }) {
+  return (
+    <div className="mt-3 overflow-x-auto">
+      <table className="w-full min-w-[920px] text-left text-[12px]">
+        <thead className="text-[10px] tracking-wide text-subtle uppercase">
+          <tr>
+            <th className="py-1 pr-2 font-medium" title="How far after the period the Nifty close is measured. This is not the observation frequency.">Later path</th>
+            <th className="py-1 pr-2 text-right font-medium" title="Completed paths only. A path that has not finished is excluded.">Paths</th>
+            <th className="py-1 pr-2 text-right font-medium" title="Share of closest periods that closed higher.">Closed higher</th>
+            <th className="py-1 pr-2 text-right font-medium" title="Share of closest periods that closed lower. A flat close is in neither share.">Closed lower</th>
+            <th className="py-1 pr-2 text-right font-medium" title="Middle outcome. Less pulled by one extreme path than the average.">Median</th>
+            <th className="py-1 pr-2 text-right font-medium" title="Mean of the completed paths.">Average</th>
+            <th className="py-1 pr-2 text-right font-medium" title="Strongest completed close-to-close path in the closest set.">Best</th>
+            <th className="py-1 pr-2 text-right font-medium" title="Weakest completed path in the closest set.">Worst</th>
+            <th className="py-1 pr-2 text-right font-medium" title="Sample standard deviation. Shown only when at least 8 paths are complete.">Spread</th>
+            <th className="py-1 pr-2 text-right font-medium" title="Median of the highest point along each path, before the path closed.">High along path</th>
+            <th className="py-1 pr-2 text-right font-medium" title="Median of the lowest point along each path. This is not the close.">Low along path</th>
+            <th className="py-1 text-right font-medium" title="Median of every earlier period with a completed path, not only the closest ones.">Ordinary median</th>
+          </tr>
+        </thead>
+        <tbody>
+          {history.similar.map((row, index) => {
+            const base = history.baseline[index];
+            const up = row.positiveShare == null ? "—" : `${Math.round(row.positiveShare * 1000) / 10}%`;
+            const down = row.negativeShare == null ? "—" : `${Math.round(row.negativeShare * 1000) / 10}%`;
+            return (
+              <tr key={row.label} className="border-t border-border">
+                <td className="py-1.5 pr-2">{row.label}</td>
+                <td className="py-1.5 pr-2 text-right font-mono tabular">{row.n}</td>
+                <td className="py-1.5 pr-2 text-right font-mono tabular">{up}</td>
+                <td className="py-1.5 pr-2 text-right font-mono tabular">{down}</td>
+                <td className="py-1.5 pr-2 text-right font-mono tabular">{row.median == null ? "—" : fmtPct(row.median)}</td>
+                <td className="py-1.5 pr-2 text-right font-mono tabular">{row.average == null ? "—" : fmtPct(row.average)}</td>
+                <td className="py-1.5 pr-2 text-right font-mono tabular">{row.best == null ? "—" : fmtPct(row.best)}</td>
+                <td className="py-1.5 pr-2 text-right font-mono tabular">{row.worst == null ? "—" : fmtPct(row.worst)}</td>
+                <td className="py-1.5 pr-2 text-right font-mono tabular">{row.dispersion == null ? "—" : fmtPct(row.dispersion)}</td>
+                <td className="py-1.5 pr-2 text-right font-mono tabular">{row.favourable == null ? "—" : fmtPct(row.favourable)}</td>
+                <td className="py-1.5 pr-2 text-right font-mono tabular">{row.adverse == null ? "—" : fmtPct(row.adverse)}</td>
+                <td className="py-1.5 text-right font-mono tabular">{base?.median == null ? "—" : fmtPct(base.median)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

@@ -1,0 +1,756 @@
+KOSH — PATTERN FLOW INTELLIGENCE OVERHAUL + TRADING TERMINAL PINE SCRIPT EDITOR
+
+Implement two major enhancements in Kosh:
+
+1. A comprehensive improvement to the existing Pattern Flow Intelligence feature, focusing primarily on the quality, clarity, analytical depth and usefulness of its written insights.
+2. A new Pine Script Editor and Indicator Execution Environment inside the existing Market Terminal, designed around the workflow and capabilities familiar to TradingView users.
+
+These are enhancements to the existing Kosh application, not standalone prototypes.
+
+Before making changes, inspect the current repository, existing Pattern Flow calculations, data structures, AI generation pipeline, Market Terminal architecture, chart engine, indicator system, persistence and existing tests.
+
+Preserve all working functionality.
+
+---
+
+PART A — PATTERN FLOW INTELLIGENCE
+
+1. Primary objective
+
+The existing Pattern Flow Intelligence page has an acceptable visual foundation, but its written explanations and presentation of historical statistics are not sufficiently clear or insightful.
+
+The objective is to make the page understandable to someone who opens it and immediately wants to know:
+
+- What is happening?
+- What has happened historically in similar situations?
+- How frequently has it happened?
+- What happened afterwards?
+- How reliable or consistent were those historical outcomes?
+- What does the current evidence suggest?
+
+Do not simply add more numbers.
+
+Every number displayed must contribute to an understandable insight, comparison or decision.
+
+The page should be analytical, informative and concise—not cluttered with technical terminology or unexplained statistics.
+
+2. Audit the existing implementation first
+
+Inspect:
+
+- All Pattern Flow Intelligence components and sections.
+- Manual write-up generation.
+- AI write-up generation.
+- Historical pattern identification.
+- Similarity and ranking calculations.
+- Historical observation windows.
+- Forward-performance calculations.
+- Benchmark comparisons.
+- Existing charts and tables.
+- Data availability and missing-observation handling.
+
+Identify every metric currently calculated but not displayed or meaningfully explained.
+
+Identify every statement that is vague, ambiguous, technically inaccurate or difficult to understand.
+
+Do not invent new metrics before understanding the existing calculations.
+
+Reuse existing data and calculations wherever possible. Extend the existing engine where necessary.
+
+3. Rewrite the manual intelligence narrative
+
+This is the highest-priority requirement.
+
+The manually generated write-up must be substantially improved.
+
+Replace vague expressions such as:
+
+- "Pattern ranked"
+- "Still going"
+- "229 months"
+- "Strong resemblance"
+- "Historical trend continues"
+
+with clear, contextual statements.
+
+Every statement should communicate an actual finding.
+
+Examples of the required writing style:
+
+Historical coverage
+
+"Historical coverage: 229 monthly observations, equivalent to approximately 19 years and 1 month."
+
+Historical occurrences
+
+"14 comparable historical occurrences were identified across the available data."
+
+Forward performance
+
+"10 of the 14 historical occurrences closed higher one month later, representing a 71.4% positive outcome rate."
+
+Benchmark comparison
+
+"9 of the 14 occurrences outperformed the benchmark over the following three months."
+
+Interpretation
+
+"Comparable historical setups showed a positive tendency over the following month. However, the relatively small sample and variation in outcomes mean this should not be interpreted as a reliable prediction."
+
+These are examples of wording only. Actual values must come from Kosh's calculations.
+
+Writing rules
+
+- Always explain what the number represents.
+- Always include the relevant unit and period.
+- Convert large month counts into years and months.
+- Use percentages where they improve understanding.
+- Distinguish observations from interpretations.
+- Distinguish historical tendencies from predictions.
+- Avoid unexplained technical terms.
+- Never describe a pattern as successful merely because its similarity score is high.
+- Never describe a pattern as confirmed if the underlying conditions are not satisfied.
+- Clearly distinguish insufficient data from a negative result.
+- Do not use artificial precision.
+- Do not repeat the same insight in multiple sections.
+
+4. Historical coverage and time-period presentation
+
+Support meaningful comparisons across:
+
+- Daily
+- Weekly
+- Monthly
+- Yearly
+
+Where appropriate, also support rolling periods:
+
+- 1 month
+- 3 months
+- 6 months
+- 1 year
+- 3 years
+- 5 years
+- 10 years
+
+Do not confuse the observation frequency with the length of historical coverage.
+
+For example:
+
+229 monthly observations = approximately 19 years and 1 month.
+
+Present the following separately:
+
+1. Historical data coverage.
+2. Number of valid observations.
+3. Number of comparable historical occurrences.
+4. Number of observations with available forward outcomes.
+5. Latest available observation date.
+
+When comparing periods, use consistent dates and avoid comparing incomplete periods as if they were complete.
+
+5. Historical pattern comparison
+
+Improve the way the current pattern is compared with previous occurrences.
+
+For every identified comparable occurrence, calculate and retain the information needed to explain:
+
+- Date of occurrence.
+- Pattern type.
+- Similarity score, where supported by the existing algorithm.
+- Market conditions at the time.
+- Subsequent price movement.
+- Forward returns.
+- Maximum favourable excursion.
+- Maximum adverse excursion.
+- Benchmark-relative performance.
+- Whether the historical outcome is complete or still developing.
+
+Present historical occurrences through an accessible timeline or comparison visualisation.
+
+Allow users to understand how the current setup resembles previous situations.
+
+Do not treat every occurrence as equally relevant if the existing similarity model provides a meaningful distinction.
+
+Avoid look-ahead bias. Historical comparisons must use only information available at the relevant historical point.
+
+6. Forward-performance analysis
+
+This section must become substantially more useful.
+
+Calculate outcomes over the available horizons:
+
+- 1 day
+- 3 days
+- 5 days
+- 10 days
+- 1 month
+- 3 months
+- 6 months
+- 1 year
+- Longer horizons where sufficient data exists.
+
+For each horizon, calculate where supported:
+
+- Number of valid observations.
+- Positive outcome percentage.
+- Negative outcome percentage.
+- Average return.
+- Median return.
+- Best outcome.
+- Worst outcome.
+- Dispersion or variability.
+- Maximum favourable excursion.
+- Maximum adverse excursion.
+- Benchmark-relative return.
+- Number of observations outperforming the benchmark.
+
+Do not display metrics where the underlying sample is insufficient.
+
+Distinguish price return from benchmark-relative return.
+
+Do not mix completed outcomes with incomplete forward periods.
+
+Presentation
+
+Use a clear comparison table and appropriate charts.
+
+The user should be able to identify:
+
+- Which period historically performed best.
+- Whether the result was consistent.
+- Whether the average was distorted by a few exceptional outcomes.
+- Whether the stock outperformed the benchmark.
+- Whether adverse movements were significant.
+
+Do not make a high hit rate appear reliable when the sample size is small.
+
+7. Daily, weekly, monthly and yearly comparisons
+
+Introduce a clear period-comparison interface.
+
+Allow the user to compare the identified pattern and its historical outcomes across daily, weekly, monthly and yearly observations, wherever the data supports it.
+
+Keep observation frequency and forward-return horizon conceptually separate.
+
+For example, a monthly pattern can still have 1-month, 3-month and 6-month forward outcomes.
+
+Do not imply that monthly observations automatically represent monthly forward returns.
+
+Show the available sample count for every comparison.
+
+8. Manual write-up structure
+
+Reorganise the manually generated narrative into a concise hierarchy:
+
+A. What is happening now?
+
+Explain the current pattern, direction, important levels and status.
+
+B. Historical context
+
+Explain the amount of historical data, the number of comparable occurrences and the quality of the comparison.
+
+C. What happened afterwards?
+
+Summarise forward outcomes over relevant horizons.
+
+D. Relative performance
+
+Explain whether the stock historically outperformed or underperformed its benchmark.
+
+E. Risk and consistency
+
+Explain the variation, adverse movements and limitations of the historical sample.
+
+F. Overall interpretation
+
+Provide a short, balanced conclusion that explains what the available evidence indicates.
+
+The manual narrative must be generated from actual Kosh data and calculations.
+
+Do not hardcode example statements or sample statistics.
+
+9. AI-generated intelligence
+
+Improve the AI-generated write-up separately.
+
+The AI version should have greater research and interpretation capabilities than the manual version.
+
+Where reliable public information is available, allow it to incorporate:
+
+- Relevant company announcements.
+- Corporate actions.
+- Earnings and financial results.
+- Industry developments.
+- Macroeconomic events.
+- Relevant historical news.
+- Sector and benchmark developments.
+- Events associated with comparable historical patterns.
+
+Use web research only when it adds material insight.
+
+Every externally sourced factual claim must have a source reference and publication date.
+
+Distinguish:
+
+- Verified company information.
+- Market data.
+- Historical observations.
+- AI interpretation.
+- Speculation or uncertainty.
+
+The AI must not invent news, financial metrics, historical occurrences or causal relationships.
+
+AI visualisation
+
+Where useful, generate additional analytical visualisations:
+
+- Historical occurrence timeline.
+- Forward-return distribution.
+- Stock versus benchmark performance.
+- Historical outcome comparison.
+- Relevant event timeline.
+- Current pattern versus historical examples.
+
+Use existing Kosh chart and visualisation infrastructure.
+
+Do not create decorative charts that do not explain something.
+
+10. Manual and AI output consistency
+
+Both versions must use the same underlying Kosh calculations and data definitions.
+
+The AI version may add research and interpretation, but must not silently change the underlying statistics.
+
+Show the date and time of the analysis and the data coverage used.
+
+Make it easy to understand what is calculated by Kosh and what is interpreted by AI.
+
+11. Numerical integrity and data utilisation
+
+Use all relevant data already available to Kosh.
+
+However, do not maximise the number of displayed metrics merely for the sake of using data.
+
+Instead:
+
+- Identify unused data that can generate useful insights.
+- Add calculations only when they have an analytical purpose.
+- Use consistent return definitions.
+- Handle missing observations correctly.
+- Handle corporate actions and adjusted prices consistently.
+- Avoid duplicate historical occurrences.
+- Avoid look-ahead bias.
+- Avoid survivorship bias where the available universe permits.
+- Show sample sizes and data limitations.
+
+Do not present an unavailable metric as zero.
+
+Do not treat missing data as a negative outcome.
+
+Do not extrapolate incomplete forward periods.
+
+12. Visual and UX improvements
+
+The existing design is acceptable as a foundation.
+
+Improve the page where it materially improves comprehension.
+
+Prioritise:
+
+- Better information hierarchy.
+- Clear section headings.
+- Short explanatory descriptions.
+- Readable comparison tables.
+- Consistent date and number formatting.
+- Tooltips for technical metrics.
+- Expandable historical detail.
+- Appropriate charts.
+- Responsive layout.
+
+Avoid unnecessary cards, oversized headings, decorative elements and duplicated information.
+
+---
+
+PART B — PINE SCRIPT EDITOR IN MARKET TERMINAL
+
+13. Objective
+
+Add a full-featured Pine Script editing and indicator workflow inside Kosh's existing Market Terminal.
+
+The intended experience should be familiar to TradingView Pine Editor users.
+
+Users should be able to:
+
+1. Open the Pine Editor.
+2. Create a new script.
+3. Paste an existing Pine Script.
+4. Select the intended Pine language version.
+5. Edit the script.
+6. Run or add it to the chart.
+7. View the indicator on the existing Kosh chart.
+8. Save the script.
+9. Reopen and modify it later.
+10. Manage saved custom indicators.
+
+This must integrate with the existing Market Terminal and its chart engine.
+
+Do not create a separate charting application.
+
+14. Critical feasibility requirement: Pine Script compatibility
+
+Pine Script is a proprietary language and runtime.
+
+Do not assume that creating a code editor automatically makes Kosh capable of executing Pine Script.
+
+Do not claim full Pine Script v5 or v6 compatibility unless the actual language and execution semantics are implemented and tested.
+
+Before implementation, investigate whether a legitimate licensed or otherwise permitted execution solution exists.
+
+If not, design a Kosh-owned Pine-compatible parser and execution engine.
+
+The architecture must support incremental expansion of language compatibility.
+
+Do not silently approximate unsupported functions or return fabricated indicator values.
+
+For every unsupported function or language feature, return a clear compilation or execution error identifying the affected line and feature.
+
+Maintain an explicit compatibility matrix for v5 and v6.
+
+15. Pine Editor interface
+
+Create a professional editor panel integrated into the Market Terminal.
+
+The interface should include:
+
+- Code editor.
+- Script tabs.
+- New script.
+- Open saved script.
+- Save.
+- Save as.
+- Rename.
+- Delete.
+- Pine version selector.
+- Add to chart / Run.
+- Remove from chart.
+- Compile status.
+- Error and warning panel.
+- Editor settings.
+- Keyboard shortcuts.
+- Search and replace.
+- Line numbers.
+- Syntax highlighting.
+- Code folding.
+- Indentation.
+- Bracket matching.
+- Undo and redo.
+- Autocomplete where supported.
+
+Use a mature code editor component such as Monaco Editor if it fits the existing architecture.
+
+Provide Pine-oriented syntax highlighting, completion and diagnostics.
+
+Do not implement these as decorative controls. Every visible action must work.
+
+16. Pine language version support
+
+Provide a version selector for Pine Script v5 and v6.
+
+The version must be derived from the script's "//@version=" directive when present.
+
+Allow the user to select a version for new scripts.
+
+Do not silently change the version directive in an imported script.
+
+If the script requests an unsupported language version, explain this clearly.
+
+Maintain separate version-specific language rules where required.
+
+17. Execution engine
+
+Design a real script execution engine.
+
+The engine must be able to process the Pine language features required by the supported compatibility matrix.
+
+At minimum, evaluate the feasibility and architecture for:
+
+- Indicator declarations.
+- Input declarations.
+- Variables and reassignment.
+- Historical series references.
+- Conditional statements.
+- Loops and functions.
+- Built-in mathematical functions.
+- Moving averages.
+- RSI.
+- MACD.
+- ATR.
+- Bollinger Bands.
+- Highest and lowest.
+- Crossover and crossunder.
+- Plotting.
+- Shapes and labels.
+- Horizontal lines.
+- Fill and background colouring.
+- Bar colouring.
+- Alert conditions.
+- Multiple plotted series.
+- Historical bar-by-bar evaluation.
+
+Also investigate more advanced features:
+
+- "request.security()".
+- Multiple timeframes.
+- Custom functions.
+- Arrays.
+- Tables.
+- User-defined types.
+- Persistent variables.
+- Strategy declarations.
+- Strategy orders and backtesting.
+- Bar states and real-time execution.
+- Drawing objects.
+
+Do not claim support for any feature until its semantics have been implemented and validated.
+
+18. Integration with Kosh chart engine
+
+Use the existing Market Terminal chart and its current data pipeline.
+
+Do not introduce a duplicate OHLCV provider.
+
+The execution engine should receive the chart's available OHLCV series and relevant timeframe context.
+
+It should return structured output that the chart can render.
+
+Support, where implemented:
+
+- Multiple plots.
+- Overlay indicators.
+- Separate indicator panes.
+- Line and histogram styles.
+- Colours and transparency.
+- Shapes and labels.
+- Horizontal levels.
+- Background and bar colouring.
+- Configurable indicator inputs.
+- Recalculation when the symbol or timeframe changes.
+
+Preserve the user's existing drawings, chart settings, indicators and layout.
+
+Adding a custom indicator must not overwrite existing chart objects.
+
+When the chart symbol or timeframe changes, the script should recalculate against the new series using the same script definition.
+
+Do not use fake or synthetic market data for actual chart execution.
+
+19. Indicator management
+
+Create a Custom Scripts section within the existing Indicators area.
+
+Users should be able to:
+
+- Save scripts.
+- Rename scripts.
+- Duplicate scripts.
+- Delete scripts.
+- Edit saved scripts.
+- Add saved scripts to the chart.
+- Remove scripts from the chart.
+- Keep multiple custom indicators active simultaneously.
+- Configure indicator inputs.
+- Reopen scripts without losing their code.
+
+Persist scripts using Kosh's existing persistence architecture where appropriate.
+
+Use stable script IDs and preserve version directives.
+
+A script saved to the library must remain available after refresh and relaunch.
+
+Distinguish saved scripts from scripts currently applied to the chart.
+
+20. Error handling and execution safety
+
+The editor must clearly display:
+
+- Syntax errors.
+- Unsupported functions.
+- Type errors.
+- Runtime errors.
+- Resource-limit errors.
+- Invalid input declarations.
+- Incompatible language versions.
+
+Errors should identify the relevant line and explain the issue in understandable language.
+
+Never silently produce an incorrect indicator.
+
+The execution environment must be isolated from arbitrary access to the browser, server, filesystem, network and user credentials.
+
+Apply execution limits for:
+
+- Maximum script execution time.
+- Maximum historical bars.
+- Maximum drawing objects.
+- Maximum array size.
+- Maximum loops or computation.
+- Maximum number of active scripts.
+
+Prevent one expensive script from freezing the entire Market Terminal.
+
+21. Primary user script validation
+
+The user will provide a frequently used Pine Script.
+
+Use that script as a primary compatibility and regression test.
+
+Preserve its original code exactly.
+
+First:
+
+1. Inspect the version directive.
+2. Identify every function and language feature it uses.
+3. Produce a compatibility report.
+4. Identify unsupported features.
+5. Implement the required features without changing the script's intended logic.
+6. Run it against the same symbol, timeframe and historical bars used in TradingView where equivalent data is available.
+7. Compare its plotted values and signals with TradingView.
+
+Do not claim exact equivalence merely because the script compiles.
+
+Validate:
+
+- Indicator values.
+- Signal timing.
+- Historical values.
+- Real-time/forming-bar behaviour.
+- Timeframe changes.
+- Input changes.
+- Repainting behaviour.
+- Missing-data handling.
+
+If a TradingView comparison cannot be automated, provide a clear manual validation procedure.
+
+The primary indicator must not be considered complete until its calculations and signals have been compared.
+
+22. Implementation phases
+
+Implement this in phases, but design the architecture for the complete workflow.
+
+Phase 1 — Editor and persistence
+
+- Editor interface.
+- Version selection.
+- Script tabs.
+- Save/open/rename/delete.
+- Syntax highlighting.
+- Basic diagnostics.
+
+Phase 2 — Core Pine execution
+
+- Parser and interpreter.
+- Series evaluation.
+- Common indicators and mathematical functions.
+- Plotting and overlay support.
+- Chart integration.
+- Explicit compatibility matrix.
+
+Phase 3 — Advanced Pine features
+
+- Multi-timeframe data.
+- Drawing objects.
+- Arrays and advanced language features.
+- Alerts.
+- More complex script behaviour.
+
+Phase 4 — Primary indicator validation
+
+- Use the user's supplied script.
+- Close compatibility gaps.
+- Compare calculations and signals against TradingView.
+
+Do not represent Phase 1 as a fully functional Pine Editor.
+
+Do not represent partial Pine compatibility as universal v5/v6 support.
+
+---
+
+PART C — ENGINEERING AND DELIVERY REQUIREMENTS
+
+23. Preserve Kosh architecture
+
+Before implementation, inspect the current repository and identify the appropriate integration points.
+
+Reuse:
+
+- Existing Market Terminal.
+- Existing chart engine.
+- Existing OHLCV pipeline.
+- Existing indicator management.
+- Existing persistence.
+- Existing styling and UI components.
+- Existing testing conventions.
+
+Do not introduce a duplicate chart engine, duplicate market data pipeline or disconnected script store.
+
+Keep the Terminal chart engine separate from the stock-page chart engine.
+
+24. Testing
+
+Add tests for both workstreams.
+
+Pattern Flow
+
+- Date and period formatting.
+- Month-to-year conversion.
+- Historical occurrence identification.
+- Similarity calculations.
+- Forward-return calculations.
+- Benchmark comparisons.
+- Incomplete observation handling.
+- Sample-size disclosures.
+- Manual narrative generation.
+- AI narrative data consistency.
+- No look-ahead leakage.
+
+Pine Editor
+
+- Script parsing.
+- Version detection.
+- Syntax errors.
+- Variable and series evaluation.
+- Historical references.
+- Indicator calculations.
+- Plot output.
+- Multiple active scripts.
+- Input changes.
+- Symbol/timeframe changes.
+- Persistence.
+- Unsupported-function diagnostics.
+- Execution limits.
+- Regression tests using the supplied primary indicator.
+
+25. Delivery report
+
+After implementation, provide a clear report showing:
+
+1. What changed in Pattern Flow Intelligence.
+2. Which previously vague statements were rewritten.
+3. Which additional metrics are now calculated and displayed.
+4. Which comparisons are available.
+5. What AI research and visualisation capabilities were added.
+6. Which Pine Editor features are implemented.
+7. Which Pine v5/v6 language features are actually supported.
+8. Which features remain unsupported.
+9. Whether the supplied indicator passes compatibility testing.
+10. Typecheck, focused tests, full test suite and production build results separately.
+
+Never report a feature as fully implemented when only its interface exists.
+
+Never claim Pine Script compatibility without actual execution tests.
+
+Never claim that historical or market-data validation was performed if it was not.
+
+The final result must feel like a natural extension of Kosh—not an isolated experiment.

@@ -4,8 +4,17 @@ export type OutcomeSet = {
   label: string;
   n: number;
   median: number | null;
+  average: number | null;
   positiveShare: number | null;
+  negativeShare: number | null;
+  best: number | null;
   worst: number | null;
+  /** Sample standard deviation. Null below 8 completed paths. */
+  dispersion: number | null;
+  /** Median of the highest point along the path. */
+  favourable: number | null;
+  /** Median of the lowest point along the path. */
+  adverse: number | null;
 };
 
 export type FlowExample = {
@@ -40,6 +49,8 @@ export type ResearchBrief = {
   scenarios: { name: string; support: string; against: string; strengthen: string; invalidate: string }[];
   watch: { variable: string; now: string; change: string; effect: string }[];
   method: string[];
+  /** Daily, weekly, and completed calendar years, using the same matcher. The monthly result stays in `history`. */
+  comparisons: { id: "daily" | "weekly" | "yearly"; label: string; history: ResearchBrief["history"] }[];
 };
 
 type Print = { date: string; close: number };
@@ -129,26 +140,53 @@ function drawdown(index: Print[], date: string, sessions: number) {
 function forwardPath(index: Print[], date: string, sessions: number) {
   const pos = locate(index, date);
   const end = pos + sessions;
-  if (pos < 0 || end >= index.length || !(index[pos].close > 0)) return { ret: null, adverse: null };
+  if (pos < 0 || end >= index.length || !(index[pos].close > 0)) return { ret: null, adverse: null, favourable: null };
   let low = index[pos].close;
-  for (let i = pos + 1; i <= end; i++) if (index[i].close < low) low = index[i].close;
+  let high = index[pos].close;
+  for (let i = pos + 1; i <= end; i++) {
+    if (index[i].close < low) low = index[i].close;
+    if (index[i].close > high) high = index[i].close;
+  }
   return {
     ret: (index[end].close / index[pos].close - 1) * 100,
     adverse: (low / index[pos].close - 1) * 100,
+    favourable: (high / index[pos].close - 1) * 100,
   };
 }
 
+function average(values: number[]) {
+  if (!values.length) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function spread(values: number[]) {
+  if (values.length < 8) return null;
+  const mid = average(values) || 0;
+  const variance = values.reduce((sum, value) => sum + (value - mid) ** 2, 0) / (values.length - 1);
+  return Math.sqrt(variance);
+}
+
 function outcome(index: Print[], rows: Point[], horizon: (typeof HORIZONS)[number]): OutcomeSet {
-  const values = rows
-    .map((row) => forwardPath(index, row.end, horizon.sessions).ret)
-    .filter((value): value is number => value != null);
+  const paths = rows
+    .map((row) => forwardPath(index, row.end, horizon.sessions))
+    .filter((path) => path.ret != null);
+  const values = paths.map((path) => path.ret as number);
+  const favourable = paths.map((path) => path.favourable).filter((value): value is number => value != null);
+  const adverse = paths.map((path) => path.adverse).filter((value): value is number => value != null);
   const positive = values.filter((value) => value > 0).length;
+  const negative = values.filter((value) => value < 0).length;
   return {
     label: horizon.label,
     n: values.length,
     median: median(values),
+    average: average(values),
     positiveShare: values.length ? positive / values.length : null,
+    negativeShare: values.length ? negative / values.length : null,
+    best: values.length ? Math.max(...values) : null,
     worst: values.length ? Math.min(...values) : null,
+    dispersion: spread(values),
+    favourable: median(favourable),
+    adverse: median(adverse),
   };
 }
 
@@ -276,26 +314,37 @@ export function buildResearch(input: {
     history,
     scenarios,
     watch,
+    comparisons: [
+      { id: "daily" as const, label: "Daily", history: matchHistory(index, barsToPoints(index, input.daily), { unit: "day" }) },
+      { id: "weekly" as const, label: "Weekly", history: matchHistory(index, barsToPoints(index, input.weekly), { unit: "week" }) },
+      { id: "yearly" as const, label: "Yearly", history: matchHistory(index, yearPoints(index, points), { unit: "year", minPoints: 8, minUsable: 8, take: 5 }) },
+    ],
     method: [
       "Ranks use only earlier months. The latest month is not included in its own comparison set.",
       "Similar months are the 8 closest on foreign flow, domestic flow, that month's Nifty return, the prior-three-month return and the drawdown from the prior-year high. Scales use only months before the latest one.",
-      "What happened next is the Nifty path after that month, over about 1, 4, 12 and 24 weeks. The later path is not used to decide the match.",
-      "The ordinary-month row is every earlier month with a completed path, not only the similar ones. If the two rows are close, the match is not treated as predictive.",
+      "What happened next is the Nifty path after that period, over about 1, 4, 12 and 24 weeks (5, 20, 60 and 120 sessions). The later path is not used to decide the match.",
+      "The ordinary row is every earlier period with a completed path, not only the closest ones. If the two rows are close, the match is not treated as a different outcome.",
+      "Daily and weekly comparisons use the same rules on those totals. A yearly comparison uses only calendar years that contain 12 completed months. None of them is mixed into the monthly sample. A daily observation is not treated as a one-day forward return.",
       "Breadth, volatility, the rupee, crude and a size or sentiment cross-section are not in this calculation. They are omitted, not assumed neutral.",
       `Daily cash prints in this file: ${input.days.length}. Monthly cash totals used for the rank: ${prior.length} completed months before the latest one.`,
     ],
   };
 }
 
-function matchHistory(index: Print[], points: Point[]): ResearchBrief["history"] {
+function matchHistory(index: Print[], points: Point[], opts?: { unit?: "day" | "month" | "week" | "year"; minPoints?: number; minUsable?: number; take?: number }): ResearchBrief["history"] {
+  const unit = opts?.unit || "month";
+  const minPoints = opts?.minPoints ?? 36;
+  const minUsable = opts?.minUsable ?? 24;
+  const takeN = opts?.take ?? 8;
+  const noun = unit === "week" ? "weeks" : unit === "year" ? "years" : unit === "day" ? "days" : "months";
   const current = points[points.length - 1];
-  if (!current || points.length < 36) {
-    return { usable: false, note: "Fewer than 36 months have both a flow and a Nifty return. No historical comparison is shown.", months: points.length, similarCount: 0, separated: false, baseline: [], similar: [], examples: [], association: "" };
+  if (!current || points.length < minPoints) {
+    return { usable: false, note: `Fewer than ${minPoints} ${noun} have both a flow and a Nifty return. No ${unit} comparison is shown.`, months: points.length, similarCount: 0, separated: false, baseline: [], similar: [], examples: [], association: "" };
   }
   const history = points.slice(0, -1).filter((row) => !row.partial && row.end < current.end);
   const usable = history.filter((row) => forwardPath(index, row.end, 20).ret != null);
-  if (usable.length < 24) {
-    return { usable: false, note: "Too few earlier months have a completed four-week path. No comparison is shown.", months: history.length, similarCount: 0, separated: false, baseline: [], similar: [], examples: [], association: "" };
+  if (usable.length < minUsable) {
+    return { usable: false, note: `Too few earlier ${noun} have a completed four-week path. No ${unit} comparison is shown.`, months: history.length, similarCount: 0, separated: false, baseline: [], similar: [], examples: [], association: "" };
   }
   const fiiS = madScale(usable.map((row) => row.fii));
   const diiS = madScale(usable.map((row) => row.dii));
@@ -312,7 +361,7 @@ function matchHistory(index: Print[], points: Point[]): ResearchBrief["history"]
     return { row, distance: Math.sqrt(sum) };
   });
   scored.sort((a, b) => a.distance - b.distance);
-  const take = Math.min(8, scored.length);
+  const take = Math.min(takeN, scored.length);
   const similarRows = scored.slice(0, take).map((item) => item.row);
   const baseline = HORIZONS.map((horizon) => outcome(index, usable, horizon));
   const similar = HORIZONS.map((horizon) => outcome(index, similarRows, horizon));
@@ -336,7 +385,7 @@ function matchHistory(index: Print[], points: Point[]): ResearchBrief["history"]
       fiiNet: item.row.fii,
       diiNet: item.row.dii,
       indexReturn: item.row.ret1,
-      why: "Foreign flow, domestic flow, the month's return and the drawdown were near the latest month.",
+      why: `Foreign flow, domestic flow, the period return and the drawdown were near the latest ${unit}.`,
       difference: difference(current, item.row),
       forward: HORIZONS.map((horizon) => {
         const path = forwardPath(index, item.row.end, horizon.sessions);
@@ -345,14 +394,14 @@ function matchHistory(index: Print[], points: Point[]): ResearchBrief["history"]
       failed: failedPath,
     };
   });
-  const pairs = association(history);
+  const pairs = association(history, unit);
   return {
     usable: true,
     note: !separated
-      ? `The 8 closest months were followed by roughly the same four-week result as an ordinary month. The resemblance is not evidence of a different outcome.`
+      ? `The ${take} closest ${noun} were followed by about the same four-week Nifty result as an ordinary ${unit}. Being close on the flows is not evidence of a different later result.`
       : fades
-        ? `Over the next 4 weeks, the 8 closest months had a median Nifty move of ${sim4?.median?.toFixed(1)}% against ${base4?.median?.toFixed(1)}% for an ordinary month. By 24 weeks the two groups are close again. That describes those months. It is not a forecast.`
-        : `The 8 closest months were followed by a different result from an ordinary month in this file. That is a description of those months, not a forecast.`,
+        ? `Over the next 20 sessions, the ${take} closest ${noun} had a median Nifty move of ${sim4?.median?.toFixed(1)}% against ${base4?.median?.toFixed(1)}% for an ordinary ${unit}. By about 24 weeks the two groups are close again. That describes those ${noun}. It is not a forecast.`
+        : `The ${take} closest ${noun} were followed by a different four-week result from an ordinary ${unit} in this file. That is a description of those ${noun}, not a forecast.`,
     months: usable.length,
     similarCount: take,
     separated,
@@ -363,15 +412,72 @@ function matchHistory(index: Print[], points: Point[]): ResearchBrief["history"]
   };
 }
 
+function barsToPoints(index: Print[], bars: FlowBar[]): Point[] {
+  return bars
+    .filter((bar) => bar.indexReturn != null && Number.isFinite(bar.fiiNet) && Number.isFinite(bar.diiNet))
+    .map((bar) => ({
+      end: bar.end,
+      fii: bar.fiiNet,
+      dii: bar.diiNet,
+      ret1: bar.indexReturn as number,
+      ret3: backReturn(index, bar.end, 63),
+      dd: drawdown(index, bar.end, 252),
+      partial: bar.partial,
+    }));
+}
+
+function calendarReturn(index: Print[], year: string): number | null {
+  let start = -1;
+  let end = -1;
+  for (let i = 0; i < index.length; i++) {
+    if (index[i].date >= `${year}-01-01` && index[i].date <= `${year}-12-31`) {
+      if (start < 0) start = i;
+      end = i;
+    }
+  }
+  if (start < 0 || end <= start || !(index[start].close > 0)) return null;
+  return (index[end].close / index[start].close - 1) * 100;
+}
+
+function yearPoints(index: Print[], months: Point[]): Point[] {
+  const by = new Map<string, Point[]>();
+  for (const row of months) {
+    if (row.partial) continue;
+    const year = row.end.slice(0, 4);
+    const list = by.get(year) || [];
+    list.push(row);
+    by.set(year, list);
+  }
+  const out: Point[] = [];
+  for (const [year, rows] of by) {
+    if (rows.length < 12) continue;
+    rows.sort((a, b) => a.end.localeCompare(b.end));
+    const ret = calendarReturn(index, year);
+    if (ret == null) continue;
+    const end = rows[rows.length - 1].end;
+    out.push({
+      end,
+      fii: rows.reduce((sum, row) => sum + row.fii, 0),
+      dii: rows.reduce((sum, row) => sum + row.dii, 0),
+      ret1: ret,
+      ret3: null,
+      dd: drawdown(index, end, 252),
+      partial: false,
+    });
+  }
+  out.sort((a, b) => a.end.localeCompare(b.end));
+  return out;
+}
+
 function difference(current: Point, prior: Point) {
   const gaps: string[] = [];
   if (Math.abs(current.fii - prior.fii) > 15000) gaps.push("the foreign total was materially different");
   if (current.dd != null && prior.dd != null && Math.abs(current.dd - prior.dd) > 8) gaps.push("the drawdown was different");
   if (Math.sign(current.dii) !== Math.sign(prior.dii)) gaps.push("domestic flow was on the other side");
-  return gaps.length ? gaps.join("; ") + "." : "No single input was far from the latest month.";
+  return gaps.length ? gaps.join("; ") + "." : "No single input was far from the latest period.";
 }
 
-function association(rows: Point[]) {
+function association(rows: Point[], unit: "day" | "month" | "week" | "year") {
   const complete = rows.filter((row) => !row.partial);
   const fii: number[] = [];
   const dii: number[] = [];
@@ -387,8 +493,9 @@ function association(rows: Point[]) {
   const b = pearson(fii, prev);
   const c = pearson(dii, ret);
   const d = pearson(dii, prev);
-  if (a == null || b == null || c == null || d == null) return "Not enough paired months to describe how flows line up with returns.";
-  return `Across ${fii.length} completed months, foreign flow lines up with the same month's Nifty return at ${a.toFixed(2)} and with the previous month's return at ${b.toFixed(2)}. Domestic flow lines up at ${c.toFixed(2)} and ${d.toFixed(2)}. This describes the file. It is not a significance test.`;
+  const noun = unit === "week" ? "weeks" : unit === "year" ? "years" : unit === "day" ? "days" : "months";
+  if (a == null || b == null || c == null || d == null) return `Not enough paired ${noun} to describe how flows line up with returns.`;
+  return `Across ${fii.length} completed ${noun}, foreign flow lines up with the same period's Nifty return at ${a.toFixed(2)} and with the previous period's return at ${b.toFixed(2)}. Domestic flow lines up at ${c.toFixed(2)} and ${d.toFixed(2)}. This describes the file. It is not a significance test.`;
 }
 
 function scenariosFor(input: { absorbed: boolean; heavyForeignSelling: boolean; indexDown: boolean; indexUp: boolean; cover: number | null; dd: number | null; current: Point | undefined }): ResearchBrief["scenarios"] {

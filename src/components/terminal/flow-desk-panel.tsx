@@ -227,7 +227,7 @@ export function FlowDeskPanel({ daily, retrievedAt, sourceName }: { daily: FlowB
             {asking ? "Writing…" : note ? "Rewrite from the current file" : "Write an interpretation"}
           </button>
         </div>
-        <p className="mt-1 text-[11px] text-subtle">The model explains the calculated figures. It does not add a total, a percent, or a probability. Charts stay if this fails.</p>
+        <p className="mt-1 text-[11px] text-subtle">This is an interpretation of the calculated desk, written at the time you ask. It does not search news, and it must not change a figure, add a cause, or turn the history into a probability. Charts stay if this fails.</p>
         {asking ? <p className="mt-2 text-[12px] text-muted">Checking the note against the cash file…</p> : null}
         {noteError ? (
           <div className="mt-2 rounded-md border border-down/30 px-3 py-2">

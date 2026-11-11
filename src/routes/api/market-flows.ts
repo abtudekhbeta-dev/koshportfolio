@@ -8,7 +8,9 @@ type NoteKey = (typeof KEYS)[number];
 
 function notePrompt(desk: FlowDesk, stray: string | null) {
   return [
-    "Interpret this verified Indian cash-market flow desk for someone who can already see the charts.",
+    "You are interpreting a calculated cash-flow desk. You are not researching news and you cannot see announcements, earnings, or macro events.",
+    "Do not mention a company action, a news event, or a cause that is not written below. If you do not have it, say the file does not contain it.",
+    "Do not change, round into a new total, or invent any statistic. Calculated figures stay the desk's. Your sentences are interpretation.",
     "Return only JSON with keys takeaway, changes, alignment, history, price, risks, watch.",
     "Each value is one or two sentences.",
     "takeaway: the single most useful reading. Do not restate every number.",
